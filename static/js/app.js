@@ -9,7 +9,7 @@ const app = createApp({
         const isLoading = ref(false);
         const dbConnected = ref(false);
         const schema = ref('');
-        const selectedProfile = ref('{{ default_profile }}');
+        const selectedProfile = ref('');
         const selectedAction = ref('runsql');
         const profiles = ref([]);
         const messages = reactive([]);
@@ -429,12 +429,16 @@ const app = createApp({
                 const data = await response.json();
                 if (data.success && data.profiles.length > 0) {
                     profiles.value = data.profiles;
+                    if (!selectedProfile.value) {
+                        selectedProfile.value = data.profiles[0].profile_name;
+                    }
                 } else {
-                    // 프로필 조회 실패 시 기본값
-                    profiles.value = [{ profile_name: selectedProfile.value, status: 'ENABLED' }];
+                    profiles.value = [{ profile_name: 'GROQ_PROFILE', status: 'ENABLED' }];
+                    selectedProfile.value = 'GROQ_PROFILE';
                 }
             } catch {
-                profiles.value = [{ profile_name: selectedProfile.value, status: 'ENABLED' }];
+                profiles.value = [{ profile_name: 'GROQ_PROFILE', status: 'ENABLED' }];
+                selectedProfile.value = 'GROQ_PROFILE';
             }
         }
 
