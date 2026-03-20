@@ -13,7 +13,8 @@ async def init_pool():
     if settings.ORACLE_WALLET_DIR:
         connect_params["config_dir"] = settings.ORACLE_WALLET_DIR
         connect_params["wallet_location"] = settings.ORACLE_WALLET_DIR
-        connect_params["wallet_password"] = settings.ORACLE_WALLET_PASSWORD
+        if settings.ORACLE_WALLET_PASSWORD:
+            connect_params["wallet_password"] = settings.ORACLE_WALLET_PASSWORD
 
     pool = oracledb.create_pool_async(
         user=settings.ORACLE_USER,
