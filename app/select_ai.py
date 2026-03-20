@@ -1,4 +1,12 @@
 import json
+import oracledb
+
+
+async def _lob_to_str(value):
+    """LOB 객체이면 문자열로 읽어서 반환하고, 아니면 그대로 반환한다."""
+    if isinstance(value, oracledb.AsyncLOB):
+        return await value.read()
+    return value
 
 
 async def ask_select_ai(pool, prompt: str, action: str, profile_name: str) -> str:
@@ -18,7 +26,9 @@ async def ask_select_ai(pool, prompt: str, action: str, profile_name: str) -> st
                 "action": action,
             })
             row = await cursor.fetchone()
-            return row[0] if row else None
+            if row is None:
+                return None
+            return await _lob_to_str(row[0])
 
 
 async def submit_feedback(pool, prompt: str, feedback: str, profile_name: str) -> bool:
