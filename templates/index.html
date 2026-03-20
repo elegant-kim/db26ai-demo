@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle Select AI 데모</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="header-title">Oracle Select AI 데모</h1>
+            </div>
+            <div class="header-right">
+                <span class="badge badge-schema" v-if="schema">[[ schema ]] 스키마</span>
+                <span class="badge" :class="dbConnected ? 'badge-ok' : 'badge-error'">
+                    [[ dbConnected ? '연결됨' : '연결 안됨' ]]
+                </span>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <!-- 사이드바 -->
+            <aside class="sidebar">
+                <!-- AI 프로필 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">AI 프로필</h3>
+                    <select v-model="selectedProfile" class="select-input">
+                        <option v-for="p in profiles" :key="p.profile_name" :value="p.profile_name">
+                            [[ p.profile_name ]]
+                        </option>
+                    </select>
+                </div>
+
+                <!-- 실행 모드 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">실행 모드</h3>
+                    <label v-for="mode in actionModes" :key="mode.value" class="radio-label">
+                        <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
+                        <span class="radio-text">
+                            <strong>[[ mode.value ]]</strong>
+                            <small>[[ mode.label ]]</small>
+                        </span>
+                    </label>
+                </div>
+
+                <!-- 예시 질문 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">예시 질문</h3>
+                    <button
+                        v-for="q in exampleQuestions"
+                        :key="q"
+                        class="example-btn"
+                        @click="setPrompt(q)"
+                    >[[ q ]]</button>
+                </div>
+            </aside>
+
+            <!-- 메인 채팅 영역 -->
+            <main class="chat-area">
+                <div class="chat-messages" ref="chatMessages">
+                    <!-- 빈 상태 -->
+                    <div v-if="messages.length === 0" class="empty-state">
+                        <div class="empty-icon">💬</div>
+                        <p>데이터에 대해 자연어로 질문하세요.</p>
+                        <p class="empty-sub">예시 질문을 클릭하거나, 아래 입력창에 직접 입력하세요.</p>
+                    </div>
+
+                    <template v-for="(msg, idx) in messages" :key="idx">
+                        <!-- 사용자 메시지 -->
+                        <div v-if="msg.role === 'user'" class="message message-user">
+                            <div class="message-bubble bubble-user">
+                                <p>[[ msg.content ]]</p>
+                                <span class="message-time">[[ msg.timestamp ]]</span>
+                            </div>
+                        </div>
+
+                        <!-- AI 응답 -->
+                        <div v-if="msg.role === 'assistant'" class="message message-assistant">
+                            <div class="message-bubble bubble-assistant">
+                                <!-- 로딩 -->
+                                <div v-if="msg.loading" class="loading-area">
+                                    <div class="spinner"></div>
+                                    <span class="loading-text">[[ msg.loadingText ]]</span>
+                                </div>
+
+                                <!-- 결과 -->
+                                <template v-if="!msg.loading">
+                                    <!-- 에러 -->
+                                    <div v-if="msg.error" class="error-box">
+                                        <strong>오류:</strong> [[ msg.error ]]
+                                    </div>
+
+                                    <!-- SQL 코드 블록 -->
+                                    <div v-if="msg.sql" class="sql-section">
+                                        <div class="sql-header" @click="msg.sqlExpanded = !msg.sqlExpanded">
+                                            <span>SQL</span>
+                                            <span class="toggle-icon">[[ msg.sqlExpanded ? '▼' : '▶' ]]</span>
+                                        </div>
+                                        <pre v-show="msg.sqlExpanded" class="sql-code"><code>[[ msg.sql ]]</code></pre>
+                                    </div>
+
+                                    <!-- 결과 테이블 (runsql) -->
+                                    <div v-if="msg.tableData && msg.tableData.length > 0" class="table-section">
+                                        <div class="table-wrapper">
+                                            <table class="result-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th v-for="col in Object.keys(msg.tableData[0])" :key="col">[[ col ]]</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="(row, ri) in msg.tableData" :key="ri">
+                                                        <td v-for="col in Object.keys(msg.tableData[0])" :key="col">[[ row[col] ]]</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="row-count">[[ msg.tableData.length ]]건</p>
+                                    </div>
+
+                                    <!-- 차트 -->
+                                    <div v-if="msg.showChart && msg.tableData && msg.tableData.length > 0" class="chart-section">
+                                        <div class="chart-controls">
+                                            <select v-model="msg.chartType" @change="renderChart(idx)" class="select-input select-small">
+                                                <option value="bar">막대 차트</option>
+                                                <option value="line">라인 차트</option>
+                                                <option value="pie">파이 차트</option>
+                                            </select>
+                                        </div>
+                                        <canvas :ref="'chart-' + idx" width="500" height="280"></canvas>
+                                    </div>
+
+                                    <!-- 텍스트 결과 (narrate, explainsql, showprompt, summarize, chat) -->
+                                    <div v-if="msg.textResult" class="text-result">
+                                        <pre class="text-pre">[[ msg.textResult ]]</pre>
+                                    </div>
+
+                                    <!-- 경과 시간 -->
+                                    <div v-if="msg.elapsed_ms" class="elapsed">
+                                        [[ msg.elapsed_ms ]]ms
+                                    </div>
+
+                                    <!-- 액션 버튼 행 -->
+                                    <div v-if="!msg.error" class="action-buttons">
+                                        <button
+                                            v-for="btn in getActionButtons(msg)"
+                                            :key="btn.action"
+                                            class="action-btn"
+                                            :class="{ 'action-btn-active': msg.cachedActions && msg.cachedActions[btn.action] }"
+                                            :disabled="msg.actionLoading"
+                                            @click="executeAction(idx, btn.action)"
+                                        >[[ btn.label ]]</button>
+                                    </div>
+
+                                    <!-- 피드백 폼 -->
+                                    <div v-if="msg.showFeedback" class="feedback-section">
+                                        <textarea
+                                            v-model="msg.feedbackText"
+                                            class="feedback-input"
+                                            placeholder="이 SQL이 올바르지 않다면 수정 방향을 알려주세요"
+                                            rows="3"
+                                        ></textarea>
+                                        <div class="feedback-actions">
+                                            <button class="btn btn-primary btn-small" @click="submitFeedback(idx)" :disabled="!msg.feedbackText">제출</button>
+                                            <button class="btn btn-secondary btn-small" @click="msg.showFeedback = false">취소</button>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <span v-if="!msg.loading" class="message-time">[[ msg.timestamp ]]</span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- 입력창 -->
+                <div class="input-area">
+                    <div class="input-wrapper">
+                        <input
+                            type="text"
+                            v-model="userInput"
+                            @keyup.enter="sendQuestion"
+                            :disabled="isLoading"
+                            class="chat-input"
+                            placeholder="데이터에 대해 자연어로 질문하세요..."
+                        >
+                        <button
+                            @click="sendQuestion"
+                            :disabled="isLoading || !userInput.trim()"
+                            class="btn btn-primary send-btn"
+                        >질문</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- 토스트 -->
+        <div v-if="toast.show" class="toast" :class="'toast-' + toast.type">
+            [[ toast.message ]]
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
