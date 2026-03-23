@@ -4,23 +4,36 @@ const app = createApp({
     delimiters: ['[[', ']]'],
 
     setup() {
-        // === State ===
-        const userInput = ref('');
-        const isLoading = ref(false);
+        // === Common State ===
+        const activeTab = ref('nl2sql');
         const dbConnected = ref(false);
         const schema = ref('');
-        const selectedProfile = ref('');
-        const selectedAction = ref('runsql');
         const profiles = ref([]);
-        const messages = reactive([]);
-        const chatMessages = ref(null);
-        const chartInstances = {};
+        const selectedProfile = ref('');
 
         const toast = reactive({
             show: false,
             message: '',
             type: 'success',
         });
+
+        // === NL2SQL State ===
+        const userInput = ref('');
+        const isLoading = ref(false);
+        const selectedAction = ref('runsql');
+        const messages = reactive([]);
+        const chatMessages = ref(null);
+        const chartInstances = {};
+
+        // === Vector Search State ===
+        const vectorInput = ref('');
+        const vectorLoading = ref(false);
+        const vectorSearchMode = ref('vector');
+        const vectorMessages = reactive([]);
+        const vectorChatMessages = ref(null);
+        const uploadedDocs = reactive([]);
+        const isUploading = ref(false);
+        const dragOver = ref(false);
 
         // === Constants ===
         const actionModes = [
@@ -41,11 +54,24 @@ const app = createApp({
             '채널별 주문 건수',
         ]);
 
+        const vectorExampleQuestions = reactive([
+            '연차 사용 규정',
+            '퇴직금 산정 기준',
+            '출장비 정산 절차',
+        ]);
+
         const loadingMessages = [
             '자연어 분석 중...',
             'SQL 생성 중...',
             '쿼리 실행 중...',
             '결과 정리 중...',
+        ];
+
+        const vectorLoadingMessages = [
+            '질문 임베딩 중...',
+            '벡터 유사도 검색 중...',
+            '참조 문서 수집 중...',
+            'RAG 답변 생성 중...',
         ];
 
         // === Action button rules ===
@@ -89,7 +115,7 @@ const app = createApp({
             chat: [],
         };
 
-        // === Methods ===
+        // === Common Methods ===
 
         function showToast(message, type = 'success') {
             toast.show = true;
@@ -115,10 +141,52 @@ const app = createApp({
             });
         }
 
+        function scrollVectorToBottom() {
+            nextTick(() => {
+                if (vectorChatMessages.value) {
+                    vectorChatMessages.value.scrollTop = vectorChatMessages.value.scrollHeight;
+                }
+            });
+        }
+
+        // === Oracle SQL Highlighting ===
+        function highlightOracleSQL(sql) {
+            if (!sql) return '';
+            // Escape HTML first
+            let s = sql.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            // Oracle-specific functions (Oracle Red)
+            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE)\b/g,
+                '<span style="color: #C74634; font-weight: 600;">$1</span>');
+
+            // String literals (green)
+            s = s.replace(/'([^']*)'/g, '<span style="color: #16a34a;">\'$1\'</span>');
+
+            // SQL keywords (purple)
+            const keywords = ['SELECT', 'FROM', 'WHERE', 'ORDER BY', 'FETCH FIRST', 'ROWS ONLY',
+                'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'TABLE',
+                'INDEX', 'ON', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE',
+                'CONTAINS', 'INTO', 'BEGIN', 'END', 'DECLARE', 'USING', 'BY',
+                'DESC', 'ASC', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'GROUP', 'HAVING',
+                'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'LOWER', 'UPPER',
+                'SCORE', 'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
+                'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY'];
+            for (const kw of keywords) {
+                const regex = new RegExp(`\\b(${kw})\\b`, 'gi');
+                s = s.replace(regex, (match) => {
+                    // Don't re-color if already inside a span
+                    return `<span style="color: #7c3aed;">${match}</span>`;
+                });
+            }
+
+            return s;
+        }
+
+        // === NL2SQL Methods ===
+
         function getActionButtons(msg) {
             const rules = actionButtonRules[msg.action] || [];
             return rules.filter(btn => {
-                // 차트 버튼은 테이블 데이터가 있을 때만
                 if (btn.action === 'chart') {
                     return msg.tableData && msg.tableData.length > 0;
                 }
@@ -133,7 +201,6 @@ const app = createApp({
             const action = selectedAction.value;
             const profileName = selectedProfile.value;
 
-            // 사용자 메시지 추가
             messages.push({
                 role: 'user',
                 content: prompt,
@@ -142,7 +209,6 @@ const app = createApp({
 
             userInput.value = '';
 
-            // AI 응답 placeholder
             const assistantMsg = reactive({
                 role: 'assistant',
                 action: action,
@@ -167,7 +233,6 @@ const app = createApp({
             messages.push(assistantMsg);
             scrollToBottom();
 
-            // 로딩 메시지 순환
             isLoading.value = true;
             let loadIdx = 0;
             const loadingInterval = setInterval(() => {
@@ -207,7 +272,6 @@ const app = createApp({
                 if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object') {
                     msg.tableData = result;
                 } else if (typeof result === 'string') {
-                    // JSON 문자열이면 파싱 시도
                     try {
                         const parsed = JSON.parse(result);
                         if (Array.isArray(parsed)) {
@@ -225,7 +289,6 @@ const app = createApp({
                 msg.sql = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
                 msg.sqlExpanded = true;
             } else {
-                // narrate, explainsql, showprompt, summarize, chat
                 msg.textResult = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
             }
         }
@@ -234,7 +297,6 @@ const app = createApp({
             const msg = messages[msgIdx];
             if (!msg || msg.actionLoading) return;
 
-            // 차트 토글
             if (action === 'chart') {
                 msg.showChart = !msg.showChart;
                 if (msg.showChart) {
@@ -243,13 +305,11 @@ const app = createApp({
                 return;
             }
 
-            // 피드백 토글
             if (action === 'feedback') {
                 msg.showFeedback = !msg.showFeedback;
                 return;
             }
 
-            // 캐시된 결과 확인
             if (msg.cachedActions && msg.cachedActions[action]) {
                 processResult(msg, action, msg.cachedActions[action]);
                 msg.action = action;
@@ -257,7 +317,6 @@ const app = createApp({
                 return;
             }
 
-            // API 호출
             msg.actionLoading = true;
             try {
                 const response = await fetch('/api/ask', {
@@ -319,15 +378,10 @@ const app = createApp({
             const msg = messages[msgIdx];
             if (!msg || !msg.tableData || msg.tableData.length === 0) return;
 
-            const refKey = 'chart-' + msgIdx;
-
-            // nextTick을 사용하여 canvas가 렌더링될 때까지 대기
             nextTick(() => {
-                // $refs 대신 DOM에서 직접 canvas를 찾음
                 const canvasElements = document.querySelectorAll(`canvas[data-v-chart="${msgIdx}"]`);
                 let canvas = canvasElements.length > 0 ? canvasElements[0] : null;
 
-                // data 속성이 없으면 ref 이름으로 시도
                 if (!canvas) {
                     const allCanvas = document.querySelectorAll('canvas');
                     for (const c of allCanvas) {
@@ -344,7 +398,6 @@ const app = createApp({
 
                 if (!canvas) return;
 
-                // 기존 차트 파괴
                 if (chartInstances[msgIdx]) {
                     chartInstances[msgIdx].destroy();
                 }
@@ -352,7 +405,6 @@ const app = createApp({
                 const data = msg.tableData;
                 const columns = Object.keys(data[0]);
 
-                // X축: 첫 번째 문자열 컬럼, Y축: 첫 번째 숫자 컬럼
                 let labelCol = columns[0];
                 let valueCol = columns.length > 1 ? columns[1] : columns[0];
 
@@ -411,6 +463,253 @@ const app = createApp({
             });
         }
 
+        // === Vector Search Methods ===
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                await uploadDocument(file);
+            }
+            event.target.value = '';
+        }
+
+        async function handleFileDrop(event) {
+            dragOver.value = false;
+            const file = event.dataTransfer.files[0];
+            if (file && file.name.toLowerCase().endsWith('.pdf')) {
+                await uploadDocument(file);
+            } else {
+                showToast('PDF 파일만 업로드 가능합니다.', 'error');
+            }
+        }
+
+        async function uploadDocument(file) {
+            if (file.size > 10 * 1024 * 1024) {
+                showToast('파일 크기가 10MB를 초과합니다.', 'error');
+                return;
+            }
+
+            isUploading.value = true;
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/vector/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료`);
+                    await fetchDocuments();
+                } else {
+                    showToast(data.error || '업로드에 실패했습니다.', 'error');
+                }
+            } catch (err) {
+                showToast('업로드 중 오류가 발생했습니다: ' + err.message, 'error');
+            } finally {
+                isUploading.value = false;
+            }
+        }
+
+        async function fetchDocuments() {
+            try {
+                const response = await fetch('/api/vector/documents');
+                const data = await response.json();
+                if (data.success) {
+                    uploadedDocs.splice(0, uploadedDocs.length, ...data.documents);
+                }
+            } catch (err) {
+                // 조용히 실패
+            }
+        }
+
+        async function deleteDoc(docId) {
+            try {
+                const response = await fetch(`/api/vector/documents/${docId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('문서가 삭제되었습니다.');
+                    await fetchDocuments();
+                } else {
+                    showToast(data.error || '삭제에 실패했습니다.', 'error');
+                }
+            } catch (err) {
+                showToast('삭제 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        async function sendVectorQuestion() {
+            const query = vectorInput.value.trim();
+            if (!query || vectorLoading.value) return;
+
+            const mode = vectorSearchMode.value;
+            const profileName = selectedProfile.value;
+
+            vectorMessages.push({
+                role: 'user',
+                content: query,
+                timestamp: formatTime(),
+            });
+
+            vectorInput.value = '';
+
+            const assistantMsg = reactive({
+                role: 'assistant',
+                mode: mode,
+                query: query,
+                loading: true,
+                loadingText: vectorLoadingMessages[0],
+                answer: null,
+                chunks: null,
+                sql_executed: null,
+                sqlExpanded: false,
+                error: null,
+                elapsed_ms: null,
+                embeddingInfo: null,
+                indexInfo: null,
+                keywordCompare: null,
+                // compare mode
+                keywordResults: null,
+                vectorResults: null,
+                timestamp: formatTime(),
+            });
+            vectorMessages.push(assistantMsg);
+            scrollVectorToBottom();
+
+            vectorLoading.value = true;
+            let loadIdx = 0;
+            const loadingInterval = setInterval(() => {
+                loadIdx = (loadIdx + 1) % vectorLoadingMessages.length;
+                assistantMsg.loadingText = vectorLoadingMessages[loadIdx];
+            }, 1500);
+
+            try {
+                const response = await fetch('/api/vector/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: query,
+                        mode: mode,
+                        top_k: 5,
+                        profile_name: profileName,
+                    }),
+                });
+
+                const data = await response.json();
+                clearInterval(loadingInterval);
+
+                if (data.success) {
+                    assistantMsg.elapsed_ms = data.elapsed_ms;
+
+                    if (mode === 'compare') {
+                        assistantMsg.keywordResults = data.keyword_results;
+                        assistantMsg.vectorResults = data.vector_results;
+                    } else {
+                        assistantMsg.answer = data.answer;
+                        assistantMsg.chunks = data.chunks;
+                        assistantMsg.sql_executed = data.sql_executed;
+                    }
+                } else {
+                    assistantMsg.error = data.error || '검색에 실패했습니다.';
+                }
+            } catch (err) {
+                clearInterval(loadingInterval);
+                assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+            } finally {
+                assistantMsg.loading = false;
+                vectorLoading.value = false;
+                scrollVectorToBottom();
+            }
+        }
+
+        async function showEmbeddingInfo(msgIdx) {
+            const msg = vectorMessages[msgIdx];
+            if (!msg || !msg.query) return;
+
+            if (msg.embeddingInfo) {
+                msg.embeddingInfo = null;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vector/embedding-info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: msg.query }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    msg.embeddingInfo = data;
+                } else {
+                    showToast(data.error || '임베딩 정보 조회 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결에 실패했습니다.', 'error');
+            }
+            scrollVectorToBottom();
+        }
+
+        async function showIndexInfo(msgIdx) {
+            const msg = vectorMessages[msgIdx];
+            if (!msg) return;
+
+            if (msg.indexInfo) {
+                msg.indexInfo = null;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vector/index-info');
+                const data = await response.json();
+                if (data.success) {
+                    msg.indexInfo = data;
+                } else {
+                    showToast(data.error || '인덱스 정보 조회 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결에 실패했습니다.', 'error');
+            }
+            scrollVectorToBottom();
+        }
+
+        async function doKeywordCompare(msgIdx) {
+            const msg = vectorMessages[msgIdx];
+            if (!msg || !msg.query) return;
+
+            if (msg.keywordCompare) {
+                msg.keywordCompare = null;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vector/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: msg.query,
+                        mode: 'keyword',
+                        top_k: 5,
+                        profile_name: selectedProfile.value,
+                    }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    msg.keywordCompare = {
+                        chunks: data.chunks,
+                        match_count: data.match_count,
+                        sql_executed: data.sql_executed,
+                    };
+                } else {
+                    showToast(data.error || '키워드 검색 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결에 실패했습니다.', 'error');
+            }
+            scrollVectorToBottom();
+        }
+
         // === Init ===
         async function checkHealth() {
             try {
@@ -445,19 +744,25 @@ const app = createApp({
         onMounted(() => {
             checkHealth();
             loadProfiles();
+            fetchDocuments();
         });
 
         return {
-            userInput,
-            isLoading,
+            // Common
+            activeTab,
             dbConnected,
             schema,
-            selectedProfile,
-            selectedAction,
             profiles,
+            selectedProfile,
+            toast,
+            highlightOracleSQL,
+
+            // NL2SQL
+            userInput,
+            isLoading,
+            selectedAction,
             messages,
             chatMessages,
-            toast,
             actionModes,
             exampleQuestions,
             setPrompt,
@@ -466,6 +771,24 @@ const app = createApp({
             executeAction,
             submitFeedback,
             renderChart,
+
+            // Vector Search
+            vectorInput,
+            vectorLoading,
+            vectorSearchMode,
+            vectorMessages,
+            vectorChatMessages,
+            uploadedDocs,
+            isUploading,
+            dragOver,
+            vectorExampleQuestions,
+            handleFileSelect,
+            handleFileDrop,
+            deleteDoc,
+            sendVectorQuestion,
+            showEmbeddingInfo,
+            showIndexInfo,
+            doKeywordCompare,
         };
     },
 });

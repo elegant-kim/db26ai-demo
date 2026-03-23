@@ -16,5 +16,11 @@ class Settings:
     APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
 
+    # Vector Embedding 설정
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "minilm_l12_v2")
+    EMBEDDING_SOURCE: str = os.getenv("EMBEDDING_SOURCE", "database")  # "database" or "external"
+    EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "")
+    EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "")
+
 
 settings = Settings()
