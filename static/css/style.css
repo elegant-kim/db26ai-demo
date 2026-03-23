@@ -89,6 +89,39 @@ html, body {
     color: #1565c0;
 }
 
+/* === Tab Bar === */
+.tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 20px;
+    background: var(--bg-primary);
+    flex-shrink: 0;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #888;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+    color: var(--oracle-red);
+}
+
+.tab-btn-active {
+    font-weight: 600;
+    color: var(--oracle-red);
+    border-bottom-color: var(--oracle-red);
+}
+
 /* === Main Layout === */
 .main-layout {
     display: flex;
@@ -611,4 +644,305 @@ html, body {
 .sidebar::-webkit-scrollbar-thumb {
     background: #ccc;
     border-radius: 3px;
+}
+
+/* ======================================================
+   Vector Search Styles
+   ====================================================== */
+
+/* Upload Area */
+.upload-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    border: 2px dashed var(--border-color);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    color: var(--text-secondary);
+    gap: 6px;
+}
+
+.upload-area:hover,
+.upload-area-hover {
+    border-color: var(--oracle-red);
+    background: #fff5f4;
+}
+
+.upload-text {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.upload-sub {
+    font-size: 11px;
+    color: var(--text-light);
+}
+
+.upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Document List */
+.doc-list {
+    margin-top: 12px;
+}
+
+.doc-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    font-size: 12px;
+}
+
+.doc-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+
+.doc-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.doc-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    width: fit-content;
+}
+
+.doc-badge-indexed {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.doc-badge-processing {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.doc-badge-error {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.doc-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    padding: 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.doc-delete:hover {
+    color: #c62828;
+}
+
+/* Vector Response */
+.vec-response {
+    max-width: 90%;
+}
+
+.vec-answer {
+    margin-bottom: 12px;
+}
+
+/* Chunks Section */
+.vec-chunks-section {
+    margin: 12px 0;
+    border-top: 1px solid #f0f0f0;
+    padding-top: 12px;
+}
+
+.vec-chunks-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.vec-chunk-card {
+    background: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.vec-chunk-badges {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.vec-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.vec-badge-source {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.vec-badge-high {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.vec-badge-low {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.vec-chunk-text {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Vector SQL Code with highlighting */
+.vec-sql-code code {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Info Box */
+.vec-info-box {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+}
+
+.vec-info-box h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.vec-info-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+}
+
+.vec-info-label {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.vec-info-mono {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    word-break: break-all;
+}
+
+/* Compare Mode */
+.vec-compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.vec-compare-col {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.vec-compare-keyword {
+    border-color: #e0e0e0;
+}
+
+.vec-compare-vector {
+    border-color: #2563eb;
+    border-width: 2px;
+}
+
+.vec-compare-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--code-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.vec-compare-body {
+    padding: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.vec-badge-keyword-count {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.vec-badge-vector-count {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.vec-compare-notice {
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.vec-compare-notice-keyword {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.vec-compare-notice-vector {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.vec-compare-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
 }

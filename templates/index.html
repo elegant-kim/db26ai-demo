@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oracle Select AI 데모</title>
+    <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/static/css/style.css">
@@ -13,7 +13,7 @@
         <!-- 헤더 -->
         <header class="header">
             <div class="header-left">
-                <h1 class="header-title">Oracle Select AI 데모</h1>
+                <h1 class="header-title">Oracle AI Database 26ai 데모</h1>
             </div>
             <div class="header-right">
                 <span class="badge badge-schema" v-if="schema">[[ schema ]] 스키마</span>
@@ -23,7 +23,22 @@
             </div>
         </header>
 
-        <div class="main-layout">
+        <!-- 탭 바 -->
+        <div class="tab-bar">
+            <button @click="activeTab = 'nl2sql'"
+                    class="tab-btn"
+                    :class="{ 'tab-btn-active': activeTab === 'nl2sql' }">
+                NL2SQL
+            </button>
+            <button @click="activeTab = 'vector'"
+                    class="tab-btn"
+                    :class="{ 'tab-btn-active': activeTab === 'vector' }">
+                AI Vector Search
+            </button>
+        </div>
+
+        <!-- NL2SQL 탭 -->
+        <div class="main-layout" v-show="activeTab === 'nl2sql'">
             <!-- 사이드바 -->
             <aside class="sidebar">
                 <!-- AI 프로필 -->
@@ -194,6 +209,334 @@
                             :disabled="isLoading || !userInput.trim()"
                             class="btn btn-primary send-btn"
                         >질문</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- AI Vector Search 탭 -->
+        <div class="main-layout" v-show="activeTab === 'vector'">
+            <!-- Vector 사이드바 -->
+            <aside class="sidebar">
+                <!-- 문서 관리 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">문서 관리</h3>
+                    <div class="upload-area"
+                         @click="$refs.fileInput.click()"
+                         @dragover.prevent="dragOver = true"
+                         @dragleave="dragOver = false"
+                         @drop.prevent="handleFileDrop($event)"
+                         :class="{ 'upload-area-hover': dragOver }">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span class="upload-text">PDF 파일 업로드</span>
+                        <span class="upload-sub">클릭 또는 드래그 앤 드롭</span>
+                    </div>
+                    <input type="file" ref="fileInput" accept=".pdf" @change="handleFileSelect($event)" style="display: none;">
+
+                    <!-- 업로드 진행 -->
+                    <div v-if="isUploading" class="upload-progress">
+                        <div class="spinner"></div>
+                        <span>업로드 처리 중...</span>
+                    </div>
+
+                    <!-- 업로드된 문서 목록 -->
+                    <div v-if="uploadedDocs.length > 0" class="doc-list">
+                        <div v-for="doc in uploadedDocs" :key="doc.doc_id" class="doc-item">
+                            <div class="doc-info">
+                                <span class="doc-name">[[ doc.filename ]]</span>
+                                <span class="doc-badge"
+                                      :class="{
+                                          'doc-badge-indexed': doc.status === 'indexed',
+                                          'doc-badge-processing': doc.status === 'processing',
+                                          'doc-badge-error': doc.status === 'error'
+                                      }">[[ doc.status ]]</span>
+                            </div>
+                            <button class="doc-delete" @click="deleteDoc(doc.doc_id)" title="삭제">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 검색 모드 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">검색 모드</h3>
+                    <label class="radio-label">
+                        <input type="radio" value="vector" v-model="vectorSearchMode" name="vectorMode">
+                        <span class="radio-text">
+                            <strong>의미 검색</strong>
+                            <small>VECTOR_DISTANCE 사용</small>
+                        </span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" value="keyword" v-model="vectorSearchMode" name="vectorMode">
+                        <span class="radio-text">
+                            <strong>키워드 검색</strong>
+                            <small>CONTAINS / LIKE 사용</small>
+                        </span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" value="compare" v-model="vectorSearchMode" name="vectorMode">
+                        <span class="radio-text">
+                            <strong>비교 모드</strong>
+                            <small>양쪽 방식 동시 비교</small>
+                        </span>
+                    </label>
+                </div>
+
+                <!-- 예시 질문 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">예시 질문</h3>
+                    <button
+                        v-for="q in vectorExampleQuestions"
+                        :key="q"
+                        class="example-btn"
+                        @click="vectorInput = q"
+                    >[[ q ]]</button>
+                </div>
+            </aside>
+
+            <!-- Vector 메인 영역 -->
+            <main class="chat-area">
+                <div class="chat-messages" ref="vectorChatMessages">
+                    <!-- 빈 상태 -->
+                    <div v-if="vectorMessages.length === 0" class="empty-state">
+                        <div class="empty-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C74634" stroke-width="1.5" opacity="0.5">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                        </div>
+                        <p>문서를 업로드하고, 자연어로 검색하세요.</p>
+                        <p class="empty-sub">PDF를 업로드하면 자동으로 청킹 → 임베딩 → 저장이 수행됩니다.</p>
+                    </div>
+
+                    <template v-for="(msg, idx) in vectorMessages" :key="idx">
+                        <!-- 사용자 메시지 -->
+                        <div v-if="msg.role === 'user'" class="message message-user">
+                            <div class="message-bubble bubble-user">
+                                <p>[[ msg.content ]]</p>
+                                <span class="message-time">[[ msg.timestamp ]]</span>
+                            </div>
+                        </div>
+
+                        <!-- AI 응답 (일반 모드) -->
+                        <div v-if="msg.role === 'assistant' && msg.mode !== 'compare'" class="message message-assistant">
+                            <div class="message-bubble bubble-assistant vec-response">
+                                <!-- 로딩 -->
+                                <div v-if="msg.loading" class="loading-area">
+                                    <div class="spinner"></div>
+                                    <span class="loading-text">[[ msg.loadingText ]]</span>
+                                </div>
+
+                                <template v-if="!msg.loading">
+                                    <!-- 에러 -->
+                                    <div v-if="msg.error" class="error-box">
+                                        <strong>오류:</strong> [[ msg.error ]]
+                                    </div>
+
+                                    <template v-if="!msg.error">
+                                        <!-- 3-1. LLM 답변 -->
+                                        <div v-if="msg.answer" class="vec-answer">
+                                            <pre class="text-pre">[[ msg.answer ]]</pre>
+                                        </div>
+
+                                        <!-- 3-2. 참조 문서 청크 -->
+                                        <div v-if="msg.chunks && msg.chunks.length > 0" class="vec-chunks-section">
+                                            <div class="vec-chunks-header">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                                </svg>
+                                                <span>참조 문서 청크 (유사도 순)</span>
+                                            </div>
+                                            <div v-for="(chunk, ci) in msg.chunks" :key="ci" class="vec-chunk-card">
+                                                <div class="vec-chunk-badges">
+                                                    <span class="vec-badge vec-badge-source">[[ chunk.source_file ]] p.[[ chunk.page_num ]]</span>
+                                                    <span v-if="chunk.similarity !== null"
+                                                          class="vec-badge"
+                                                          :class="chunk.similarity >= 0.85 ? 'vec-badge-high' : 'vec-badge-low'">
+                                                        cosine: [[ chunk.similarity ]]
+                                                    </span>
+                                                </div>
+                                                <p class="vec-chunk-text">[[ chunk.chunk_text ]]</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- 3-3. 실행된 SQL 보기 -->
+                                        <div v-if="msg.sql_executed" class="sql-section">
+                                            <div class="sql-header" @click="msg.sqlExpanded = !msg.sqlExpanded">
+                                                <span>[[ msg.sqlExpanded ? '▼' : '▶' ]] 실행된 SQL 보기</span>
+                                            </div>
+                                            <pre v-show="msg.sqlExpanded" class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(msg.sql_executed)"></code></pre>
+                                        </div>
+
+                                        <!-- 경과 시간 -->
+                                        <div v-if="msg.elapsed_ms" class="elapsed">
+                                            [[ msg.elapsed_ms ]]ms
+                                        </div>
+
+                                        <!-- 액션 버튼 행 -->
+                                        <div class="action-buttons">
+                                            <button class="action-btn" @click="msg.sqlExpanded = !msg.sqlExpanded">SQL 보기</button>
+                                            <button class="action-btn" @click="showEmbeddingInfo(idx)">임베딩 과정</button>
+                                            <button v-if="msg.mode === 'vector'" class="action-btn" @click="doKeywordCompare(idx)">키워드 비교</button>
+                                            <button class="action-btn" @click="showIndexInfo(idx)">벡터 인덱스 정보</button>
+                                        </div>
+
+                                        <!-- 임베딩 정보 표시 -->
+                                        <div v-if="msg.embeddingInfo" class="vec-info-box">
+                                            <h4>임베딩 과정</h4>
+                                            <div class="vec-info-grid">
+                                                <span class="vec-info-label">모델:</span><span>[[ msg.embeddingInfo.model ]]</span>
+                                                <span class="vec-info-label">소스:</span><span>[[ msg.embeddingInfo.source ]]</span>
+                                                <span class="vec-info-label">차원 수:</span><span>[[ msg.embeddingInfo.dimensions ]]</span>
+                                                <span class="vec-info-label">처리 시간:</span><span>[[ msg.embeddingInfo.processing_ms ]]ms</span>
+                                                <template v-if="msg.embeddingInfo.vector_preview">
+                                                    <span class="vec-info-label">벡터 미리보기:</span><span class="vec-info-mono">[[ msg.embeddingInfo.vector_preview ]]</span>
+                                                </template>
+                                            </div>
+                                        </div>
+
+                                        <!-- 인덱스 정보 표시 -->
+                                        <div v-if="msg.indexInfo" class="vec-info-box">
+                                            <h4>벡터 인덱스 정보</h4>
+                                            <div class="vec-info-grid">
+                                                <span class="vec-info-label">총 문서:</span><span>[[ msg.indexInfo.total_documents ]]개</span>
+                                                <span class="vec-info-label">총 청크:</span><span>[[ msg.indexInfo.total_chunks ]]개</span>
+                                                <span class="vec-info-label">임베딩 완료:</span><span>[[ msg.indexInfo.embedded_chunks ]]개</span>
+                                                <span class="vec-info-label">임베딩 모델:</span><span>[[ msg.indexInfo.embedding_model ]]</span>
+                                                <span class="vec-info-label">벡터 차원:</span><span>[[ msg.indexInfo.vector_dimensions ]]</span>
+                                                <span class="vec-info-label">거리 메트릭:</span><span>[[ msg.indexInfo.distance_metric ]]</span>
+                                                <template v-if="msg.indexInfo.index">
+                                                    <span class="vec-info-label">인덱스명:</span><span>[[ msg.indexInfo.index.index_name ]]</span>
+                                                    <span class="vec-info-label">인덱스 타입:</span><span>[[ msg.indexInfo.index.index_type ]]</span>
+                                                    <span class="vec-info-label">상태:</span><span>[[ msg.indexInfo.index.status ]]</span>
+                                                </template>
+                                            </div>
+                                        </div>
+
+                                        <!-- 키워드 비교 결과 -->
+                                        <div v-if="msg.keywordCompare" class="vec-info-box">
+                                            <h4>키워드 검색 비교 결과</h4>
+                                            <p class="vec-compare-count">매칭: [[ msg.keywordCompare.match_count ]]건</p>
+                                            <div v-for="(kc, ki) in msg.keywordCompare.chunks" :key="ki" class="vec-chunk-card">
+                                                <div class="vec-chunk-badges">
+                                                    <span class="vec-badge vec-badge-source">[[ kc.source_file ]] p.[[ kc.page_num ]]</span>
+                                                </div>
+                                                <p class="vec-chunk-text">[[ kc.chunk_text ]]</p>
+                                            </div>
+                                            <div class="sql-section" style="margin-top: 8px;">
+                                                <pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(msg.keywordCompare.sql_executed)"></code></pre>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </template>
+
+                                <span v-if="!msg.loading" class="message-time">[[ msg.timestamp ]]</span>
+                            </div>
+                        </div>
+
+                        <!-- AI 응답 (비교 모드) -->
+                        <div v-if="msg.role === 'assistant' && msg.mode === 'compare'" class="message message-assistant">
+                            <div class="message-bubble bubble-assistant vec-response" style="max-width: 95%; min-width: 600px;">
+                                <!-- 로딩 -->
+                                <div v-if="msg.loading" class="loading-area">
+                                    <div class="spinner"></div>
+                                    <span class="loading-text">[[ msg.loadingText ]]</span>
+                                </div>
+
+                                <template v-if="!msg.loading">
+                                    <div v-if="msg.error" class="error-box">
+                                        <strong>오류:</strong> [[ msg.error ]]
+                                    </div>
+
+                                    <template v-if="!msg.error">
+                                        <div class="vec-compare-grid">
+                                            <!-- 좌측: 키워드 검색 -->
+                                            <div class="vec-compare-col vec-compare-keyword">
+                                                <div class="vec-compare-title">
+                                                    <span>키워드 검색 (CONTAINS)</span>
+                                                    <span class="vec-badge vec-badge-keyword-count">[[ msg.keywordResults ? msg.keywordResults.match_count : 0 ]]건</span>
+                                                </div>
+                                                <div v-if="msg.keywordResults" class="vec-compare-body">
+                                                    <div class="sql-section">
+                                                        <pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(msg.keywordResults.sql_executed)"></code></pre>
+                                                    </div>
+                                                    <div v-for="(kc, ki) in msg.keywordResults.chunks" :key="ki" class="vec-chunk-card">
+                                                        <div class="vec-chunk-badges">
+                                                            <span class="vec-badge vec-badge-source">[[ kc.source_file ]] p.[[ kc.page_num ]]</span>
+                                                        </div>
+                                                        <p class="vec-chunk-text">[[ kc.chunk_text ]]</p>
+                                                    </div>
+                                                </div>
+                                                <div class="vec-compare-notice vec-compare-notice-keyword">
+                                                    정확한 단어만 매칭. 의미적으로 관련된 내용 누락.
+                                                </div>
+                                            </div>
+
+                                            <!-- 우측: 의미 검색 -->
+                                            <div class="vec-compare-col vec-compare-vector">
+                                                <div class="vec-compare-title">
+                                                    <span>의미 검색 (VECTOR_DISTANCE)</span>
+                                                    <span class="vec-badge vec-badge-vector-count">[[ msg.vectorResults ? msg.vectorResults.match_count : 0 ]]건</span>
+                                                </div>
+                                                <div v-if="msg.vectorResults" class="vec-compare-body">
+                                                    <div class="sql-section">
+                                                        <pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(msg.vectorResults.sql_executed)"></code></pre>
+                                                    </div>
+                                                    <div v-for="(vc, vi) in msg.vectorResults.chunks" :key="vi" class="vec-chunk-card">
+                                                        <div class="vec-chunk-badges">
+                                                            <span class="vec-badge vec-badge-source">[[ vc.source_file ]] p.[[ vc.page_num ]]</span>
+                                                            <span v-if="vc.similarity !== null"
+                                                                  class="vec-badge"
+                                                                  :class="vc.similarity >= 0.85 ? 'vec-badge-high' : 'vec-badge-low'">
+                                                                cosine: [[ vc.similarity ]]
+                                                            </span>
+                                                        </div>
+                                                        <p class="vec-chunk-text">[[ vc.chunk_text ]]</p>
+                                                    </div>
+                                                </div>
+                                                <div class="vec-compare-notice vec-compare-notice-vector">
+                                                    단어가 없어도 의미적 유사성으로 포착.
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="msg.elapsed_ms" class="elapsed" style="margin-top: 12px;">
+                                            [[ msg.elapsed_ms ]]ms
+                                        </div>
+                                    </template>
+                                </template>
+
+                                <span v-if="!msg.loading" class="message-time">[[ msg.timestamp ]]</span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- 입력창 -->
+                <div class="input-area">
+                    <div class="input-wrapper">
+                        <input
+                            type="text"
+                            v-model="vectorInput"
+                            @keyup.enter="sendVectorQuestion"
+                            :disabled="vectorLoading"
+                            class="chat-input"
+                            placeholder="문서에 대해 자연어로 질문하세요..."
+                        >
+                        <button
+                            @click="sendVectorQuestion"
+                            :disabled="vectorLoading || !vectorInput.trim()"
+                            class="btn btn-primary send-btn"
+                        >검색</button>
                     </div>
                 </div>
             </main>
