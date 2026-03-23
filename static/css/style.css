@@ -54,18 +54,9 @@ html, body {
 }
 
 .header-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     font-size: 18px;
     font-weight: 600;
     color: #ffffff;
-}
-
-.oracle-logo {
-    width: 28px;
-    height: 18px;
-    flex-shrink: 0;
 }
 
 .header-right {
