@@ -48,15 +48,24 @@ html, body {
     align-items: center;
     padding: 0 24px;
     height: 56px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-color);
+    background: #2D2D2D;
+    border-bottom: 1px solid #222;
     flex-shrink: 0;
 }
 
 .header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 18px;
     font-weight: 600;
-    color: var(--oracle-red);
+    color: #ffffff;
+}
+
+.oracle-logo {
+    width: 28px;
+    height: 18px;
+    flex-shrink: 0;
 }
 
 .header-right {
@@ -93,9 +102,9 @@ html, body {
 .tab-bar {
     display: flex;
     gap: 0;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid #222;
     padding: 0 20px;
-    background: var(--bg-primary);
+    background: #333333;
     flex-shrink: 0;
 }
 
@@ -103,7 +112,7 @@ html, body {
     padding: 10px 20px;
     font-size: 14px;
     font-weight: 400;
-    color: #888;
+    color: #999;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -113,12 +122,12 @@ html, body {
 }
 
 .tab-btn:hover {
-    color: var(--oracle-red);
+    color: #ffffff;
 }
 
 .tab-btn-active {
     font-weight: 600;
-    color: var(--oracle-red);
+    color: #ffffff;
     border-bottom-color: var(--oracle-red);
 }
 
