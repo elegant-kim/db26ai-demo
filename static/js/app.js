@@ -21,7 +21,7 @@ const app = createApp({
         const userInput = ref('');
         const isLoading = ref(false);
         const selectedAction = ref('runsql');
-        const messages = reactive([]);
+        const messages = ref([]);
         const chatMessages = ref(null);
         const chartInstances = {};
 
@@ -29,9 +29,9 @@ const app = createApp({
         const vectorInput = ref('');
         const vectorLoading = ref(false);
         const vectorSearchMode = ref('vector');
-        const vectorMessages = reactive([]);
+        const vectorMessages = ref([]);
         const vectorChatMessages = ref(null);
-        const uploadedDocs = reactive([]);
+        const uploadedDocs = ref([]);
         const isUploading = ref(false);
         const dragOver = ref(false);
 
@@ -46,7 +46,7 @@ const app = createApp({
             { value: 'chat', label: '대화' },
         ];
 
-        const exampleQuestions = reactive([
+        const exampleQuestions = ref([
             '매출 상위 5개 제품',
             '월별 매출 추이',
             '국가별 고객 수',
@@ -54,7 +54,7 @@ const app = createApp({
             '채널별 주문 건수',
         ]);
 
-        const vectorExampleQuestions = reactive([
+        const vectorExampleQuestions = ref([
             '연차 사용 규정',
             '퇴직금 산정 기준',
             '출장비 정산 절차',
@@ -201,7 +201,7 @@ const app = createApp({
             const action = selectedAction.value;
             const profileName = selectedProfile.value;
 
-            messages.push({
+            messages.value.push({
                 role: 'user',
                 content: prompt,
                 timestamp: formatTime(),
@@ -230,7 +230,7 @@ const app = createApp({
                 cachedActions: {},
                 timestamp: formatTime(),
             });
-            messages.push(assistantMsg);
+            messages.value.push(assistantMsg);
             scrollToBottom();
 
             isLoading.value = true;
@@ -294,7 +294,7 @@ const app = createApp({
         }
 
         async function executeAction(msgIdx, action) {
-            const msg = messages[msgIdx];
+            const msg = messages.value[msgIdx];
             if (!msg || msg.actionLoading) return;
 
             if (action === 'chart') {
@@ -347,7 +347,7 @@ const app = createApp({
         }
 
         async function submitFeedback(msgIdx) {
-            const msg = messages[msgIdx];
+            const msg = messages.value[msgIdx];
             if (!msg || !msg.feedbackText) return;
 
             try {
@@ -375,7 +375,7 @@ const app = createApp({
         }
 
         function renderChart(msgIdx) {
-            const msg = messages[msgIdx];
+            const msg = messages.value[msgIdx];
             if (!msg || !msg.tableData || msg.tableData.length === 0) return;
 
             nextTick(() => {
@@ -518,7 +518,7 @@ const app = createApp({
                 const response = await fetch('/api/vector/documents');
                 const data = await response.json();
                 if (data.success) {
-                    uploadedDocs.splice(0, uploadedDocs.length, ...data.documents);
+                    uploadedDocs.value = data.documents;
                 }
             } catch (err) {
                 // 조용히 실패
@@ -547,7 +547,7 @@ const app = createApp({
             const mode = vectorSearchMode.value;
             const profileName = selectedProfile.value;
 
-            vectorMessages.push({
+            vectorMessages.value.push({
                 role: 'user',
                 content: query,
                 timestamp: formatTime(),
@@ -575,7 +575,7 @@ const app = createApp({
                 vectorResults: null,
                 timestamp: formatTime(),
             });
-            vectorMessages.push(assistantMsg);
+            vectorMessages.value.push(assistantMsg);
             scrollVectorToBottom();
 
             vectorLoading.value = true;
@@ -625,7 +625,7 @@ const app = createApp({
         }
 
         async function showEmbeddingInfo(msgIdx) {
-            const msg = vectorMessages[msgIdx];
+            const msg = vectorMessages.value[msgIdx];
             if (!msg || !msg.query) return;
 
             if (msg.embeddingInfo) {
@@ -652,7 +652,7 @@ const app = createApp({
         }
 
         async function showIndexInfo(msgIdx) {
-            const msg = vectorMessages[msgIdx];
+            const msg = vectorMessages.value[msgIdx];
             if (!msg) return;
 
             if (msg.indexInfo) {
@@ -675,7 +675,7 @@ const app = createApp({
         }
 
         async function doKeywordCompare(msgIdx) {
-            const msg = vectorMessages[msgIdx];
+            const msg = vectorMessages.value[msgIdx];
             if (!msg || !msg.query) return;
 
             if (msg.keywordCompare) {
