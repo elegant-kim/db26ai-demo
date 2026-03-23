@@ -507,33 +507,6 @@ html, body {
 }
 
 /* Feedback */
-.feedback-section {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid #f0f0f0;
-}
-
-.feedback-input {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    font-size: 13px;
-    font-family: inherit;
-    resize: vertical;
-    outline: none;
-}
-
-.feedback-input:focus {
-    border-color: var(--oracle-red);
-}
-
-.feedback-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-}
-
 /* === Input Area === */
 .input-area {
     padding: 16px 24px;

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, submit_feedback, list_profiles, get_current_schema
+from app.select_ai import ask_select_ai, list_profiles, get_current_schema
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -31,12 +31,6 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 class AskRequest(BaseModel):
     prompt: str
     action: str = "runsql"
-    profile_name: str = "GROQ_PROFILE"
-
-
-class FeedbackRequest(BaseModel):
-    prompt: str
-    feedback: str
     profile_name: str = "GROQ_PROFILE"
 
 
@@ -100,25 +94,6 @@ async def ask(req: AskRequest):
                 "error": str(e),
                 "elapsed_ms": elapsed_ms,
             },
-        )
-
-
-@router.post("/feedback")
-async def feedback(req: FeedbackRequest):
-    pool = await get_pool()
-    if pool is None:
-        return JSONResponse(
-            status_code=503,
-            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
-        )
-
-    try:
-        await submit_feedback(pool, req.prompt, req.feedback, req.profile_name)
-        return {"success": True, "message": "피드백이 제출되었습니다."}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)},
         )
 
 

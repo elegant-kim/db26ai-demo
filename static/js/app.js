@@ -83,14 +83,12 @@ const app = createApp({
                 { action: 'explainsql', label: 'SQL 해설' },
                 { action: 'showprompt', label: '프롬프트 보기' },
                 { action: 'summarize', label: '요약' },
-                { action: 'feedback', label: '피드백 제출' },
             ],
             showsql: [
                 { action: 'runsql', label: '실행' },
                 { action: 'narrate', label: '설명' },
                 { action: 'explainsql', label: 'SQL 해설' },
                 { action: 'showprompt', label: '프롬프트 보기' },
-                { action: 'feedback', label: '피드백 제출' },
             ],
             narrate: [
                 { action: 'showsql', label: 'SQL 보기' },
@@ -224,8 +222,6 @@ const app = createApp({
                 showChart: false,
                 chartType: 'bar',
                 sqlExpanded: true,
-                showFeedback: false,
-                feedbackText: '',
                 actionLoading: false,
                 cachedActions: {},
                 timestamp: formatTime(),
@@ -305,11 +301,6 @@ const app = createApp({
                 return;
             }
 
-            if (action === 'feedback') {
-                msg.showFeedback = !msg.showFeedback;
-                return;
-            }
-
             if (msg.cachedActions && msg.cachedActions[action]) {
                 processResult(msg, action, msg.cachedActions[action]);
                 msg.action = action;
@@ -343,34 +334,6 @@ const app = createApp({
             } finally {
                 msg.actionLoading = false;
                 scrollToBottom();
-            }
-        }
-
-        async function submitFeedback(msgIdx) {
-            const msg = messages.value[msgIdx];
-            if (!msg || !msg.feedbackText) return;
-
-            try {
-                const response = await fetch('/api/feedback', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        prompt: msg.prompt,
-                        feedback: msg.feedbackText,
-                        profile_name: msg.profileName,
-                    }),
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast('피드백이 제출되었습니다.');
-                    msg.showFeedback = false;
-                    msg.feedbackText = '';
-                } else {
-                    showToast(data.error || '피드백 제출에 실패했습니다.', 'error');
-                }
-            } catch (err) {
-                showToast('서버 연결에 실패했습니다.', 'error');
             }
         }
 
@@ -769,7 +732,6 @@ const app = createApp({
             sendQuestion,
             getActionButtons,
             executeAction,
-            submitFeedback,
             renderChart,
 
             // Vector Search

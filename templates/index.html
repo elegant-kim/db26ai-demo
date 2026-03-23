@@ -198,19 +198,6 @@
                                         >[[ btn.label ]]</button>
                                     </div>
 
-                                    <!-- 피드백 폼 -->
-                                    <div v-if="msg.showFeedback" class="feedback-section">
-                                        <textarea
-                                            v-model="msg.feedbackText"
-                                            class="feedback-input"
-                                            placeholder="이 SQL이 올바르지 않다면 수정 방향을 알려주세요"
-                                            rows="3"
-                                        ></textarea>
-                                        <div class="feedback-actions">
-                                            <button class="btn btn-primary btn-small" @click="submitFeedback(idx)" :disabled="!msg.feedbackText">제출</button>
-                                            <button class="btn btn-secondary btn-small" @click="msg.showFeedback = false">취소</button>
-                                        </div>
-                                    </div>
                                 </template>
 
                                 <span v-if="!msg.loading" class="message-time">[[ msg.timestamp ]]</span>
