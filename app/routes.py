@@ -68,9 +68,13 @@ async def ask(req: AskRequest):
             content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
         )
 
+    prompt = req.prompt
+    if req.action == "explainsql":
+        prompt = f"{req.prompt} (Please explain in Korean / 한국어로 설명해 주세요)"
+
     start = time.time()
     try:
-        result = await ask_select_ai(pool, req.prompt, req.action, req.profile_name)
+        result = await ask_select_ai(pool, prompt, req.action, req.profile_name)
         elapsed_ms = int((time.time() - start) * 1000)
 
         # runsql의 경우 JSON 결과를 파싱 시도
