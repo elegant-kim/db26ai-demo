@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
 </head>
 <body>
     <div id="app">
@@ -173,7 +173,7 @@
                                                 <option value="pie">파이 차트</option>
                                             </select>
                                         </div>
-                                        <canvas :ref="'chart-' + idx" width="500" height="280"></canvas>
+                                        <canvas :data-v-chart="idx" width="500" height="280"></canvas>
                                     </div>
 
                                     <!-- 텍스트 결과 (narrate, explainsql, showprompt, summarize, chat) -->
@@ -595,6 +595,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=2"></script>
 </body>
 </html>
