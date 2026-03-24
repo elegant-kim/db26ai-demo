@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=7">
+    <link rel="stylesheet" href="/static/css/style.css?v=8">
 </head>
 <body>
     <div id="app">
@@ -33,7 +33,7 @@
             <button @click="activeTab = 'nl2sql'"
                     class="tab-btn"
                     :class="{ 'tab-btn-active': activeTab === 'nl2sql' }">
-                NL2SQL
+                NL2SQL(Select AI)
             </button>
             <button @click="activeTab = 'vector'"
                     class="tab-btn"
@@ -233,32 +233,54 @@
             <aside class="sidebar">
                 <!-- 문서 관리 -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">문서 관리</h3>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="12" y1="18" x2="12" y2="12"></line>
+                            <line x1="9" y1="15" x2="15" y2="15"></line>
+                        </svg>
+                        문서 관리
+                    </h3>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'load' }" @click="vectorSubMenu = 'load'">
-                        <span class="sub-menu-num">1</span> 문서 로드 &amp; 스플릿 &amp; 저장
+                        문서 로드 &amp; 스플릿 &amp; 저장
                     </button>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'table' }" @click="vectorSubMenu = 'table'">
-                        <span class="sub-menu-num">2</span> DB Table 확인
+                        DB Table 확인
                     </button>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'upload' }" @click="vectorSubMenu = 'upload'">
-                        <span class="sub-menu-num">&uarr;</span> PDF 업로드
+                        PDF 업로드
                     </button>
                 </div>
 
                 <!-- RAG -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">RAG (검색증강생성)</h3>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 10v2"></path>
+                            <circle cx="12" cy="6" r="4"></circle>
+                            <rect x="8" y="14" width="8" height="8" rx="1"></rect>
+                            <line x1="12" y1="18" x2="12" y2="18.01"></line>
+                        </svg>
+                        RAG (검색증강생성)
+                    </h3>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'search' }" @click="vectorSubMenu = 'search'">
-                        <span class="sub-menu-num">3</span> 비정형 문서 검색
+                        비정형 문서 검색
                     </button>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'query' }" @click="vectorSubMenu = 'query'">
-                        <span class="sub-menu-num">4</span> 실행 쿼리 확인
+                        실행 쿼리 확인
                     </button>
                 </div>
 
                 <!-- 검색 모드 (Step 3 활성 시만 표시) -->
                 <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
-                    <h3 class="sidebar-title">검색 모드</h3>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        검색 모드
+                    </h3>
                     <label class="radio-label">
                         <input type="radio" value="vector" v-model="vectorSearchMode" name="vectorMode">
                         <span class="radio-text"><strong>의미 검색</strong><small>VECTOR_DISTANCE 사용</small></span>
@@ -275,7 +297,14 @@
 
                 <!-- 예시 질문 (Step 3 활성 시만 표시) -->
                 <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
-                    <h3 class="sidebar-title">예시 질문</h3>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="9" y1="18" x2="15" y2="18"></line>
+                            <line x1="10" y1="22" x2="14" y2="22"></line>
+                            <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path>
+                        </svg>
+                        예시 질문
+                    </h3>
                     <button v-for="q in vectorExampleQuestions" :key="q" class="example-btn" @click="vectorInput = q">[[ q ]]</button>
                 </div>
             </aside>
@@ -446,6 +475,7 @@
 
                 <!-- ========== Step 3: 비정형 문서 검색 (기존 채팅 UI) ========== -->
                 <div v-show="vectorSubMenu === 'search'" class="chat-messages" ref="vectorChatMessages">
+                    <h2 class="step-title" style="margin:0 0 16px 0;">Step 3. 비정형 문서 검색</h2>
                     <div v-if="vectorMessages.length === 0" class="empty-state">
                         <div class="empty-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C74634" stroke-width="1.5" opacity="0.5">
@@ -730,6 +760,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=3"></script>
+    <script src="/static/js/app.js?v=4"></script>
 </body>
 </html>
