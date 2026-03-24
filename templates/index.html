@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <link rel="stylesheet" href="/static/css/style.css?v=7">
 </head>
 <body>
     <div id="app">
@@ -233,118 +233,223 @@
             <aside class="sidebar">
                 <!-- 문서 관리 -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">
-                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8"></polyline>
-                            <line x1="12" y1="18" x2="12" y2="12"></line>
-                            <line x1="9" y1="15" x2="15" y2="15"></line>
-                        </svg>
-                        문서 관리
-                    </h3>
-                    <div class="upload-area"
-                         @click="$refs.fileInput.click()"
-                         @dragover.prevent="dragOver = true"
-                         @dragleave="dragOver = false"
-                         @drop.prevent="handleFileDrop($event)"
-                         :class="{ 'upload-area-hover': dragOver }">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                        <span class="upload-text">PDF 파일 업로드</span>
-                        <span class="upload-sub">클릭 또는 드래그 앤 드롭</span>
-                    </div>
-                    <input type="file" ref="fileInput" accept=".pdf" @change="handleFileSelect($event)" style="display: none;">
-
-                    <!-- 업로드 진행 -->
-                    <div v-if="isUploading" class="upload-progress">
-                        <div class="spinner"></div>
-                        <span>업로드 처리 중...</span>
-                    </div>
-
-                    <!-- 업로드된 문서 목록 -->
-                    <div v-if="uploadedDocs.length > 0" class="doc-list">
-                        <div v-for="doc in uploadedDocs" :key="doc.doc_id" class="doc-item">
-                            <div class="doc-info">
-                                <span class="doc-name">[[ doc.filename ]]</span>
-                                <span class="doc-badge"
-                                      :class="{
-                                          'doc-badge-indexed': doc.status === 'indexed',
-                                          'doc-badge-processing': doc.status === 'processing',
-                                          'doc-badge-error': doc.status === 'error'
-                                      }">[[ doc.status ]]</span>
-                            </div>
-                            <button class="doc-delete" @click="deleteDoc(doc.doc_id)" title="삭제">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
+                    <h3 class="sidebar-title">문서 관리</h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'load' }" @click="vectorSubMenu = 'load'">
+                        <span class="sub-menu-num">1</span> 문서 로드 &amp; 스플릿 &amp; 저장
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'table' }" @click="vectorSubMenu = 'table'">
+                        <span class="sub-menu-num">2</span> DB Table 확인
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'upload' }" @click="vectorSubMenu = 'upload'">
+                        <span class="sub-menu-num">&uarr;</span> PDF 업로드
+                    </button>
                 </div>
 
-                <!-- 검색 모드 -->
+                <!-- RAG -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">
-                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
-                        검색 모드
-                    </h3>
+                    <h3 class="sidebar-title">RAG (검색증강생성)</h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'search' }" @click="vectorSubMenu = 'search'">
+                        <span class="sub-menu-num">3</span> 비정형 문서 검색
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'query' }" @click="vectorSubMenu = 'query'">
+                        <span class="sub-menu-num">4</span> 실행 쿼리 확인
+                    </button>
+                </div>
+
+                <!-- 검색 모드 (Step 3 활성 시만 표시) -->
+                <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
+                    <h3 class="sidebar-title">검색 모드</h3>
                     <label class="radio-label">
                         <input type="radio" value="vector" v-model="vectorSearchMode" name="vectorMode">
-                        <span class="radio-text">
-                            <strong>의미 검색</strong>
-                            <small>VECTOR_DISTANCE 사용</small>
-                        </span>
+                        <span class="radio-text"><strong>의미 검색</strong><small>VECTOR_DISTANCE 사용</small></span>
                     </label>
                     <label class="radio-label">
                         <input type="radio" value="keyword" v-model="vectorSearchMode" name="vectorMode">
-                        <span class="radio-text">
-                            <strong>키워드 검색</strong>
-                            <small>CONTAINS / LIKE 사용</small>
-                        </span>
+                        <span class="radio-text"><strong>키워드 검색</strong><small>CONTAINS / LIKE 사용</small></span>
                     </label>
                     <label class="radio-label">
                         <input type="radio" value="compare" v-model="vectorSearchMode" name="vectorMode">
-                        <span class="radio-text">
-                            <strong>비교 모드</strong>
-                            <small>양쪽 방식 동시 비교</small>
-                        </span>
+                        <span class="radio-text"><strong>비교 모드</strong><small>양쪽 방식 동시 비교</small></span>
                     </label>
                 </div>
 
-                <!-- 예시 질문 -->
-                <div class="sidebar-section">
-                    <h3 class="sidebar-title">
-                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="9" y1="18" x2="15" y2="18"></line>
-                            <line x1="10" y1="22" x2="14" y2="22"></line>
-                            <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path>
-                        </svg>
-                        예시 질문
-                    </h3>
-                    <button
-                        v-for="q in vectorExampleQuestions"
-                        :key="q"
-                        class="example-btn"
-                        @click="vectorInput = q"
-                    >[[ q ]]</button>
+                <!-- 예시 질문 (Step 3 활성 시만 표시) -->
+                <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
+                    <h3 class="sidebar-title">예시 질문</h3>
+                    <button v-for="q in vectorExampleQuestions" :key="q" class="example-btn" @click="vectorInput = q">[[ q ]]</button>
                 </div>
             </aside>
 
             <!-- Vector 메인 영역 -->
             <main class="chat-area">
-                <div class="chat-messages" ref="vectorChatMessages">
-                    <!-- 빈 상태 -->
+                <div class="step-content-scroll">
+
+                <!-- ========== Step 1: 문서 로드 & 스플릿 & 저장 ========== -->
+                <div v-show="vectorSubMenu === 'load'" class="step-content">
+                    <h2 class="step-title">Step 1. 문서 로드 &amp; 스플릿 &amp; 저장</h2>
+                    <div class="step-card">
+                        <p class="step-desc">클릭하면, 테이블을 삭제합니다. 새 테이블, 데이터로 다시 시작하려면 클릭합니다.</p>
+                        <button class="btn btn-danger btn-small" :disabled="tableActionLoading" @click="dropVectorTables">
+                            <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
+                            Vector Store 테이블 삭제
+                        </button>
+                    </div>
+                    <div class="step-card">
+                        <p class="step-desc">클릭하면, 테이블이 없는 경우 새로이 생성하고, 있는 경우 기존 테이블 데이터를 그대로 사용합니다.</p>
+                        <button class="btn btn-primary btn-small" :disabled="tableActionLoading" @click="createVectorTables">
+                            <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
+                            Vector Store 테이블 연결
+                        </button>
+                    </div>
+                    <!-- 결과 표시 -->
+                    <div v-if="tableActionResult" class="step-result">
+                        <div v-if="tableActionResult.error" class="error-box">[[ tableActionResult.error ]]</div>
+                        <template v-else>
+                            <div v-for="t in tableActionResult.tables" :key="t.table" class="step-result-item">
+                                <span class="badge" :class="t.status === 'created' ? 'badge-ok' : t.status === 'existing' ? 'badge-schema' : t.status === 'dropped' ? 'badge-error' : 'badge-ok'">
+                                    [[ t.table ]]: [[ t.status ]]
+                                </span>
+                                <span v-if="t.message" class="step-result-msg">[[ t.message ]]</span>
+                            </div>
+                            <div v-if="tableActionResult.sql_executed" class="sql-section" style="margin-top:12px;">
+                                <div class="sql-header"><span>실행된 SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableActionResult.sql_executed)"></code></pre>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ========== Step 2: DB Table 확인 ========== -->
+                <div v-show="vectorSubMenu === 'table'" class="step-content">
+                    <h2 class="step-title">Step 2. DB Table 확인</h2>
+                    <div class="step-toolbar">
+                        <label class="step-toolbar-label">대상 테이블:</label>
+                        <select v-model="tableInspectTarget" class="select-input select-small">
+                            <option value="DOC_CHUNKS">DOC_CHUNKS</option>
+                            <option value="DOCUMENTS">DOCUMENTS</option>
+                        </select>
+                    </div>
+
+                    <!-- 2-1: 테이블 정의 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">테이블 정의 조회</span>
+                            <button class="btn btn-primary btn-small" :disabled="tableDefLoading" @click="fetchTableDefinition">
+                                <span v-if="tableDefLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="tableDefResult" class="step-query-result">
+                            <div v-if="tableDefResult.error" class="error-box">[[ tableDefResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableDefResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="tableDefResult.data && tableDefResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in tableDefResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in tableDefResult.data" :key="ri">
+                                        <td v-for="col in tableDefResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ tableDefResult.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2-2: 테이블 데이터 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">테이블 데이터 조회</span>
+                            <button class="btn btn-primary btn-small" :disabled="tableDataLoading" @click="fetchTableData">
+                                <span v-if="tableDataLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="tableDataResult" class="step-query-result">
+                            <div v-if="tableDataResult.error" class="error-box">[[ tableDataResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableDataResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="tableDataResult.data && tableDataResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in tableDataResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in tableDataResult.data" :key="ri">
+                                        <td v-for="col in tableDataResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ tableDataResult.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2-3: 인덱스 조회 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">인덱스 조회 (HNSW 벡터 인덱스 포함)</span>
+                            <button class="btn btn-primary btn-small" :disabled="tableIdxLoading" @click="fetchTableIndexes">
+                                <span v-if="tableIdxLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="tableIdxResult" class="step-query-result">
+                            <div v-if="tableIdxResult.error" class="error-box">[[ tableIdxResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableIdxResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="tableIdxResult.data && tableIdxResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in tableIdxResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in tableIdxResult.data" :key="ri">
+                                        <td v-for="col in tableIdxResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ tableIdxResult.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== PDF 업로드 ========== -->
+                <div v-show="vectorSubMenu === 'upload'" class="step-content">
+                    <h2 class="step-title">PDF 업로드</h2>
+                    <div class="step-card">
+                        <div class="upload-area"
+                             @click="$refs.fileInput.click()"
+                             @dragover.prevent="dragOver = true"
+                             @dragleave="dragOver = false"
+                             @drop.prevent="handleFileDrop($event)"
+                             :class="{ 'upload-area-hover': dragOver }">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            <span class="upload-text">PDF 파일 업로드</span>
+                            <span class="upload-sub">클릭 또는 드래그 앤 드롭 (최대 10MB)</span>
+                        </div>
+                        <input type="file" ref="fileInput" accept=".pdf" @change="handleFileSelect($event)" style="display: none;">
+                        <div v-if="isUploading" class="upload-progress"><div class="spinner"></div><span>업로드 처리 중...</span></div>
+                    </div>
+                    <div v-if="uploadedDocs.length > 0" class="step-card">
+                        <h4 style="margin-bottom:8px;color:var(--text-secondary);font-size:13px;">업로드된 문서 목록</h4>
+                        <div class="doc-list">
+                            <div v-for="doc in uploadedDocs" :key="doc.doc_id" class="doc-item">
+                                <div class="doc-info">
+                                    <span class="doc-name">[[ doc.filename ]]</span>
+                                    <span class="doc-badge" :class="{'doc-badge-indexed':doc.status==='indexed','doc-badge-processing':doc.status==='processing','doc-badge-error':doc.status==='error'}">[[ doc.status ]] / [[ doc.chunks_count ]]청크</span>
+                                </div>
+                                <button class="doc-delete" @click="deleteDoc(doc.doc_id)" title="삭제">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== Step 3: 비정형 문서 검색 (기존 채팅 UI) ========== -->
+                <div v-show="vectorSubMenu === 'search'" class="chat-messages" ref="vectorChatMessages">
                     <div v-if="vectorMessages.length === 0" class="empty-state">
                         <div class="empty-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C74634" stroke-width="1.5" opacity="0.5">
-                                <circle cx="11" cy="11" r="8"></circle>
-                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                             </svg>
                         </div>
                         <p>문서를 업로드하고, 자연어로 검색하세요.</p>
@@ -555,22 +660,65 @@
                     </template>
                 </div>
 
-                <!-- 입력창 -->
-                <div class="input-area">
+                <!-- ========== Step 4: 실행 쿼리 확인 ========== -->
+                <div v-show="vectorSubMenu === 'query'" class="step-content">
+                    <h2 class="step-title">Step 4. 실행 쿼리 확인</h2>
+
+                    <!-- V$SQL -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">최근 실행된 벡터 쿼리 조회 (V$SQL)</span>
+                            <button class="btn btn-primary btn-small" :disabled="recentSqlLoading" @click="fetchRecentSql">
+                                <span v-if="recentSqlLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="recentSqlResult" class="step-query-result">
+                            <div v-if="recentSqlResult.error" class="error-box">[[ recentSqlResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(recentSqlResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="recentSqlResult.data && recentSqlResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in recentSqlResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in recentSqlResult.data" :key="ri">
+                                        <td v-for="col in recentSqlResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ recentSqlResult.row_count ]]건</p>
+                            </div>
+                            <div v-if="recentSqlResult.data && recentSqlResult.data.length === 0 && !recentSqlResult.error" class="step-empty-msg">조회된 결과가 없습니다. 먼저 Step 3에서 벡터 검색을 실행해 주세요.</div>
+                        </div>
+                    </div>
+
+                    <!-- EXPLAIN PLAN -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">쿼리 실행계획 확인하기 (EXPLAIN PLAN)</span>
+                            <button class="btn btn-primary btn-small" :disabled="explainPlanLoading" @click="fetchExplainPlan">
+                                <span v-if="explainPlanLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="explainPlanResult" class="step-query-result">
+                            <div v-if="explainPlanResult.error" class="error-box">[[ explainPlanResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>EXPLAIN PLAN FOR</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(explainPlanResult.target_sql)"></code></pre>
+                            </div>
+                            <div v-if="explainPlanResult.plan_text" class="sql-section" style="margin-top:12px;">
+                                <div class="sql-header"><span>실행 계획 결과</span></div>
+                                <pre class="sql-code plan-code"><code>[[ explainPlanResult.plan_text ]]</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                </div><!-- /step-content-scroll -->
+
+                <!-- 입력창 (Step 3 검색 시만 표시) -->
+                <div class="input-area" v-show="vectorSubMenu === 'search'">
                     <div class="input-wrapper">
-                        <input
-                            type="text"
-                            v-model="vectorInput"
-                            @keyup.enter="sendVectorQuestion"
-                            :disabled="vectorLoading"
-                            class="chat-input"
-                            placeholder="문서에 대해 자연어로 질문하세요..."
-                        >
-                        <button
-                            @click="sendVectorQuestion"
-                            :disabled="vectorLoading || !vectorInput.trim()"
-                            class="btn btn-primary send-btn"
-                        >검색</button>
+                        <input type="text" v-model="vectorInput" @keyup.enter="sendVectorQuestion" :disabled="vectorLoading" class="chat-input" placeholder="문서에 대해 자연어로 질문하세요...">
+                        <button @click="sendVectorQuestion" :disabled="vectorLoading || !vectorInput.trim()" class="btn btn-primary send-btn">검색</button>
                     </div>
                 </div>
             </main>
@@ -582,6 +730,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=2"></script>
+    <script src="/static/js/app.js?v=3"></script>
 </body>
 </html>

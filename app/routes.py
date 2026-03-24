@@ -19,6 +19,13 @@ from app.vector_search import (
     delete_document,
     get_index_info,
     get_embedding_info,
+    drop_vector_tables,
+    create_vector_tables_explicit,
+    query_table_definition,
+    query_table_data,
+    query_table_indexes,
+    query_recent_sql,
+    query_explain_plan,
 )
 
 router = APIRouter(prefix="/api")
@@ -306,6 +313,153 @@ async def vector_embedding_info(req: EmbeddingInfoRequest):
     try:
         info = await get_embedding_info(pool, req.text)
         return {"success": True, **info}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+# === Vector Store Table Management Endpoints ===
+
+@router.post("/vector/drop-tables")
+async def vector_drop_tables():
+    """Vector Store 테이블 삭제"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await drop_vector_tables(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/create-tables")
+async def vector_create_tables():
+    """Vector Store 테이블 생성/연결"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await create_vector_tables_explicit(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+class TableQueryRequest(BaseModel):
+    table_name: str = "DOC_CHUNKS"
+    limit: int = 50
+
+
+@router.post("/vector/table-definition")
+async def vector_table_definition(req: TableQueryRequest):
+    """테이블 컬럼 정의 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_table_definition(pool, req.table_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/table-data")
+async def vector_table_data(req: TableQueryRequest):
+    """테이블 데이터 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_table_data(pool, req.table_name, req.limit)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/table-indexes")
+async def vector_table_indexes(req: TableQueryRequest):
+    """테이블 인덱스 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_table_indexes(pool, req.table_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.get("/vector/recent-queries")
+async def vector_recent_queries():
+    """V$SQL에서 최근 벡터 관련 쿼리 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_recent_sql(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/explain-plan")
+async def vector_explain_plan():
+    """벡터 검색 SQL의 실행 계획 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_explain_plan(pool)
+        return {"success": True, **result}
     except Exception as e:
         return JSONResponse(
             status_code=500,

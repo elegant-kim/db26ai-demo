@@ -26,6 +26,7 @@ const app = createApp({
         const chartInstances = {};
 
         // === Vector Search State ===
+        const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
         const vectorInput = ref('');
         const vectorLoading = ref(false);
         const vectorSearchMode = ref('vector');
@@ -34,6 +35,25 @@ const app = createApp({
         const uploadedDocs = ref([]);
         const isUploading = ref(false);
         const dragOver = ref(false);
+
+        // Step 1: Table Management State
+        const tableActionLoading = ref(false);
+        const tableActionResult = ref(null);
+
+        // Step 2: Table Inspection State
+        const tableInspectTarget = ref('DOC_CHUNKS');
+        const tableDefResult = ref(null);
+        const tableDataResult = ref(null);
+        const tableIdxResult = ref(null);
+        const tableDefLoading = ref(false);
+        const tableDataLoading = ref(false);
+        const tableIdxLoading = ref(false);
+
+        // Step 4: Query Inspection State
+        const recentSqlResult = ref(null);
+        const explainPlanResult = ref(null);
+        const recentSqlLoading = ref(false);
+        const explainPlanLoading = ref(false);
 
         // === Constants ===
         const actionModes = [
@@ -150,11 +170,10 @@ const app = createApp({
         // === Oracle SQL Highlighting ===
         function highlightOracleSQL(sql) {
             if (!sql) return '';
-            // Escape HTML first
             let s = sql.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
             // Oracle-specific functions (Oracle Red)
-            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE)\b/g,
+            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE|DBMS_LOB\.SUBSTR|DBMS_XPLAN\.DISPLAY|VECTOR_SERIALIZE|VECTOR_INDEX_TRANSFORM)\b/g,
                 '<span style="color: #C74634; font-weight: 600;">$1</span>');
 
             // String literals (green)
@@ -168,16 +187,29 @@ const app = createApp({
                 'DESC', 'ASC', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'GROUP', 'HAVING',
                 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'LOWER', 'UPPER',
                 'SCORE', 'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
-                'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY'];
+                'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY',
+                'INMEMORY', 'GRAPH', 'WITH', 'TARGET', 'ACCURACY', 'CASCADE', 'CONSTRAINTS',
+                'PURGE', 'DROP', 'EXPLAIN', 'PLAN', 'FOR', 'SUBSTR', 'CASE', 'WHEN', 'THEN', 'ELSE',
+                'FETCH APPROX FIRST', 'USER_TAB_COLUMNS', 'USER_INDEXES', 'USER_IND_COLUMNS',
+                'COLUMN_ID', 'COLUMN_NAME', 'DATA_TYPE', 'DATA_LENGTH', 'NULLABLE'];
             for (const kw of keywords) {
                 const regex = new RegExp(`\\b(${kw})\\b`, 'gi');
                 s = s.replace(regex, (match) => {
-                    // Don't re-color if already inside a span
                     return `<span style="color: #7c3aed;">${match}</span>`;
                 });
             }
 
             return s;
+        }
+
+        function highlightSQLWithLines(sql) {
+            if (!sql) return '';
+            const lines = sql.split('\n');
+            return lines.map((line, i) => {
+                const num = `<span class="sql-line-num">${i + 1}</span>`;
+                const highlighted = highlightOracleSQL(line);
+                return `<div class="sql-line">${num}${highlighted}</div>`;
+            }).join('');
         }
 
         // === NL2SQL Methods ===
@@ -428,6 +460,155 @@ const app = createApp({
 
         // === Vector Search Methods ===
 
+        // --- Step 1: Table Management ---
+
+        async function dropVectorTables() {
+            if (!confirm('Vector Store 테이블(documents, doc_chunks)을 삭제합니다. 모든 데이터가 손실됩니다. 계속하시겠습니까?')) return;
+            tableActionLoading.value = true;
+            tableActionResult.value = null;
+            try {
+                const response = await fetch('/api/vector/drop-tables', { method: 'POST' });
+                const data = await response.json();
+                tableActionResult.value = {
+                    action: 'drop',
+                    success: data.success,
+                    tables: data.tables || [],
+                    sql_executed: data.sql_executed || '',
+                    error: data.error || null,
+                };
+                if (data.success) {
+                    showToast('테이블이 삭제되었습니다.');
+                    uploadedDocs.value = [];
+                } else {
+                    showToast(data.error || '삭제에 실패했습니다.', 'error');
+                }
+            } catch (err) {
+                tableActionResult.value = { action: 'drop', success: false, error: err.message };
+                showToast('서버 연결에 실패했습니다.', 'error');
+            } finally {
+                tableActionLoading.value = false;
+            }
+        }
+
+        async function createVectorTables() {
+            tableActionLoading.value = true;
+            tableActionResult.value = null;
+            try {
+                const response = await fetch('/api/vector/create-tables', { method: 'POST' });
+                const data = await response.json();
+                tableActionResult.value = {
+                    action: 'create',
+                    success: data.success,
+                    tables: data.tables || [],
+                    created: data.created || [],
+                    existing: data.existing || [],
+                    sql_executed: data.sql_executed || '',
+                    error: data.error || null,
+                };
+                if (data.success) {
+                    const msg = (data.created && data.created.length > 0)
+                        ? `테이블 생성 완료: ${data.created.join(', ')}`
+                        : '기존 테이블에 연결되었습니다.';
+                    showToast(msg);
+                } else {
+                    showToast(data.error || '생성에 실패했습니다.', 'error');
+                }
+            } catch (err) {
+                tableActionResult.value = { action: 'create', success: false, error: err.message };
+                showToast('서버 연결에 실패했습니다.', 'error');
+            } finally {
+                tableActionLoading.value = false;
+            }
+        }
+
+        // --- Step 2: Table Inspection ---
+
+        async function fetchTableDefinition() {
+            tableDefLoading.value = true;
+            tableDefResult.value = null;
+            try {
+                const response = await fetch('/api/vector/table-definition', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_name: tableInspectTarget.value }),
+                });
+                const data = await response.json();
+                tableDefResult.value = data;
+            } catch (err) {
+                tableDefResult.value = { success: false, error: err.message };
+            } finally {
+                tableDefLoading.value = false;
+            }
+        }
+
+        async function fetchTableData() {
+            tableDataLoading.value = true;
+            tableDataResult.value = null;
+            try {
+                const response = await fetch('/api/vector/table-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_name: tableInspectTarget.value, limit: 50 }),
+                });
+                const data = await response.json();
+                tableDataResult.value = data;
+            } catch (err) {
+                tableDataResult.value = { success: false, error: err.message };
+            } finally {
+                tableDataLoading.value = false;
+            }
+        }
+
+        async function fetchTableIndexes() {
+            tableIdxLoading.value = true;
+            tableIdxResult.value = null;
+            try {
+                const response = await fetch('/api/vector/table-indexes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_name: tableInspectTarget.value }),
+                });
+                const data = await response.json();
+                tableIdxResult.value = data;
+            } catch (err) {
+                tableIdxResult.value = { success: false, error: err.message };
+            } finally {
+                tableIdxLoading.value = false;
+            }
+        }
+
+        // --- Step 4: Query Inspection ---
+
+        async function fetchRecentSql() {
+            recentSqlLoading.value = true;
+            recentSqlResult.value = null;
+            try {
+                const response = await fetch('/api/vector/recent-queries');
+                const data = await response.json();
+                recentSqlResult.value = data;
+            } catch (err) {
+                recentSqlResult.value = { success: false, error: err.message };
+            } finally {
+                recentSqlLoading.value = false;
+            }
+        }
+
+        async function fetchExplainPlan() {
+            explainPlanLoading.value = true;
+            explainPlanResult.value = null;
+            try {
+                const response = await fetch('/api/vector/explain-plan', { method: 'POST' });
+                const data = await response.json();
+                explainPlanResult.value = data;
+            } catch (err) {
+                explainPlanResult.value = { success: false, error: err.message };
+            } finally {
+                explainPlanLoading.value = false;
+            }
+        }
+
+        // --- Upload & Search (existing) ---
+
         async function handleFileSelect(event) {
             const file = event.target.files[0];
             if (file) {
@@ -533,7 +714,6 @@ const app = createApp({
                 embeddingInfo: null,
                 indexInfo: null,
                 keywordCompare: null,
-                // compare mode
                 keywordResults: null,
                 vectorResults: null,
                 timestamp: formatTime(),
@@ -719,6 +899,7 @@ const app = createApp({
             selectedProfile,
             toast,
             highlightOracleSQL,
+            highlightSQLWithLines,
 
             // NL2SQL
             userInput,
@@ -735,6 +916,7 @@ const app = createApp({
             renderChart,
 
             // Vector Search
+            vectorSubMenu,
             vectorInput,
             vectorLoading,
             vectorSearchMode,
@@ -751,6 +933,32 @@ const app = createApp({
             showEmbeddingInfo,
             showIndexInfo,
             doKeywordCompare,
+
+            // Step 1: Table Management
+            tableActionLoading,
+            tableActionResult,
+            dropVectorTables,
+            createVectorTables,
+
+            // Step 2: Table Inspection
+            tableInspectTarget,
+            tableDefResult,
+            tableDataResult,
+            tableIdxResult,
+            tableDefLoading,
+            tableDataLoading,
+            tableIdxLoading,
+            fetchTableDefinition,
+            fetchTableData,
+            fetchTableIndexes,
+
+            // Step 4: Query Inspection
+            recentSqlResult,
+            explainPlanResult,
+            recentSqlLoading,
+            explainPlanLoading,
+            fetchRecentSql,
+            fetchExplainPlan,
         };
     },
 });
