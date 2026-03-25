@@ -873,14 +873,40 @@ const app = createApp({
                     profiles.value = data.profiles;
                     if (!selectedProfile.value) {
                         selectedProfile.value = data.profiles[0].profile_name;
+                        // 최초 로드 시 첫 번째 프로필로 SET_PROFILE 실행
+                        await callSetProfile(selectedProfile.value);
                     }
                 } else {
-                    profiles.value = [{ profile_name: 'GROQ_PROFILE', status: 'ENABLED' }];
-                    selectedProfile.value = 'GROQ_PROFILE';
+                    profiles.value = [];
+                    showToast('DB에 등록된 AI 프로필이 없습니다.', 'error');
                 }
-            } catch {
-                profiles.value = [{ profile_name: 'GROQ_PROFILE', status: 'ENABLED' }];
-                selectedProfile.value = 'GROQ_PROFILE';
+            } catch (err) {
+                profiles.value = [];
+                showToast('프로필 목록 조회 실패: ' + err.message, 'error');
+            }
+        }
+
+        async function callSetProfile(profileName) {
+            try {
+                const response = await fetch('/api/set-profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_name: profileName }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`프로필 설정 완료: ${profileName}`);
+                } else {
+                    showToast(data.error || '프로필 설정 실패', 'error');
+                }
+            } catch (err) {
+                showToast('프로필 설정 실패: ' + err.message, 'error');
+            }
+        }
+
+        async function onProfileChange() {
+            if (selectedProfile.value) {
+                await callSetProfile(selectedProfile.value);
             }
         }
 
@@ -897,6 +923,7 @@ const app = createApp({
             schema,
             profiles,
             selectedProfile,
+            onProfileChange,
             toast,
             highlightOracleSQL,
             highlightSQLWithLines,

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, list_profiles, get_current_schema
+from app.select_ai import ask_select_ai, list_profiles, set_profile, get_current_schema
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -38,14 +38,18 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 class AskRequest(BaseModel):
     prompt: str
     action: str = "runsql"
-    profile_name: str = "GROQ_PROFILE"
+    profile_name: str = ""
 
 
 class VectorSearchRequest(BaseModel):
     query: str
     mode: str = "vector"  # "vector", "keyword", "compare"
     top_k: int = 5
-    profile_name: str = "GROQ_PROFILE"
+    profile_name: str = ""
+
+
+class SetProfileRequest(BaseModel):
+    profile_name: str
 
 
 class EmbeddingInfoRequest(BaseModel):
@@ -116,6 +120,26 @@ async def profiles():
     try:
         result = await list_profiles(pool)
         return {"success": True, "profiles": result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/set-profile")
+async def set_profile_endpoint(req: SetProfileRequest):
+    """DBMS_CLOUD_AI.SET_PROFILE 실행"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await set_profile(pool, req.profile_name)
+        return result
     except Exception as e:
         return JSONResponse(
             status_code=500,

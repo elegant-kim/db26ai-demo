@@ -57,7 +57,7 @@
                         </svg>
                         AI 프로필
                     </h3>
-                    <select v-model="selectedProfile" class="select-input">
+                    <select v-model="selectedProfile" @change="onProfileChange" class="select-input">
                         <option v-for="p in profiles" :key="p.profile_name" :value="p.profile_name">
                             [[ p.profile_name ]]
                         </option>
@@ -760,6 +760,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=4"></script>
+    <script src="/static/js/app.js?v=5"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@ class Settings:
     ORACLE_WALLET_DIR: str = os.getenv("ORACLE_WALLET_DIR", "")
     ORACLE_WALLET_PASSWORD: str = os.getenv("ORACLE_WALLET_PASSWORD", "")
 
-    SELECT_AI_PROFILE: str = os.getenv("SELECT_AI_PROFILE", "GROQ_PROFILE")
+    SELECT_AI_PROFILE: str = os.getenv("SELECT_AI_PROFILE", "")  # 빈 값이면 DB에서 동적 결정
 
     APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))

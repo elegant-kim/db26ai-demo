@@ -53,20 +53,49 @@ async def submit_feedback(pool, prompt: str, feedback: str, profile_name: str) -
 
 
 async def list_profiles(pool) -> list:
-    """사용 가능한 AI 프로필 목록을 조회한다."""
+    """사용 가능한 AI 프로필 목록을 DBA_CLOUD_AI_PROFILES에서 조회한다."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            sql = """
-                SELECT profile_name, status
-                FROM user_cloud_ai_profiles
-                ORDER BY profile_name
-            """
-            await cursor.execute(sql)
-            rows = await cursor.fetchall()
-            return [
-                {"profile_name": row[0], "status": row[1]}
-                for row in rows
-            ]
+            try:
+                sql = """
+                    SELECT profile_name
+                    FROM DBA_CLOUD_AI_PROFILES
+                    ORDER BY profile_name
+                """
+                await cursor.execute(sql)
+                rows = await cursor.fetchall()
+                return [
+                    {"profile_name": row[0]}
+                    for row in rows
+                ]
+            except Exception:
+                # DBA 뷰 권한이 없으면 user 뷰로 폴백
+                sql = """
+                    SELECT profile_name, status
+                    FROM user_cloud_ai_profiles
+                    ORDER BY profile_name
+                """
+                await cursor.execute(sql)
+                rows = await cursor.fetchall()
+                return [
+                    {"profile_name": row[0], "status": row[1]}
+                    for row in rows
+                ]
+
+
+async def set_profile(pool, profile_name: str) -> dict:
+    """DBMS_CLOUD_AI.SET_PROFILE을 실행하여 세션 프로필을 설정한다."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            try:
+                await cursor.execute("""
+                    BEGIN
+                        DBMS_CLOUD_AI.SET_PROFILE(:profile_name);
+                    END;
+                """, {"profile_name": profile_name})
+                return {"success": True, "profile_name": profile_name}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
 
 
 async def get_current_schema(pool) -> str:
