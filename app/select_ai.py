@@ -120,7 +120,14 @@ WHERE profile_name = :profile_name"""
 
                 columns = [col[0] for col in cursor.description]
                 rows = await cursor.fetchall()
-                data = [dict(zip(columns, row)) for row in rows]
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, val in enumerate(row):
+                        if hasattr(val, 'read'):
+                            val = await _lob_to_str(val)
+                        row_dict[columns[i]] = val
+                    data.append(row_dict)
                 return {
                     "sql_executed": sql_display,
                     "columns": columns,
