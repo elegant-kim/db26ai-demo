@@ -98,6 +98,45 @@ async def set_profile(pool, profile_name: str) -> dict:
                 return {"success": False, "error": str(e)}
 
 
+async def get_profile_attributes(pool, profile_name: str) -> dict:
+    """프로필의 상세 속성을 DBA_CLOUD_AI_PROFILE_ATTRIBUTES에서 조회한다."""
+    sql = """SELECT profile_name, attribute_name, attribute_value
+FROM DBA_CLOUD_AI_PROFILE_ATTRIBUTES
+WHERE profile_name = :profile_name"""
+    sql_display = sql.replace(":profile_name", f"'{profile_name}'")
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(sql, {"profile_name": profile_name})
+                except Exception:
+                    # DBA 뷰 권한 없으면 user 뷰로 폴백
+                    sql = """SELECT profile_name, attribute_name, attribute_value
+FROM USER_CLOUD_AI_PROFILE_ATTRIBUTES
+WHERE profile_name = :profile_name"""
+                    sql_display = sql.replace(":profile_name", f"'{profile_name}'")
+                    await cursor.execute(sql, {"profile_name": profile_name})
+
+                columns = [col[0] for col in cursor.description]
+                rows = await cursor.fetchall()
+                data = [dict(zip(columns, row)) for row in rows]
+                return {
+                    "sql_executed": sql_display,
+                    "columns": columns,
+                    "data": data,
+                    "row_count": len(data),
+                }
+    except Exception as e:
+        return {
+            "sql_executed": sql_display,
+            "columns": [],
+            "data": [],
+            "row_count": 0,
+            "error": str(e),
+        }
+
+
 async def get_current_schema(pool) -> str:
     """현재 접속 스키마를 반환한다."""
     async with pool.acquire() as conn:

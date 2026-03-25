@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=8">
+    <link rel="stylesheet" href="/static/css/style.css?v=9">
 </head>
 <body>
     <div id="app">
@@ -134,6 +134,28 @@
                                     <!-- 에러 -->
                                     <div v-if="msg.error" class="error-box">
                                         <strong>오류:</strong> [[ msg.error ]]
+                                    </div>
+
+                                    <!-- 프로필 설정 결과 -->
+                                    <div v-if="msg.profileResult" class="profile-result-section">
+                                        <div class="profile-result-header">프로필 설정 완료 : [[ msg.profileResult.profile_name ]]</div>
+                                        <template v-if="msg.profileResult.attributes">
+                                            <div v-if="msg.profileResult.attributes.error" class="error-box" style="margin-top:8px;">[[ msg.profileResult.attributes.error ]]</div>
+                                            <div v-if="msg.profileResult.attributes.sql_executed" class="sql-section" style="margin-top:8px;">
+                                                <div class="sql-header"><span>SQL</span></div>
+                                                <pre class="sql-code"><code v-html="highlightSQLWithLines(msg.profileResult.attributes.sql_executed)"></code></pre>
+                                            </div>
+                                            <div v-if="msg.profileResult.attributes.data && msg.profileResult.attributes.data.length > 0" class="table-section" style="margin-top:8px;">
+                                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                                    <th v-for="col in msg.profileResult.attributes.columns" :key="col">[[ col ]]</th>
+                                                </tr></thead><tbody>
+                                                    <tr v-for="(row, ri) in msg.profileResult.attributes.data" :key="ri">
+                                                        <td v-for="col in msg.profileResult.attributes.columns" :key="col">[[ row[col] ]]</td>
+                                                    </tr>
+                                                </tbody></table></div>
+                                                <p class="row-count">[[ msg.profileResult.attributes.row_count ]]건</p>
+                                            </div>
+                                        </template>
                                     </div>
 
                                     <!-- SQL 코드 블록 -->
@@ -760,6 +782,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=5"></script>
+    <script src="/static/js/app.js?v=6"></script>
 </body>
 </html>

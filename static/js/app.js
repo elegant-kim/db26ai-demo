@@ -25,6 +25,9 @@ const app = createApp({
         const chatMessages = ref(null);
         const chartInstances = {};
 
+        // === Profile Info State ===
+        const profileInfo = ref(null);
+
         // === Vector Search State ===
         const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
         const vectorInput = ref('');
@@ -895,6 +898,20 @@ const app = createApp({
                 });
                 const data = await response.json();
                 if (data.success) {
+                    // 프로필 상세 속성을 메인 창에 메시지로 표시
+                    profileInfo.value = data.attributes || null;
+
+                    messages.value.push({
+                        role: 'assistant',
+                        action: 'profile',
+                        loading: false,
+                        profileResult: {
+                            profile_name: profileName,
+                            attributes: data.attributes || null,
+                        },
+                        timestamp: formatTime(),
+                    });
+                    scrollToBottom();
                     showToast(`프로필 설정 완료: ${profileName}`);
                 } else {
                     showToast(data.error || '프로필 설정 실패', 'error');
@@ -924,6 +941,7 @@ const app = createApp({
             profiles,
             selectedProfile,
             onProfileChange,
+            profileInfo,
             toast,
             highlightOracleSQL,
             highlightSQLWithLines,

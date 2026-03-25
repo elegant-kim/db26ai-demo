@@ -1128,3 +1128,15 @@ html, body {
     white-space: pre;
     overflow-x: auto;
 }
+
+/* Profile result in chat */
+.profile-result-section {
+    margin: 4px 0;
+}
+
+.profile-result-header {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--oracle-red);
+    margin-bottom: 4px;
+}

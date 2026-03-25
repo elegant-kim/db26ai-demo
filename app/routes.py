@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, list_profiles, set_profile, get_current_schema
+from app.select_ai import ask_select_ai, list_profiles, set_profile, get_profile_attributes, get_current_schema
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -139,6 +139,10 @@ async def set_profile_endpoint(req: SetProfileRequest):
 
     try:
         result = await set_profile(pool, req.profile_name)
+        # SET_PROFILE 성공 시 프로필 상세 속성도 조회하여 함께 반환
+        if result.get("success"):
+            attrs = await get_profile_attributes(pool, req.profile_name)
+            result["attributes"] = attrs
         return result
     except Exception as e:
         return JSONResponse(
