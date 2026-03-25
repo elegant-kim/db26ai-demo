@@ -144,6 +144,47 @@ WHERE profile_name = :profile_name"""
         }
 
 
+async def execute_raw_sql(pool, sql: str) -> dict:
+    """사용자가 입력한 SQL을 실행하고 결과를 반환한다. SELECT 문만 허용."""
+    stripped = sql.strip().rstrip(';').strip()
+    upper = stripped.upper()
+
+    # SELECT 또는 SELECT AI만 허용
+    if not upper.startswith("SELECT"):
+        return {"error": "SELECT 문만 실행할 수 있습니다."}
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(stripped)
+                columns = [col[0] for col in cursor.description]
+                rows = await cursor.fetchall()
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, val in enumerate(row):
+                        if hasattr(val, 'read'):
+                            val = await _lob_to_str(val)
+                        if hasattr(val, 'isoformat'):
+                            val = val.isoformat()
+                        row_dict[columns[i]] = val
+                    data.append(row_dict)
+                return {
+                    "sql_executed": stripped,
+                    "columns": columns,
+                    "data": data,
+                    "row_count": len(data),
+                }
+    except Exception as e:
+        return {
+            "sql_executed": stripped,
+            "columns": [],
+            "data": [],
+            "row_count": 0,
+            "error": str(e),
+        }
+
+
 async def get_current_schema(pool) -> str:
     """현재 접속 스키마를 반환한다."""
     async with pool.acquire() as conn:

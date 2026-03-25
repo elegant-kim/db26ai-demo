@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=9">
+    <link rel="stylesheet" href="/static/css/style.css?v=10">
 </head>
 <body>
     <div id="app">
@@ -115,6 +115,7 @@
                         <!-- 사용자 메시지 -->
                         <div v-if="msg.role === 'user'" class="message message-user">
                             <div class="message-bubble bubble-user">
+                                <span v-if="msg.isSql" class="user-sql-badge">SQL</span>
                                 <p>[[ msg.content ]]</p>
                                 <span class="message-time">[[ msg.timestamp ]]</span>
                             </div>
@@ -156,6 +157,25 @@
                                                 <p class="row-count">[[ msg.profileResult.attributes.row_count ]]건</p>
                                             </div>
                                         </template>
+                                    </div>
+
+                                    <!-- SQL 직접 실행 결과 -->
+                                    <div v-if="msg.sqlResult" class="profile-result-section">
+                                        <div class="profile-result-header">SQL 실행 결과</div>
+                                        <div v-if="msg.sqlResult.sql_executed" class="sql-section" style="margin-top:8px;">
+                                            <div class="sql-header"><span>SQL</span></div>
+                                            <pre class="sql-code"><code v-html="highlightSQLWithLines(msg.sqlResult.sql_executed)"></code></pre>
+                                        </div>
+                                        <div v-if="msg.sqlResult.data && msg.sqlResult.data.length > 0" class="table-section" style="margin-top:8px;">
+                                            <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                                <th v-for="col in msg.sqlResult.columns" :key="col">[[ col ]]</th>
+                                            </tr></thead><tbody>
+                                                <tr v-for="(row, ri) in msg.sqlResult.data" :key="ri">
+                                                    <td v-for="col in msg.sqlResult.columns" :key="col">[[ row[col] ]]</td>
+                                                </tr>
+                                            </tbody></table></div>
+                                            <p class="row-count">[[ msg.sqlResult.row_count ]]건</p>
+                                        </div>
                                     </div>
 
                                     <!-- SQL 코드 블록 -->
@@ -230,20 +250,17 @@
 
                 <!-- 입력창 -->
                 <div class="input-area">
-                    <div class="input-wrapper">
-                        <input
-                            type="text"
-                            v-model="userInput"
-                            @keyup.enter="sendQuestion"
-                            :disabled="isLoading"
-                            class="chat-input"
-                            placeholder="데이터에 대해 자연어로 질문하세요..."
-                        >
-                        <button
-                            @click="sendQuestion"
-                            :disabled="isLoading || !userInput.trim()"
-                            class="btn btn-primary send-btn"
-                        >질문</button>
+                    <div class="input-dual-row">
+                        <div class="input-wrapper">
+                            <span class="input-label">SELECT AI</span>
+                            <input type="text" v-model="userInput" @keyup.enter="sendQuestion" :disabled="isLoading" class="chat-input" placeholder="자연어로 질문하세요...">
+                            <button @click="sendQuestion" :disabled="isLoading || !userInput.trim()" class="btn btn-primary send-btn">질문</button>
+                        </div>
+                        <div class="input-wrapper">
+                            <span class="input-label">SQL</span>
+                            <input type="text" v-model="sqlInput" @keyup.enter="executeSql" :disabled="isSqlLoading" class="chat-input" placeholder="SELECT 문을 직접 입력하세요...">
+                            <button @click="executeSql" :disabled="isSqlLoading || !sqlInput.trim()" class="btn btn-secondary send-btn">실행</button>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -782,6 +799,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=6"></script>
+    <script src="/static/js/app.js?v=7"></script>
 </body>
 </html>

@@ -19,7 +19,9 @@ const app = createApp({
 
         // === NL2SQL State ===
         const userInput = ref('');
+        const sqlInput = ref('');
         const isLoading = ref(false);
+        const isSqlLoading = ref(false);
         const selectedAction = ref('runsql');
         const messages = ref([]);
         const chatMessages = ref(null);
@@ -294,6 +296,62 @@ const app = createApp({
             } finally {
                 assistantMsg.loading = false;
                 isLoading.value = false;
+                scrollToBottom();
+            }
+        }
+
+        async function executeSql() {
+            const sql = sqlInput.value.trim();
+            if (!sql || isSqlLoading.value) return;
+
+            messages.value.push({
+                role: 'user',
+                content: sql,
+                timestamp: formatTime(),
+                isSql: true,
+            });
+            sqlInput.value = '';
+
+            const assistantMsg = reactive({
+                role: 'assistant',
+                action: 'rawsql',
+                loading: true,
+                loadingText: 'SQL 실행 중...',
+                sqlResult: null,
+                error: null,
+                elapsed_ms: null,
+                timestamp: formatTime(),
+            });
+            messages.value.push(assistantMsg);
+            scrollToBottom();
+
+            isSqlLoading.value = true;
+            try {
+                const response = await fetch('/api/execute-sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    assistantMsg.elapsed_ms = data.elapsed_ms;
+                    assistantMsg.sqlResult = {
+                        sql_executed: data.sql_executed,
+                        columns: data.columns,
+                        data: data.data,
+                        row_count: data.row_count,
+                    };
+                } else {
+                    assistantMsg.error = data.error || 'SQL 실행에 실패했습니다.';
+                    if (data.sql_executed) {
+                        assistantMsg.sqlResult = { sql_executed: data.sql_executed };
+                    }
+                }
+            } catch (err) {
+                assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+            } finally {
+                assistantMsg.loading = false;
+                isSqlLoading.value = false;
                 scrollToBottom();
             }
         }
@@ -948,7 +1006,9 @@ const app = createApp({
 
             // NL2SQL
             userInput,
+            sqlInput,
             isLoading,
+            isSqlLoading,
             selectedAction,
             messages,
             chatMessages,
@@ -956,6 +1016,7 @@ const app = createApp({
             exampleQuestions,
             setPrompt,
             sendQuestion,
+            executeSql,
             getActionButtons,
             executeAction,
             renderChart,

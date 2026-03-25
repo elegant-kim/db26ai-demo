@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, list_profiles, set_profile, get_profile_attributes, get_current_schema
+from app.select_ai import ask_select_ai, list_profiles, set_profile, get_profile_attributes, execute_raw_sql, get_current_schema
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -50,6 +50,10 @@ class VectorSearchRequest(BaseModel):
 
 class SetProfileRequest(BaseModel):
     profile_name: str
+
+
+class ExecuteSqlRequest(BaseModel):
+    sql: str
 
 
 class EmbeddingInfoRequest(BaseModel):
@@ -148,6 +152,31 @@ async def set_profile_endpoint(req: SetProfileRequest):
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/execute-sql")
+async def execute_sql_endpoint(req: ExecuteSqlRequest):
+    """사용자가 입력한 SQL을 직접 실행"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    start = time.time()
+    try:
+        result = await execute_raw_sql(pool, req.sql)
+        elapsed_ms = int((time.time() - start) * 1000)
+        if result.get("error"):
+            return {"success": False, "error": result["error"], "sql_executed": result.get("sql_executed", ""), "elapsed_ms": elapsed_ms}
+        return {"success": True, **result, "elapsed_ms": elapsed_ms}
+    except Exception as e:
+        elapsed_ms = int((time.time() - start) * 1000)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "elapsed_ms": elapsed_ms},
         )
 
 
