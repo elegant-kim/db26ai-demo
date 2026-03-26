@@ -32,6 +32,151 @@ const app = createApp({
         const schemaInfo = ref(null);
         const schemaLoading = ref(false);
         const schemaExpanded = ref({});
+        const annotationApplying = ref(false);
+        const annotationRemoving = ref(false);
+
+        // SH 스키마 Annotation 세트
+        const annotationSets = {
+            SH: {
+                CUSTOMERS: {
+                    _table: '고객 마스터 테이블 - 인구통계 및 신용정보 포함',
+                    CUST_ID: '고객 고유 식별자 (PK)',
+                    CUST_FIRST_NAME: '고객 이름 (First Name)',
+                    CUST_LAST_NAME: '고객 성 (Last Name)',
+                    CUST_GENDER: '성별: M=Male, F=Female',
+                    CUST_YEAR_OF_BIRTH: '출생연도 (4자리)',
+                    CUST_MARITAL_STATUS: '결혼상태: married, single 등',
+                    CUST_STREET_ADDRESS: '거주지 주소',
+                    CUST_POSTAL_CODE: '우편번호',
+                    CUST_CITY: '거주 도시',
+                    CUST_STATE_PROVINCE: '거주 주/도',
+                    CUST_MAIN_PHONE_NUMBER: '주요 전화번호',
+                    CUST_INCOME_LEVEL: '소득구간: A: Under 30,000 ~ L: 300,000 and above',
+                    CUST_CREDIT_LIMIT: '신용한도 (USD)',
+                    CUST_EMAIL: '이메일 주소',
+                    CUST_VALID: '고객 유효 상태: A=Active, I=Inactive',
+                },
+                SALES: {
+                    _table: '판매 트랜잭션 팩트 테이블',
+                    PROD_ID: '제품 ID (FK: PRODUCTS.PROD_ID)',
+                    CUST_ID: '고객 ID (FK: CUSTOMERS.CUST_ID)',
+                    TIME_ID: '판매 일자 (FK: TIMES.TIME_ID)',
+                    CHANNEL_ID: '판매 채널 ID (FK: CHANNELS.CHANNEL_ID)',
+                    PROMO_ID: '프로모션 ID (FK: PROMOTIONS.PROMO_ID)',
+                    QUANTITY_SOLD: '판매 수량',
+                    AMOUNT_SOLD: '판매 금액 (USD)',
+                },
+                PRODUCTS: {
+                    _table: '제품 마스터 테이블',
+                    PROD_ID: '제품 고유 식별자 (PK)',
+                    PROD_NAME: '제품명',
+                    PROD_DESC: '제품 설명',
+                    PROD_SUBCATEGORY: '제품 소분류',
+                    PROD_CATEGORY: '제품 대분류',
+                    PROD_STATUS: '제품 상태: Status 값으로 활성여부 판단',
+                    PROD_LIST_PRICE: '정가 (USD)',
+                    PROD_MIN_PRICE: '최저가 (USD)',
+                },
+                CHANNELS: {
+                    _table: '판매 채널 (Direct Sales, Internet, Catalog, Partners)',
+                    CHANNEL_ID: '채널 고유 식별자 (PK)',
+                    CHANNEL_DESC: '채널명: Direct Sales, Internet, Catalog, Partners',
+                    CHANNEL_CLASS: '채널 분류: Direct, Indirect, Others',
+                },
+                TIMES: {
+                    _table: '시간 차원 테이블 (1998~2001년)',
+                    TIME_ID: '날짜 (PK)',
+                    DAY_NAME: '요일명 (Monday~Sunday)',
+                    CALENDAR_MONTH_DESC: '월 (예: 2000-01)',
+                    CALENDAR_QUARTER_DESC: '분기 (예: 2000-Q1)',
+                    CALENDAR_YEAR: '연도 (예: 2000)',
+                    FISCAL_YEAR: '회계연도',
+                },
+                PROMOTIONS: {
+                    _table: '프로모션 정보',
+                    PROMO_ID: '프로모션 ID (PK)',
+                    PROMO_NAME: '프로모션명',
+                    PROMO_SUBCATEGORY: '프로모션 소분류',
+                    PROMO_CATEGORY: '프로모션 대분류',
+                },
+                COUNTRIES: {
+                    _table: '국가 정보 (고객 국가 참조)',
+                    COUNTRY_ID: '국가 ID (PK)',
+                    COUNTRY_NAME: '국가명',
+                    COUNTRY_REGION: '대륙/지역 (Americas, Europe, Asia 등)',
+                    COUNTRY_SUBREGION: '세부지역',
+                },
+                COSTS: {
+                    _table: '제품 원가 테이블',
+                    PROD_ID: '제품 ID (FK)',
+                    TIME_ID: '날짜 (FK)',
+                    UNIT_COST: '단위 원가 (USD)',
+                    UNIT_PRICE: '단위 판매가 (USD)',
+                },
+            },
+            SSB: {
+                CUSTOMER: {
+                    _table: '고객 마스터 (SSB)',
+                    C_CUSTKEY: '고객 키 (PK)',
+                    C_NAME: '고객명',
+                    C_ADDRESS: '주소',
+                    C_CITY: '도시 (앞 10자리가 국가코드)',
+                    C_NATION: '국가명',
+                    C_REGION: '대륙 (AMERICA, ASIA, EUROPE 등)',
+                    C_PHONE: '전화번호',
+                    C_MKTSEGMENT: '시장세분화: AUTOMOBILE, BUILDING, FURNITURE, MACHINERY, HOUSEHOLD',
+                },
+                LINEORDER: {
+                    _table: '주문 라인 팩트 테이블 (SSB)',
+                    LO_ORDERKEY: '주문 키',
+                    LO_CUSTKEY: '고객 키 (FK: CUSTOMER.C_CUSTKEY)',
+                    LO_PARTKEY: '부품 키 (FK: PART.P_PARTKEY)',
+                    LO_SUPPKEY: '공급자 키 (FK: SUPPLIER.S_SUPPKEY)',
+                    LO_ORDERDATE: '주문일자 (FK: DATE_DIM.D_DATEKEY)',
+                    LO_QUANTITY: '주문 수량',
+                    LO_EXTENDEDPRICE: '총 금액 (단가 x 수량)',
+                    LO_DISCOUNT: '할인율 (0~10, 퍼센트)',
+                    LO_REVENUE: '매출 (할인 적용후)',
+                    LO_SUPPLYCOST: '공급 비용',
+                    LO_ORDERPRIORITY: '주문 우선순위: 1-URGENT ~ 5-LOW',
+                    LO_SHIPPRIORITY: '배송 우선순위',
+                },
+                PART: {
+                    _table: '부품/제품 마스터 (SSB)',
+                    P_PARTKEY: '부품 키 (PK)',
+                    P_NAME: '부품명',
+                    P_MFGR: '제조사 (Manufacturer#1~5)',
+                    P_BRAND: '브랜드 (MFGR#1#1 형식)',
+                    P_CATEGORY: '카테고리 (MFGR#1#1 형식)',
+                    P_COLOR: '색상',
+                    P_SIZE: '크기 (1~50)',
+                    P_CONTAINER: '포장 유형',
+                    P_TYPE: '부품 유형',
+                },
+                SUPPLIER: {
+                    _table: '공급자 마스터 (SSB)',
+                    S_SUPPKEY: '공급자 키 (PK)',
+                    S_NAME: '공급자명',
+                    S_ADDRESS: '주소',
+                    S_CITY: '도시',
+                    S_NATION: '국가명',
+                    S_REGION: '대륙 (AMERICA, ASIA, EUROPE 등)',
+                    S_PHONE: '전화번호',
+                },
+                DATE_DIM: {
+                    _table: '날짜 차원 테이블 (SSB)',
+                    D_DATEKEY: '날짜 키 (PK, YYYYMMDD 형식 숫자)',
+                    D_DATE: '날짜 문자열',
+                    D_DAYOFWEEK: '요일명',
+                    D_MONTH: '월명',
+                    D_YEAR: '연도',
+                    D_YEARMONTHNUM: '연월 (YYYYMM 숫자)',
+                    D_WEEKNUMINYEAR: '주차 (연간)',
+                    D_SELLINGSEASON: '판매 시즌 (Christmas, Summer 등)',
+                    D_HOLIDAY: '공휴일 여부',
+                },
+            },
+        };
 
         // === Vector Search State ===
         const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
@@ -88,6 +233,11 @@ const app = createApp({
                 '프로모션 유형별 평균 할인율과 그에 따른 매출 변화를 분석해줘',
                 '분기별 매출 성장률을 전년 동기 대비로 보여줘',
                 '고객 연령대별 선호 제품 카테고리와 평균 구매단가를 알려줘',
+                // Annotation 데모용 질문
+                '유효한 고객 수를 알려줘',
+                '유효하지 않은 고객 중 신용한도가 가장 높은 5명은?',
+                '소득구간별 고객 수와 평균 신용한도를 보여줘',
+                '인터넷 채널과 직접판매 채널의 매출 비교',
             ],
             SSB: [
                 '총 매출액이 가장 높은 공급업체 5곳을 알려줘',
@@ -100,6 +250,10 @@ const app = createApp({
                 '할인율 20% 이상 적용된 주문의 연도별 매출 비중을 분석해줘',
                 '제품 카테고리별 수익성(매출-공급비용)이 가장 높은 상위 5개 제품은?',
                 '분기별 주문량 추이와 전분기 대비 증감률을 보여줘',
+                // Annotation 데모용 질문
+                '자동차 시장 고객 중 아시아 지역 매출 합계를 알려줘',
+                '긴급 주문의 비율과 평균 금액을 보여줘',
+                '크리스마스 시즌 매출을 연도별로 비교해줘',
             ],
             DEFAULT: [
                 '테이블 목록을 보여줘',
@@ -1157,6 +1311,72 @@ const app = createApp({
             schemaExpanded.value[tableName] = !schemaExpanded.value[tableName];
         }
 
+        function getAnnotationSet() {
+            const profile = (selectedProfile.value || '').toUpperCase();
+            if (profile.includes('SSB')) return annotationSets.SSB;
+            if (profile.includes('SH')) return annotationSets.SH;
+            return null;
+        }
+
+        async function applyAnnotations() {
+            const annoSet = getAnnotationSet();
+            if (!annoSet) {
+                showToast('현재 프로필에 해당하는 Annotation 세트가 없습니다.', 'error');
+                return;
+            }
+            annotationApplying.value = true;
+            try {
+                const response = await fetch('/api/apply-annotations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ annotation_set: annoSet }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`Annotation 적용 완료 (${data.applied_count}건)`);
+                    if (data.error_count > 0) {
+                        console.warn('Annotation errors:', data.errors);
+                    }
+                    // 스키마 뷰어 새로고침
+                    await loadSchemaInfo(selectedProfile.value);
+                } else {
+                    showToast('Annotation 적용 실패: ' + (data.error || ''), 'error');
+                }
+            } catch (err) {
+                showToast('Annotation 적용 실패: ' + err.message, 'error');
+            } finally {
+                annotationApplying.value = false;
+            }
+        }
+
+        async function removeAnnotations() {
+            const annoSet = getAnnotationSet();
+            if (!annoSet) {
+                showToast('현재 프로필에 해당하는 Annotation 세트가 없습니다.', 'error');
+                return;
+            }
+            annotationRemoving.value = true;
+            try {
+                const tableNames = Object.keys(annoSet);
+                const response = await fetch('/api/remove-annotations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_names: tableNames }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`Annotation 제거 완료 (${data.removed_count}건)`);
+                    await loadSchemaInfo(selectedProfile.value);
+                } else {
+                    showToast('Annotation 제거 실패: ' + (data.error || ''), 'error');
+                }
+            } catch (err) {
+                showToast('Annotation 제거 실패: ' + err.message, 'error');
+            } finally {
+                annotationRemoving.value = false;
+            }
+        }
+
         async function onProfileChange() {
             if (selectedProfile.value) {
                 updateExampleQuestions(selectedProfile.value);
@@ -1184,6 +1404,10 @@ const app = createApp({
             schemaLoading,
             schemaExpanded,
             toggleSchemaTable,
+            annotationApplying,
+            annotationRemoving,
+            applyAnnotations,
+            removeAnnotations,
             toast,
             highlightOracleSQL,
             highlightSQLWithLines,

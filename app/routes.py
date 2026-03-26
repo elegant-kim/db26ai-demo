@@ -8,7 +8,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, list_profiles, set_profile, get_profile_attributes, execute_raw_sql, get_current_schema, get_schema_info, get_explain_plan
+from app.select_ai import (
+    ask_select_ai, list_profiles, set_profile, get_profile_attributes,
+    execute_raw_sql, get_current_schema, get_schema_info, get_explain_plan,
+    get_annotations, apply_annotations, remove_annotations,
+)
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -153,6 +157,36 @@ async def set_profile_endpoint(req: SetProfileRequest):
             status_code=500,
             content={"success": False, "error": str(e)},
         )
+
+
+@router.post("/apply-annotations")
+async def apply_annotations_endpoint(req: Request):
+    """annotation 세트를 DB에 일괄 적용한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        body = await req.json()
+        annotation_set = body.get("annotation_set", {})
+        result = await apply_annotations(pool, annotation_set)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/remove-annotations")
+async def remove_annotations_endpoint(req: Request):
+    """annotation을 일괄 제거한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        body = await req.json()
+        table_names = body.get("table_names", [])
+        result = await remove_annotations(pool, table_names)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
 @router.post("/schema-info")

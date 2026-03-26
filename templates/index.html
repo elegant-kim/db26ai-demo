@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=15">
+    <link rel="stylesheet" href="/static/css/style.css?v=16">
 </head>
 <body>
     <div id="app">
@@ -122,6 +122,17 @@
                         </svg>
                         참조 테이블
                     </h3>
+                    <!-- Annotation 적용/제거 버튼 -->
+                    <div v-if="schemaInfo && schemaInfo.length > 0" class="annotation-btn-row">
+                        <button class="btn-anno btn-anno-apply" @click="applyAnnotations" :disabled="annotationApplying || annotationRemoving">
+                            <span v-if="annotationApplying"><span class="spinner-sm"></span></span>
+                            <span v-else>Annotation 적용</span>
+                        </button>
+                        <button class="btn-anno btn-anno-remove" @click="removeAnnotations" :disabled="annotationApplying || annotationRemoving">
+                            <span v-if="annotationRemoving"><span class="spinner-sm"></span></span>
+                            <span v-else>Annotation 제거</span>
+                        </button>
+                    </div>
                     <div v-if="schemaLoading" class="schema-loading">
                         <span class="spinner-sm"></span> 스키마 로딩 중...
                     </div>
@@ -132,10 +143,14 @@
                                 <span class="schema-table-name">[[ tbl.owner ]].[[ tbl.table_name ]]</span>
                                 <span class="schema-table-meta">([[ tbl.column_count ]]컬럼<span v-if="tbl.num_rows != null">, [[ tbl.num_rows?.toLocaleString() ]]행</span>)</span>
                             </div>
+                            <div v-if="tbl.annotation" class="schema-table-anno">[[ tbl.annotation ]]</div>
                             <div v-if="schemaExpanded[tbl.table_name]" class="schema-columns">
-                                <div v-for="col in tbl.columns" :key="col.column_name" class="schema-col-row">
-                                    <span class="schema-col-name">[[ col.column_name ]]</span>
-                                    <span class="schema-col-type">[[ col.data_type ]]</span>
+                                <div v-for="col in tbl.columns" :key="col.column_name" class="schema-col-item">
+                                    <div class="schema-col-row">
+                                        <span class="schema-col-name">[[ col.column_name ]]</span>
+                                        <span class="schema-col-type">[[ col.data_type ]]</span>
+                                    </div>
+                                    <div v-if="col.annotation" class="schema-col-anno">[[ col.annotation ]]</div>
                                 </div>
                             </div>
                         </div>
@@ -855,6 +870,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=13"></script>
+    <script src="/static/js/app.js?v=14"></script>
 </body>
 </html>

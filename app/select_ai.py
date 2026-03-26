@@ -297,12 +297,37 @@ async def get_schema_info(pool, profile_name: str) -> dict:
                     row_count_row = await cursor.fetchone()
                     num_rows = row_count_row[0] if row_count_row else None
 
+                    # Annotation 조회
+                    table_annotation = None
+                    col_annotations = {}
+                    try:
+                        await cursor.execute("""
+                            SELECT column_name, annotation_value
+                            FROM all_annotations_usage
+                            WHERE object_name = :tname AND annotation_name = 'DESCRIPTION'
+                        """, {"tname": name})
+                        for arow in await cursor.fetchall():
+                            aval = arow[1]
+                            if hasattr(aval, 'read'):
+                                aval = await _lob_to_str(aval)
+                            if arow[0] is None:
+                                table_annotation = aval
+                            else:
+                                col_annotations[arow[0]] = aval
+                    except Exception:
+                        pass
+
+                    # 컬럼에 annotation 추가
+                    for col in cols:
+                        col["annotation"] = col_annotations.get(col["column_name"])
+
                     tables.append({
                         "owner": owner,
                         "table_name": name,
                         "columns": cols,
                         "column_count": len(cols),
                         "num_rows": num_rows,
+                        "annotation": table_annotation,
                     })
                 except Exception as e:
                     tables.append({
@@ -315,3 +340,118 @@ async def get_schema_info(pool, profile_name: str) -> dict:
                     })
 
     return {"tables": tables}
+
+
+async def get_annotations(pool, owner: str, table_name: str) -> list:
+    """테이블/컬럼의 annotation을 조회한다."""
+    annotations = []
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""
+                    SELECT column_name, annotation_name, annotation_value
+                    FROM all_annotations_usage
+                    WHERE object_name = :tname AND object_type = 'TABLE'
+                    ORDER BY column_name NULLS FIRST, annotation_name
+                """, {"tname": table_name.upper()})
+                for row in await cursor.fetchall():
+                    val = row[2]
+                    if hasattr(val, 'read'):
+                        val = await _lob_to_str(val)
+                    annotations.append({
+                        "column_name": row[0],  # None이면 테이블 레벨
+                        "annotation_name": row[1],
+                        "annotation_value": val,
+                    })
+    except Exception:
+        pass
+    return annotations
+
+
+async def apply_annotations(pool, annotation_set: dict) -> dict:
+    """annotation 세트를 DB에 일괄 적용한다.
+    annotation_set = {
+        "CUSTOMERS": {
+            "_table": "고객 마스터 테이블",
+            "CUST_ID": "고객 고유 식별자",
+            ...
+        }
+    }
+    """
+    applied = []
+    errors = []
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for table_name, columns in annotation_set.items():
+                # 테이블 레벨 annotation
+                table_desc = columns.get("_table")
+                if table_desc:
+                    try:
+                        # 기존 annotation 제거 후 추가
+                        try:
+                            await cursor.execute(
+                                f'ALTER TABLE {table_name} ANNOTATIONS (DROP description)')
+                        except Exception:
+                            pass
+                        await cursor.execute(
+                            f"ALTER TABLE {table_name} ANNOTATIONS (ADD description '{table_desc}')")
+                        applied.append(f"{table_name} (table)")
+                    except Exception as e:
+                        errors.append(f"{table_name} (table): {str(e)}")
+
+                # 컬럼 레벨 annotation
+                for col_name, desc in columns.items():
+                    if col_name == "_table":
+                        continue
+                    try:
+                        try:
+                            await cursor.execute(
+                                f'ALTER TABLE {table_name} MODIFY ({col_name} ANNOTATIONS (DROP description))')
+                        except Exception:
+                            pass
+                        await cursor.execute(
+                            f"ALTER TABLE {table_name} MODIFY ({col_name} ANNOTATIONS (ADD description '{desc}'))")
+                        applied.append(f"{table_name}.{col_name}")
+                    except Exception as e:
+                        errors.append(f"{table_name}.{col_name}: {str(e)}")
+
+            await conn.commit()
+
+    return {"applied_count": len(applied), "error_count": len(errors), "errors": errors[:5]}
+
+
+async def remove_annotations(pool, table_names: list) -> dict:
+    """지정된 테이블들의 annotation을 일괄 제거한다."""
+    removed = 0
+    errors = []
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for table_name in table_names:
+                # 테이블 레벨
+                try:
+                    await cursor.execute(
+                        f'ALTER TABLE {table_name} ANNOTATIONS (DROP description)')
+                    removed += 1
+                except Exception:
+                    pass
+
+                # 컬럼 레벨: 먼저 annotation이 있는 컬럼 조회
+                try:
+                    await cursor.execute("""
+                        SELECT DISTINCT column_name FROM all_annotations_usage
+                        WHERE object_name = :tname AND column_name IS NOT NULL
+                    """, {"tname": table_name.upper()})
+                    cols = await cursor.fetchall()
+                    for (col_name,) in cols:
+                        try:
+                            await cursor.execute(
+                                f'ALTER TABLE {table_name} MODIFY ({col_name} ANNOTATIONS (DROP description))')
+                            removed += 1
+                        except Exception as e:
+                            errors.append(f"{table_name}.{col_name}: {str(e)}")
+                except Exception as e:
+                    errors.append(f"{table_name}: {str(e)}")
+
+            await conn.commit()
+
+    return {"removed_count": removed, "error_count": len(errors), "errors": errors[:5]}
