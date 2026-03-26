@@ -144,6 +144,43 @@ WHERE profile_name = :profile_name"""
         }
 
 
+async def get_explain_plan(pool, sql: str) -> dict:
+    """SQL 텍스트에 대한 EXPLAIN PLAN을 조회한다."""
+    stripped = sql.strip().rstrip(';').strip()
+    if not stripped.upper().startswith("SELECT"):
+        return {"error": "SELECT 문만 실행계획을 조회할 수 있습니다."}
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                stmt_id = "CLAUDE_PLAN"
+                # 기존 plan 삭제
+                await cursor.execute(
+                    "DELETE FROM plan_table WHERE statement_id = :sid",
+                    {"sid": stmt_id}
+                )
+                # EXPLAIN PLAN 실행
+                await cursor.execute(
+                    f"EXPLAIN PLAN SET STATEMENT_ID = '{stmt_id}' FOR {stripped}"
+                )
+                # DBMS_XPLAN으로 결과 조회
+                await cursor.execute("""
+                    SELECT plan_table_output
+                    FROM TABLE(DBMS_XPLAN.DISPLAY('PLAN_TABLE', :sid, 'TYPICAL'))
+                """, {"sid": stmt_id})
+                rows = await cursor.fetchall()
+                plan_text = "\n".join(r[0] for r in rows if r[0] is not None)
+                # 정리
+                await cursor.execute(
+                    "DELETE FROM plan_table WHERE statement_id = :sid",
+                    {"sid": stmt_id}
+                )
+                await conn.commit()
+                return {"plan": plan_text, "sql_used": stripped}
+    except Exception as e:
+        return {"error": str(e), "sql_used": stripped}
+
+
 async def execute_raw_sql(pool, sql: str) -> dict:
     """사용자가 입력한 SQL을 실행하고 결과를 반환한다. SELECT 문만 허용."""
     stripped = sql.strip().rstrip(';').strip()
@@ -192,3 +229,79 @@ async def get_current_schema(pool) -> str:
             await cursor.execute("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual")
             row = await cursor.fetchone()
             return row[0] if row else "UNKNOWN"
+
+
+async def get_schema_info(pool, profile_name: str) -> dict:
+    """프로필의 object_list에 등록된 테이블들의 컬럼 정보를 조회한다."""
+    # 1) 프로필 속성에서 object_list 추출
+    attrs = await get_profile_attributes(pool, profile_name)
+    object_list = []
+    for row in attrs.get("data", []):
+        attr_name = row.get("ATTRIBUTE_NAME", "")
+        attr_value = row.get("ATTRIBUTE_VALUE", "")
+        if attr_name == "object_list" and attr_value:
+            try:
+                parsed = json.loads(attr_value) if isinstance(attr_value, str) else attr_value
+                if isinstance(parsed, list):
+                    object_list = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    if not object_list:
+        return {"tables": [], "error": "프로필에 object_list가 없습니다."}
+
+    # 2) 각 테이블의 컬럼 정보 조회
+    tables = []
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for obj in object_list:
+                owner = obj.get("owner", "").upper()
+                name = obj.get("name", "").upper()
+                if not owner or not name:
+                    continue
+                try:
+                    await cursor.execute("""
+                        SELECT column_name, data_type, nullable, data_length, data_precision, data_scale
+                        FROM all_tab_columns
+                        WHERE owner = :owner AND table_name = :tname
+                        ORDER BY column_id
+                    """, {"owner": owner, "tname": name})
+                    cols = []
+                    for r in await cursor.fetchall():
+                        col_type = r[1]
+                        if r[4] is not None:  # data_precision
+                            col_type += f"({r[4]}" + (f",{r[5]}" if r[5] else "") + ")"
+                        elif r[3] and r[1] in ("VARCHAR2", "CHAR", "RAW"):
+                            col_type += f"({r[3]})"
+                        cols.append({
+                            "column_name": r[0],
+                            "data_type": col_type,
+                            "nullable": r[2],
+                        })
+
+                    # 행 수 조회
+                    await cursor.execute(f"""
+                        SELECT num_rows FROM all_tables
+                        WHERE owner = :owner AND table_name = :tname
+                    """, {"owner": owner, "tname": name})
+                    row_count_row = await cursor.fetchone()
+                    num_rows = row_count_row[0] if row_count_row else None
+
+                    tables.append({
+                        "owner": owner,
+                        "table_name": name,
+                        "columns": cols,
+                        "column_count": len(cols),
+                        "num_rows": num_rows,
+                    })
+                except Exception as e:
+                    tables.append({
+                        "owner": owner,
+                        "table_name": name,
+                        "columns": [],
+                        "column_count": 0,
+                        "num_rows": None,
+                        "error": str(e),
+                    })
+
+    return {"tables": tables}

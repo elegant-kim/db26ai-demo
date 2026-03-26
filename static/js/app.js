@@ -29,6 +29,9 @@ const app = createApp({
 
         // === Profile Info State ===
         const profileInfo = ref(null);
+        const schemaInfo = ref(null);
+        const schemaLoading = ref(false);
+        const schemaExpanded = ref({});
 
         // === Vector Search State ===
         const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
@@ -136,6 +139,7 @@ const app = createApp({
                 { action: 'chart', label: '차트' },
                 { action: 'narrate', label: '설명' },
                 { action: 'explainsql', label: 'SQL 해설' },
+                { action: 'explainplan', label: '실행계획' },
                 { action: 'showprompt', label: '프롬프트 보기' },
                 { action: 'summarize', label: '요약' },
             ],
@@ -143,6 +147,7 @@ const app = createApp({
                 { action: 'runsql', label: '실행' },
                 { action: 'narrate', label: '설명' },
                 { action: 'explainsql', label: 'SQL 해설' },
+                { action: 'explainplan', label: '실행계획' },
                 { action: 'showprompt', label: '프롬프트 보기' },
             ],
             narrate: [
@@ -266,9 +271,20 @@ const app = createApp({
             const action = selectedAction.value;
             const profileName = selectedProfile.value;
 
+            // 이전 질문 찾기 (같은 프로필의 마지막 user 메시지)
+            let prevPrompt = null;
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+                const m = messages.value[i];
+                if (m.role === 'user' && !m.isSql) {
+                    prevPrompt = m.content;
+                    break;
+                }
+            }
+
             messages.value.push({
                 role: 'user',
                 content: prompt,
+                prevPrompt: prevPrompt,
                 timestamp: formatTime(),
             });
 
@@ -438,6 +454,56 @@ const app = createApp({
                 msg.showChart = !msg.showChart;
                 if (msg.showChart) {
                     nextTick(() => renderChart(msgIdx));
+                }
+                return;
+            }
+
+            // 실행계획: showsql 캐시에서 SQL 추출 후 /api/explain-plan 호출
+            if (action === 'explainplan') {
+                // SQL 텍스트 확보 (showsql 캐시 또는 현재 msg.sql)
+                let sqlText = msg.sql;
+                if (!sqlText && msg.cachedActions && msg.cachedActions['showsql']) {
+                    sqlText = msg.cachedActions['showsql'];
+                }
+                if (!sqlText) {
+                    // showsql을 먼저 호출하여 SQL 획득
+                    showToast('SQL을 먼저 확인해주세요. (SQL 보기 클릭)', 'error');
+                    return;
+                }
+                if (msg.cachedActions && msg.cachedActions['explainplan']) {
+                    msg.explainPlan = msg.cachedActions['explainplan'];
+                    msg.action = 'explainplan';
+                    scrollToBottom();
+                    return;
+                }
+                msg.actionLoading = true;
+                msg.actionLoadingText = '실행계획을 조회하고 있습니다... (0초)';
+                let planElapsed = 0;
+                const planTimer = setInterval(() => {
+                    planElapsed++;
+                    msg.actionLoadingText = `실행계획을 조회하고 있습니다... (${planElapsed}초)`;
+                }, 1000);
+                try {
+                    const response = await fetch('/api/explain-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sql: sqlText }),
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        msg.explainPlan = data.plan;
+                        msg.cachedActions['explainplan'] = data.plan;
+                        msg.action = 'explainplan';
+                    } else {
+                        showToast(data.error || '실행계획 조회 실패', 'error');
+                    }
+                } catch (err) {
+                    showToast('실행계획 조회 실패: ' + err.message, 'error');
+                } finally {
+                    clearInterval(planTimer);
+                    msg.actionLoading = false;
+                    msg.actionLoadingText = '';
+                    scrollToBottom();
                 }
                 return;
             }
@@ -1004,6 +1070,7 @@ const app = createApp({
                         selectedProfile.value = defaultProfile ? defaultProfile.profile_name : data.profiles[0].profile_name;
                         updateExampleQuestions(selectedProfile.value);
                         await callSetProfile(selectedProfile.value);
+                        loadSchemaInfo(selectedProfile.value);
                     }
                 } else {
                     profiles.value = [];
@@ -1058,10 +1125,36 @@ const app = createApp({
             }
         }
 
+        async function loadSchemaInfo(profileName) {
+            schemaLoading.value = true;
+            schemaInfo.value = null;
+            schemaExpanded.value = {};
+            try {
+                const response = await fetch('/api/schema-info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_name: profileName }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    schemaInfo.value = data.tables || [];
+                }
+            } catch (err) {
+                schemaInfo.value = [];
+            } finally {
+                schemaLoading.value = false;
+            }
+        }
+
+        function toggleSchemaTable(tableName) {
+            schemaExpanded.value[tableName] = !schemaExpanded.value[tableName];
+        }
+
         async function onProfileChange() {
             if (selectedProfile.value) {
                 updateExampleQuestions(selectedProfile.value);
                 await callSetProfile(selectedProfile.value);
+                loadSchemaInfo(selectedProfile.value);
             }
         }
 
@@ -1080,6 +1173,10 @@ const app = createApp({
             selectedProfile,
             onProfileChange,
             profileInfo,
+            schemaInfo,
+            schemaLoading,
+            schemaExpanded,
+            toggleSchemaTable,
             toast,
             highlightOracleSQL,
             highlightSQLWithLines,

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, list_profiles, set_profile, get_profile_attributes, execute_raw_sql, get_current_schema
+from app.select_ai import ask_select_ai, list_profiles, set_profile, get_profile_attributes, execute_raw_sql, get_current_schema, get_schema_info, get_explain_plan
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -148,6 +148,46 @@ async def set_profile_endpoint(req: SetProfileRequest):
             attrs = await get_profile_attributes(pool, req.profile_name)
             result["attributes"] = attrs
         return result
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/schema-info")
+async def schema_info_endpoint(req: SetProfileRequest):
+    """프로필에 등록된 테이블의 컬럼 정보를 조회한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+    try:
+        result = await get_schema_info(pool, req.profile_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/explain-plan")
+async def explain_plan_endpoint(req: ExecuteSqlRequest):
+    """SQL에 대한 실행계획을 조회한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+    try:
+        result = await get_explain_plan(pool, req.sql)
+        if "error" in result:
+            return {"success": False, "error": result["error"], "sql_used": result.get("sql_used")}
+        return {"success": True, **result}
     except Exception as e:
         return JSONResponse(
             status_code=500,

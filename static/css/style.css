@@ -246,6 +246,85 @@ html, body {
     appearance: auto;
 }
 
+/* Schema Viewer */
+.schema-loading {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 0;
+}
+
+.schema-tree {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.schema-table-item {
+    margin-bottom: 2px;
+}
+
+.schema-table-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: background 0.15s;
+}
+
+.schema-table-header:hover {
+    background: #f5f5f5;
+}
+
+.schema-toggle {
+    font-size: 9px;
+    width: 12px;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.schema-table-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 11px;
+}
+
+.schema-table-meta {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.schema-columns {
+    padding: 2px 0 4px 20px;
+}
+
+.schema-col-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 6px;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.schema-col-name {
+    color: var(--text-primary);
+}
+
+.schema-col-type {
+    color: var(--oracle-red);
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.schema-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 0;
+}
+
 /* === Chat Area === */
 .chat-area {
     flex: 1;
@@ -1141,11 +1220,30 @@ html, body {
 }
 
 /* Explain plan output */
+.explain-plan-section {
+    margin: 8px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.explain-plan-header {
+    background: #2d2d2d;
+    color: #e0e0e0;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .plan-code {
     font-size: 11px;
     line-height: 1.4;
     white-space: pre;
     overflow-x: auto;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px 12px;
+    margin: 0;
 }
 
 /* Profile result in chat */
@@ -1180,4 +1278,23 @@ html, body {
     border-radius: 4px;
     padding: 1px 5px;
     margin-bottom: 4px;
+}
+
+.prev-prompt-ref {
+    font-size: 11px;
+    color: #999;
+    background: rgba(0,0,0,0.04);
+    border-left: 2px solid var(--oracle-red);
+    padding: 3px 8px;
+    margin-bottom: 6px;
+    border-radius: 0 4px 4px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.prev-prompt-icon {
+    color: var(--oracle-red);
+    font-weight: 600;
 }

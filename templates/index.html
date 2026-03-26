@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=14">
+    <link rel="stylesheet" href="/static/css/style.css?v=15">
 </head>
 <body>
     <div id="app">
@@ -110,6 +110,38 @@
                         <option v-for="q in exampleQuestions" :key="q" :value="q">[[ q ]]</option>
                     </select>
                 </div>
+
+                <!-- 참조 테이블 (스키마 뷰어) -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="3" y1="15" x2="21" y2="15"></line>
+                            <line x1="9" y1="3" x2="9" y2="21"></line>
+                        </svg>
+                        참조 테이블
+                    </h3>
+                    <div v-if="schemaLoading" class="schema-loading">
+                        <span class="spinner-sm"></span> 스키마 로딩 중...
+                    </div>
+                    <div v-else-if="schemaInfo && schemaInfo.length > 0" class="schema-tree">
+                        <div v-for="tbl in schemaInfo" :key="tbl.table_name" class="schema-table-item">
+                            <div class="schema-table-header" @click="toggleSchemaTable(tbl.table_name)">
+                                <span class="schema-toggle">[[ schemaExpanded[tbl.table_name] ? '▼' : '▶' ]]</span>
+                                <span class="schema-table-name">[[ tbl.owner ]].[[ tbl.table_name ]]</span>
+                                <span class="schema-table-meta">([[ tbl.column_count ]]컬럼<span v-if="tbl.num_rows != null">, [[ tbl.num_rows?.toLocaleString() ]]행</span>)</span>
+                            </div>
+                            <div v-if="schemaExpanded[tbl.table_name]" class="schema-columns">
+                                <div v-for="col in tbl.columns" :key="col.column_name" class="schema-col-row">
+                                    <span class="schema-col-name">[[ col.column_name ]]</span>
+                                    <span class="schema-col-type">[[ col.data_type ]]</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="schema-empty">프로필을 선택하면 참조 테이블이 표시됩니다.</div>
+                </div>
             </aside>
 
             <!-- 메인 채팅 영역 -->
@@ -127,6 +159,9 @@
                         <div v-if="msg.role === 'user'" class="message message-user">
                             <div class="message-bubble bubble-user">
                                 <span v-if="msg.isSql" class="user-sql-badge">SQL</span>
+                                <div v-if="msg.prevPrompt" class="prev-prompt-ref">
+                                    <span class="prev-prompt-icon">↩</span> 이전: [[ msg.prevPrompt ]]
+                                </div>
                                 <p>[[ msg.content ]]</p>
                                 <span class="message-time">[[ msg.timestamp ]]</span>
                             </div>
@@ -232,6 +267,12 @@
                                     <!-- 텍스트 결과 (narrate, explainsql, showprompt, summarize, chat) -->
                                     <div v-if="msg.textResult" class="text-result">
                                         <pre class="text-pre">[[ msg.textResult ]]</pre>
+                                    </div>
+
+                                    <!-- 실행계획 -->
+                                    <div v-if="msg.explainPlan" class="explain-plan-section">
+                                        <div class="explain-plan-header">Execution Plan</div>
+                                        <pre class="plan-code">[[ msg.explainPlan ]]</pre>
                                     </div>
 
                                     <!-- 경과 시간 -->
@@ -814,6 +855,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=11"></script>
+    <script src="/static/js/app.js?v=12"></script>
 </body>
 </html>
