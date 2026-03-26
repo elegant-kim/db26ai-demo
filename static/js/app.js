@@ -61,14 +61,16 @@ const app = createApp({
         const explainPlanLoading = ref(false);
 
         // === Constants ===
-        const actionModes = [
-            { value: 'runsql', label: '실행' },
+        const actionModesLeft = [
             { value: 'showsql', label: 'SQL 보기' },
             { value: 'narrate', label: '설명' },
-            { value: 'explainsql', label: 'SQL 해설' },
             { value: 'showprompt', label: '프롬프트' },
-            { value: 'summarize', label: '요약' },
             { value: 'chat', label: '대화' },
+        ];
+        const actionModesRight = [
+            { value: 'runsql', label: '실행' },
+            { value: 'explainsql', label: 'SQL 해설' },
+            { value: 'summarize', label: '요약' },
         ];
 
         const exampleQuestions = ref([
@@ -1012,7 +1014,8 @@ const app = createApp({
             selectedAction,
             messages,
             chatMessages,
-            actionModes,
+            actionModesLeft,
+            actionModesRight,
             exampleQuestions,
             setPrompt,
             sendQuestion,

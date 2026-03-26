@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=11">
+    <link rel="stylesheet" href="/static/css/style.css?v=12">
 </head>
 <body>
     <div id="app">
@@ -73,13 +73,26 @@
                         </svg>
                         실행 모드
                     </h3>
-                    <label v-for="mode in actionModes" :key="mode.value" class="radio-label">
-                        <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
-                        <span class="radio-text">
-                            <strong>[[ mode.value ]]</strong>
-                            <small>[[ mode.label ]]</small>
-                        </span>
-                    </label>
+                    <div class="action-mode-grid">
+                        <div class="action-mode-col">
+                            <label v-for="mode in actionModesLeft" :key="mode.value" class="radio-label">
+                                <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
+                                <span class="radio-text">
+                                    <strong>[[ mode.value ]]</strong>
+                                    <small>[[ mode.label ]]</small>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="action-mode-col">
+                            <label v-for="mode in actionModesRight" :key="mode.value" class="radio-label">
+                                <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
+                                <span class="radio-text">
+                                    <strong>[[ mode.value ]]</strong>
+                                    <small>[[ mode.label ]]</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 예시 질문 -->
@@ -797,6 +810,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=7"></script>
+    <script src="/static/js/app.js?v=8"></script>
 </body>
 </html>

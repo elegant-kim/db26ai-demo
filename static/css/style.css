@@ -192,6 +192,17 @@ html, body {
     font-size: 12px;
 }
 
+.action-mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 12px;
+}
+
+.action-mode-col {
+    display: flex;
+    flex-direction: column;
+}
+
 .radio-label {
     display: flex;
     align-items: flex-start;
