@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=12">
+    <link rel="stylesheet" href="/static/css/style.css?v=13">
 </head>
 <body>
     <div id="app">
@@ -105,12 +105,10 @@
                         </svg>
                         예시 질문
                     </h3>
-                    <button
-                        v-for="q in exampleQuestions"
-                        :key="q"
-                        class="example-btn"
-                        @click="setPrompt(q)"
-                    >[[ q ]]</button>
+                    <select class="example-select" @change="setPrompt($event.target.value); $event.target.selectedIndex = 0">
+                        <option value="" disabled selected>질문을 선택하세요...</option>
+                        <option v-for="q in exampleQuestions" :key="q" :value="q">[[ q ]]</option>
+                    </select>
                 </div>
             </aside>
 
@@ -810,6 +808,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=8"></script>
+    <script src="/static/js/app.js?v=9"></script>
 </body>
 </html>

@@ -22,7 +22,7 @@ const app = createApp({
         const sqlInput = ref('');
         const isLoading = ref(false);
         const isSqlLoading = ref(false);
-        const selectedAction = ref('runsql');
+        const selectedAction = ref('showsql');
         const messages = ref([]);
         const chatMessages = ref(null);
         const chartInstances = {};
@@ -73,13 +73,38 @@ const app = createApp({
             { value: 'summarize', label: '요약' },
         ];
 
-        const exampleQuestions = ref([
-            '매출 상위 5개 제품을 알려주세요',
-            '월별 매출 추이를 알려주세요',
-            '국가별 고객 수를 알려주세요',
-            '연도별 총 매출액을 알려주세요',
-            '채널별 주문 건수를 알려주세요',
-        ]);
+        const exampleQuestionsMap = {
+            SH: [
+                '매출 상위 5개 제품을 알려주세요',
+                '월별 매출 추이를 알려주세요',
+                '국가별 고객 수를 알려주세요',
+                '연도별 총 매출액을 알려주세요',
+                '채널별 주문 건수를 알려주세요',
+                '2023년 인터넷 채널에서 가장 많이 판매된 제품 카테고리 상위 3개와 매출액을 알려줘',
+                '미국 고객 중 연간 구매금액이 가장 높은 상위 10명의 이름과 총 구매금액은?',
+                '프로모션 유형별 평균 할인율과 그에 따른 매출 변화를 분석해줘',
+                '분기별 매출 성장률을 전년 동기 대비로 보여줘',
+                '고객 연령대별 선호 제품 카테고리와 평균 구매단가를 알려줘',
+            ],
+            SSB: [
+                '총 매출액이 가장 높은 공급업체 5곳을 알려줘',
+                '연도별 총 주문금액 추이를 보여줘',
+                '지역별 고객 수와 평균 주문금액을 알려줘',
+                '제품 브랜드별 판매수량 순위를 알려줘',
+                '월별 주문건수와 평균 할인율을 보여줘',
+                '1997년에 아시아 지역 고객이 주문한 제품 중 매출 상위 5개 브랜드는?',
+                '공급업체 국가별 평균 공급비용과 총 매출을 비교해줘',
+                '할인율 20% 이상 적용된 주문의 연도별 매출 비중을 분석해줘',
+                '제품 카테고리별 수익성(매출-공급비용)이 가장 높은 상위 5개 제품은?',
+                '분기별 주문량 추이와 전분기 대비 증감률을 보여줘',
+            ],
+            DEFAULT: [
+                '테이블 목록을 보여줘',
+                '전체 레코드 수를 알려줘',
+                '최근 데이터 10건을 보여줘',
+            ],
+        };
+        const exampleQuestions = ref(exampleQuestionsMap.SH);
 
         const vectorExampleQuestions = ref([
             '연차 사용 규정을 알려주세요',
@@ -935,8 +960,10 @@ const app = createApp({
                 if (data.success && data.profiles.length > 0) {
                     profiles.value = data.profiles;
                     if (!selectedProfile.value) {
-                        selectedProfile.value = data.profiles[0].profile_name;
-                        // 최초 로드 시 첫 번째 프로필로 SET_PROFILE 실행
+                        // GROQ_SH_PROFILE 우선 선택, 없으면 첫 번째 프로필
+                        const defaultProfile = data.profiles.find(p => p.profile_name === 'GROQ_SH_PROFILE');
+                        selectedProfile.value = defaultProfile ? defaultProfile.profile_name : data.profiles[0].profile_name;
+                        updateExampleQuestions(selectedProfile.value);
                         await callSetProfile(selectedProfile.value);
                     }
                 } else {
@@ -981,8 +1008,20 @@ const app = createApp({
             }
         }
 
+        function updateExampleQuestions(profileName) {
+            const upper = (profileName || '').toUpperCase();
+            if (upper.includes('SSB')) {
+                exampleQuestions.value = exampleQuestionsMap.SSB;
+            } else if (upper.includes('SH')) {
+                exampleQuestions.value = exampleQuestionsMap.SH;
+            } else {
+                exampleQuestions.value = exampleQuestionsMap.DEFAULT;
+            }
+        }
+
         async function onProfileChange() {
             if (selectedProfile.value) {
+                updateExampleQuestions(selectedProfile.value);
                 await callSetProfile(selectedProfile.value);
             }
         }

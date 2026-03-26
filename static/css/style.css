@@ -234,24 +234,16 @@ html, body {
     font-size: 11px;
 }
 
-.example-btn {
-    display: block;
+.example-select {
     width: 100%;
-    text-align: left;
     padding: 8px 12px;
-    margin-bottom: 6px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
     font-size: 13px;
     color: var(--text-primary);
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-}
-
-.example-btn:hover {
-    border-color: var(--oracle-red);
-    background: #fff5f4;
+    appearance: auto;
 }
 
 /* === Chat Area === */
