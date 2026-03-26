@@ -373,6 +373,7 @@ async def apply_annotations(pool, annotation_set: dict) -> dict:
     annotation_set = {
         "CUSTOMERS": {
             "_table": "고객 마스터 테이블",
+            "_owner": "SH",
             "CUST_ID": "고객 고유 식별자",
             ...
         }
@@ -382,55 +383,69 @@ async def apply_annotations(pool, annotation_set: dict) -> dict:
     errors = []
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
+            # 현재 스키마 확인
+            await cursor.execute("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual")
+            current_schema = (await cursor.fetchone())[0]
+
             for table_name, columns in annotation_set.items():
+                owner = columns.get("_owner", current_schema)
+                fqn = f"{owner}.{table_name}" if owner else table_name
+
                 # 테이블 레벨 annotation
                 table_desc = columns.get("_table")
                 if table_desc:
                     try:
-                        # 기존 annotation 제거 후 추가
                         try:
                             await cursor.execute(
-                                f'ALTER TABLE {table_name} ANNOTATIONS (DROP description)')
+                                f'ALTER TABLE {fqn} ANNOTATIONS (DROP description)')
                         except Exception:
                             pass
+                        # 바인드 변수 사용 불가 (DDL), q-quote 사용
+                        safe_desc = table_desc.replace("'", "''")
                         await cursor.execute(
-                            f"ALTER TABLE {table_name} ANNOTATIONS (ADD description '{table_desc}')")
-                        applied.append(f"{table_name} (table)")
+                            f"ALTER TABLE {fqn} ANNOTATIONS (ADD description '{safe_desc}')")
+                        applied.append(f"{fqn} (table)")
                     except Exception as e:
-                        errors.append(f"{table_name} (table): {str(e)}")
+                        errors.append(f"{fqn} (table): {str(e)}")
 
                 # 컬럼 레벨 annotation
                 for col_name, desc in columns.items():
-                    if col_name == "_table":
+                    if col_name.startswith("_"):
                         continue
                     try:
                         try:
                             await cursor.execute(
-                                f'ALTER TABLE {table_name} MODIFY ({col_name} ANNOTATIONS (DROP description))')
+                                f'ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (DROP description))')
                         except Exception:
                             pass
+                        safe_desc = desc.replace("'", "''")
                         await cursor.execute(
-                            f"ALTER TABLE {table_name} MODIFY ({col_name} ANNOTATIONS (ADD description '{desc}'))")
-                        applied.append(f"{table_name}.{col_name}")
+                            f"ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (ADD description '{safe_desc}'))")
+                        applied.append(f"{fqn}.{col_name}")
                     except Exception as e:
-                        errors.append(f"{table_name}.{col_name}: {str(e)}")
+                        errors.append(f"{fqn}.{col_name}: {str(e)}")
 
             await conn.commit()
 
-    return {"applied_count": len(applied), "error_count": len(errors), "errors": errors[:5]}
+    return {"applied_count": len(applied), "error_count": len(errors), "errors": errors[:10]}
 
 
-async def remove_annotations(pool, table_names: list) -> dict:
+async def remove_annotations(pool, table_names: list, owner: str = None) -> dict:
     """지정된 테이블들의 annotation을 일괄 제거한다."""
     removed = 0
     errors = []
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
+            if not owner:
+                await cursor.execute("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual")
+                owner = (await cursor.fetchone())[0]
+
             for table_name in table_names:
+                fqn = f"{owner}.{table_name}"
                 # 테이블 레벨
                 try:
                     await cursor.execute(
-                        f'ALTER TABLE {table_name} ANNOTATIONS (DROP description)')
+                        f'ALTER TABLE {fqn} ANNOTATIONS (DROP description)')
                     removed += 1
                 except Exception:
                     pass
@@ -445,10 +460,10 @@ async def remove_annotations(pool, table_names: list) -> dict:
                     for (col_name,) in cols:
                         try:
                             await cursor.execute(
-                                f'ALTER TABLE {table_name} MODIFY ({col_name} ANNOTATIONS (DROP description))')
+                                f'ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (DROP description))')
                             removed += 1
                         except Exception as e:
-                            errors.append(f"{table_name}.{col_name}: {str(e)}")
+                            errors.append(f"{fqn}.{col_name}: {str(e)}")
                 except Exception as e:
                     errors.append(f"{table_name}: {str(e)}")
 

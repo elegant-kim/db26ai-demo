@@ -1313,16 +1313,21 @@ const app = createApp({
 
         function getAnnotationSet() {
             const profile = (selectedProfile.value || '').toUpperCase();
-            if (profile.includes('SSB')) return annotationSets.SSB;
-            if (profile.includes('SH')) return annotationSets.SH;
+            if (profile.includes('SSB')) return { owner: 'SSB', tables: annotationSets.SSB };
+            if (profile.includes('SH')) return { owner: 'SH', tables: annotationSets.SH };
             return null;
         }
 
         async function applyAnnotations() {
-            const annoSet = getAnnotationSet();
-            if (!annoSet) {
+            const info = getAnnotationSet();
+            if (!info) {
                 showToast('현재 프로필에 해당하는 Annotation 세트가 없습니다.', 'error');
                 return;
+            }
+            // 각 테이블에 _owner 주입
+            const annoSet = {};
+            for (const [tbl, cols] of Object.entries(info.tables)) {
+                annoSet[tbl] = { ...cols, _owner: info.owner };
             }
             annotationApplying.value = true;
             try {
@@ -1350,18 +1355,18 @@ const app = createApp({
         }
 
         async function removeAnnotations() {
-            const annoSet = getAnnotationSet();
-            if (!annoSet) {
+            const info = getAnnotationSet();
+            if (!info) {
                 showToast('현재 프로필에 해당하는 Annotation 세트가 없습니다.', 'error');
                 return;
             }
             annotationRemoving.value = true;
             try {
-                const tableNames = Object.keys(annoSet);
+                const tableNames = Object.keys(info.tables);
                 const response = await fetch('/api/remove-annotations', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ table_names: tableNames }),
+                    body: JSON.stringify({ table_names: tableNames, owner: info.owner }),
                 });
                 const data = await response.json();
                 if (data.success) {

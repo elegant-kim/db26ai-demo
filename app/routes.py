@@ -183,7 +183,8 @@ async def remove_annotations_endpoint(req: Request):
     try:
         body = await req.json()
         table_names = body.get("table_names", [])
-        result = await remove_annotations(pool, table_names)
+        owner = body.get("owner")
+        result = await remove_annotations(pool, table_names, owner)
         return {"success": True, **result}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
