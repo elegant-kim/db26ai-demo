@@ -301,11 +301,15 @@ const app = createApp({
             }, 1500);
 
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
                 const response = await fetch('/api/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt, action, profile_name: profileName }),
+                    signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
 
                 const data = await response.json();
                 clearInterval(loadingInterval);
@@ -319,7 +323,11 @@ const app = createApp({
                 }
             } catch (err) {
                 clearInterval(loadingInterval);
-                assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                if (err.name === 'AbortError') {
+                    assistantMsg.error = '요청 시간이 초과되었습니다 (120초). 질문을 단순화하거나 다시 시도해 주세요.';
+                } else {
+                    assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                }
             } finally {
                 assistantMsg.loading = false;
                 isLoading.value = false;
@@ -354,11 +362,15 @@ const app = createApp({
 
             isSqlLoading.value = true;
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
                 const response = await fetch('/api/execute-sql', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ sql }),
+                    signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
                 const data = await response.json();
                 if (data.success) {
                     assistantMsg.elapsed_ms = data.elapsed_ms;
@@ -375,7 +387,11 @@ const app = createApp({
                     }
                 }
             } catch (err) {
-                assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                if (err.name === 'AbortError') {
+                    assistantMsg.error = '요청 시간이 초과되었습니다 (120초). 질문을 단순화하거나 다시 시도해 주세요.';
+                } else {
+                    assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                }
             } finally {
                 assistantMsg.loading = false;
                 isSqlLoading.value = false;
@@ -430,6 +446,8 @@ const app = createApp({
 
             msg.actionLoading = true;
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
                 const response = await fetch('/api/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -438,7 +456,9 @@ const app = createApp({
                         action: action,
                         profile_name: msg.profileName,
                     }),
+                    signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
 
                 const data = await response.json();
                 if (data.success) {
@@ -450,7 +470,11 @@ const app = createApp({
                     showToast(data.error || '오류가 발생했습니다.', 'error');
                 }
             } catch (err) {
-                showToast('서버 연결에 실패했습니다.', 'error');
+                if (err.name === 'AbortError') {
+                    showToast('요청 시간이 초과되었습니다 (120초).', 'error');
+                } else {
+                    showToast('서버 연결에 실패했습니다.', 'error');
+                }
             } finally {
                 msg.actionLoading = false;
                 scrollToBottom();
