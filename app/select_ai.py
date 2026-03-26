@@ -304,7 +304,7 @@ async def get_schema_info(pool, profile_name: str) -> dict:
                         await cursor.execute("""
                             SELECT column_name, annotation_value
                             FROM all_annotations_usage
-                            WHERE object_name = :tname AND annotation_name = 'DESCRIPTION'
+                            WHERE object_name = :tname AND annotation_name = 'DISPLAY'
                         """, {"tname": name})
                         for arow in await cursor.fetchall():
                             aval = arow[1]
@@ -369,16 +369,7 @@ async def get_annotations(pool, owner: str, table_name: str) -> list:
 
 
 async def apply_annotations(pool, annotation_set: dict) -> dict:
-    """annotation 세트를 DB에 일괄 적용한다.
-    annotation_set = {
-        "CUSTOMERS": {
-            "_table": "고객 마스터 테이블",
-            "_owner": "SH",
-            "CUST_ID": "고객 고유 식별자",
-            ...
-        }
-    }
-    """
+    """annotation 세트를 DB에 일괄 적용한다."""
     applied = []
     errors = []
     async with pool.acquire() as conn:
@@ -397,13 +388,12 @@ async def apply_annotations(pool, annotation_set: dict) -> dict:
                     try:
                         try:
                             await cursor.execute(
-                                f'ALTER TABLE {fqn} ANNOTATIONS (DROP description)')
+                                f'ALTER TABLE {fqn} ANNOTATIONS (DROP Display)')
                         except Exception:
                             pass
-                        # 바인드 변수 사용 불가 (DDL), q-quote 사용
                         safe_desc = table_desc.replace("'", "''")
                         await cursor.execute(
-                            f"ALTER TABLE {fqn} ANNOTATIONS (ADD description '{safe_desc}')")
+                            f"ALTER TABLE {fqn} ANNOTATIONS (ADD Display '{safe_desc}')")
                         applied.append(f"{fqn} (table)")
                     except Exception as e:
                         errors.append(f"{fqn} (table): {str(e)}")
@@ -415,12 +405,12 @@ async def apply_annotations(pool, annotation_set: dict) -> dict:
                     try:
                         try:
                             await cursor.execute(
-                                f'ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (DROP description))')
+                                f'ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (DROP Display))')
                         except Exception:
                             pass
                         safe_desc = desc.replace("'", "''")
                         await cursor.execute(
-                            f"ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (ADD description '{safe_desc}'))")
+                            f"ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (ADD Display '{safe_desc}'))")
                         applied.append(f"{fqn}.{col_name}")
                     except Exception as e:
                         errors.append(f"{fqn}.{col_name}: {str(e)}")
@@ -445,22 +435,23 @@ async def remove_annotations(pool, table_names: list, owner: str = None) -> dict
                 # 테이블 레벨
                 try:
                     await cursor.execute(
-                        f'ALTER TABLE {fqn} ANNOTATIONS (DROP description)')
+                        f'ALTER TABLE {fqn} ANNOTATIONS (DROP Display)')
                     removed += 1
                 except Exception:
                     pass
 
-                # 컬럼 레벨: 먼저 annotation이 있는 컬럼 조회
+                # 컬럼 레벨: 먼저 Display annotation이 있는 컬럼 조회
                 try:
                     await cursor.execute("""
                         SELECT DISTINCT column_name FROM all_annotations_usage
                         WHERE object_name = :tname AND column_name IS NOT NULL
+                        AND annotation_name = 'DISPLAY'
                     """, {"tname": table_name.upper()})
                     cols = await cursor.fetchall()
                     for (col_name,) in cols:
                         try:
                             await cursor.execute(
-                                f'ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (DROP description))')
+                                f'ALTER TABLE {fqn} MODIFY ({col_name} ANNOTATIONS (DROP Display))')
                             removed += 1
                         except Exception as e:
                             errors.append(f"{fqn}.{col_name}: {str(e)}")

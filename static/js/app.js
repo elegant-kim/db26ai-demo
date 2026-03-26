@@ -1338,11 +1338,15 @@ const app = createApp({
                 });
                 const data = await response.json();
                 if (data.success) {
-                    showToast(`Annotation 적용 완료 (${data.applied_count}건)`);
-                    if (data.error_count > 0) {
-                        console.warn('Annotation errors:', data.errors);
+                    if (data.applied_count > 0) {
+                        showToast(`Annotation 적용 완료 (${data.applied_count}건${data.error_count > 0 ? ', 실패 ' + data.error_count + '건' : ''})`);
+                    } else {
+                        const errMsg = data.errors && data.errors.length > 0 ? data.errors[0] : '적용된 항목 없음';
+                        showToast('Annotation 적용 실패: ' + errMsg, 'error');
                     }
-                    // 스키마 뷰어 새로고침
+                    if (data.error_count > 0) {
+                        console.error('Annotation errors:', data.errors);
+                    }
                     await loadSchemaInfo(selectedProfile.value);
                 } else {
                     showToast('Annotation 적용 실패: ' + (data.error || ''), 'error');
