@@ -112,12 +112,15 @@ const app = createApp({
             '출장비 정산 절차를 알려주세요',
         ]);
 
-        const loadingMessages = [
-            '자연어 분석 중...',
-            'SQL 생성 중...',
-            '쿼리 실행 중...',
-            '결과 정리 중...',
-        ];
+        const loadingMessageMap = {
+            showsql: 'AI가 SQL을 생성하고 있습니다',
+            runsql: 'AI가 SQL을 생성하고 실행하고 있습니다',
+            narrate: 'AI가 자연어 설명을 생성하고 있습니다',
+            explainsql: 'AI가 SQL 해설을 작성하고 있습니다',
+            showprompt: 'AI 프롬프트를 조회하고 있습니다',
+            summarize: 'AI가 요약을 생성하고 있습니다',
+            chat: 'AI가 응답을 생성하고 있습니다',
+        };
 
         const vectorLoadingMessages = [
             '질문 임베딩 중...',
@@ -271,13 +274,14 @@ const app = createApp({
 
             userInput.value = '';
 
+            const baseLoadingText = loadingMessageMap[action] || 'AI가 처리하고 있습니다';
             const assistantMsg = reactive({
                 role: 'assistant',
                 action: action,
                 prompt: prompt,
                 profileName: profileName,
                 loading: true,
-                loadingText: loadingMessages[0],
+                loadingText: baseLoadingText + '... (0초)',
                 sql: null,
                 tableData: null,
                 textResult: null,
@@ -287,6 +291,7 @@ const app = createApp({
                 chartType: 'bar',
                 sqlExpanded: true,
                 actionLoading: false,
+                actionLoadingText: '',
                 cachedActions: {},
                 timestamp: formatTime(),
             });
@@ -294,10 +299,10 @@ const app = createApp({
             scrollToBottom();
 
             isLoading.value = true;
-            let loadIdx = 0;
+            let elapsedSec = 0;
             const loadingInterval = setInterval(() => {
-                loadIdx = (loadIdx + 1) % loadingMessages.length;
-                assistantMsg.loadingText = loadingMessages[loadIdx];
+                elapsedSec++;
+                assistantMsg.loadingText = baseLoadingText + `... (${elapsedSec}초)`;
             }, 1500);
 
             try {
@@ -444,7 +449,15 @@ const app = createApp({
                 return;
             }
 
+            const actionLabel = loadingMessageMap[action] || 'AI가 처리하고 있습니다';
             msg.actionLoading = true;
+            msg.actionLoadingText = actionLabel + '... (0초)';
+            let actionElapsed = 0;
+            const actionTimer = setInterval(() => {
+                actionElapsed++;
+                msg.actionLoadingText = actionLabel + `... (${actionElapsed}초)`;
+            }, 1000);
+            scrollToBottom();
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 120000);
@@ -476,7 +489,9 @@ const app = createApp({
                     showToast('서버 연결에 실패했습니다.', 'error');
                 }
             } finally {
+                clearInterval(actionTimer);
                 msg.actionLoading = false;
+                msg.actionLoadingText = '';
                 scrollToBottom();
             }
         }
