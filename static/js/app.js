@@ -1138,8 +1138,15 @@ const app = createApp({
                 const data = await response.json();
                 if (data.success) {
                     schemaInfo.value = data.tables || [];
+                    if (data.tables && data.tables.length === 0 && data.error) {
+                        console.warn('Schema info:', data.error);
+                    }
+                } else {
+                    console.error('Schema info error:', data.error);
+                    schemaInfo.value = [];
                 }
             } catch (err) {
+                console.error('Schema info fetch error:', err);
                 schemaInfo.value = [];
             } finally {
                 schemaLoading.value = false;

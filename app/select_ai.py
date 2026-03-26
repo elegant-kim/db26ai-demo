@@ -239,11 +239,21 @@ async def get_schema_info(pool, profile_name: str) -> dict:
     for row in attrs.get("data", []):
         attr_name = row.get("ATTRIBUTE_NAME", "")
         attr_value = row.get("ATTRIBUTE_VALUE", "")
-        if attr_name == "object_list" and attr_value:
+        if attr_name.lower() == "object_list" and attr_value:
             try:
                 parsed = json.loads(attr_value) if isinstance(attr_value, str) else attr_value
                 if isinstance(parsed, list):
                     object_list = parsed
+                elif isinstance(parsed, dict) and ("owner" in parsed or "name" in parsed):
+                    object_list.append(parsed)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # 개별 object_list 항목 (object_list[0], object_list[1] 등)
+        elif attr_name.lower().startswith("object_list[") and attr_value:
+            try:
+                parsed = json.loads(attr_value) if isinstance(attr_value, str) else attr_value
+                if isinstance(parsed, dict):
+                    object_list.append(parsed)
             except (json.JSONDecodeError, TypeError):
                 pass
 
