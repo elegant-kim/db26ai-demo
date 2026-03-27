@@ -1313,8 +1313,8 @@ const app = createApp({
 
         function getAnnotationSet() {
             const profile = (selectedProfile.value || '').toUpperCase();
-            if (profile.includes('SSB')) return { owner: 'SSB', tables: annotationSets.SSB };
-            if (profile.includes('SH')) return { owner: 'SH', tables: annotationSets.SH };
+            if (profile.includes('SSB')) return { owner: 'ADMIN', tables: annotationSets.SSB };
+            if (profile.includes('SH')) return { owner: 'ADMIN', tables: annotationSets.SH };
             return null;
         }
 

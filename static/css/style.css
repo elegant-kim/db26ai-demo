@@ -140,7 +140,7 @@ html, body {
 
 /* === Sidebar === */
 .sidebar {
-    width: 280px;
+    width: 320px;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
     padding: 16px;
