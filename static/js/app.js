@@ -146,6 +146,22 @@ const app = createApp({
         const recentSqlLoading = ref(false);
         const explainPlanLoading = ref(false);
 
+        // === AWR Analyzer State ===
+        const extraSubMenu = ref('awr-upload');
+        const awrProfileName = ref('');
+        const awrLoading = ref(false);
+        const awrError = ref('');
+        const awrAnalysis = ref(null);
+        const awrFilename = ref('');
+        const awrParseInfo = ref({});
+        const awrElapsedMs = ref(0);
+        const awrSessionId = ref('');
+        const awrDragOver = ref(false);
+        const awrFollowupInput = ref('');
+        const awrFollowupLoading = ref(false);
+        const awrFollowupMessages = ref([]);
+        const awrFollowupMessagesRef = ref(null);
+
         // === Constants ===
         const actionModesLeft = [
             { value: 'showsql', label: 'SQL 보기' },
@@ -1327,6 +1343,146 @@ const app = createApp({
             }
         }
 
+        // === AWR Analyzer Methods ===
+
+        const awrScoreColor = computed(() => {
+            const score = awrAnalysis.value?.overallScore || 0;
+            if (score >= 80) return '#28a745';
+            if (score >= 60) return '#ffc107';
+            if (score >= 40) return '#fd7e14';
+            return '#dc3545';
+        });
+
+        const awrScoreDash = computed(() => {
+            const score = awrAnalysis.value?.overallScore || 0;
+            const circumference = 2 * Math.PI * 50;
+            const filled = (score / 100) * circumference;
+            return `${filled} ${circumference}`;
+        });
+
+        function awrSnapshotLabel(key) {
+            const labels = {
+                dbName: 'DB Name',
+                instanceName: 'Instance',
+                startTime: '시작 시간',
+                endTime: '종료 시간',
+                elapsed: '경과 시간',
+                dbTime: 'DB Time',
+                isExadata: 'Exadata',
+            };
+            return labels[key] || key;
+        }
+
+        async function handleAwrFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                await analyzeAwrFile(file);
+            }
+            event.target.value = '';
+        }
+
+        function handleAwrFileDrop(event) {
+            awrDragOver.value = false;
+            const file = event.dataTransfer.files[0];
+            if (file && /\.(html?|htm)$/i.test(file.name)) {
+                analyzeAwrFile(file);
+            } else {
+                showToast('HTML 파일만 업로드 가능합니다.', 'error');
+            }
+        }
+
+        async function analyzeAwrFile(file) {
+            if (file.size > 20 * 1024 * 1024) {
+                showToast('파일 크기가 20MB를 초과합니다.', 'error');
+                return;
+            }
+
+            awrLoading.value = true;
+            awrError.value = '';
+            awrAnalysis.value = null;
+            awrFollowupMessages.value = [];
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (awrProfileName.value) {
+                formData.append('profile_name', awrProfileName.value);
+            }
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 180000);
+
+            try {
+                const response = await fetch('/api/awr/analyze', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal,
+                });
+                const data = await response.json();
+                clearTimeout(timeout);
+
+                if (data.success) {
+                    awrAnalysis.value = data.analysis;
+                    awrSessionId.value = data.session_id;
+                    awrFilename.value = data.filename;
+                    awrParseInfo.value = data.parse_info;
+                    awrElapsedMs.value = data.elapsed_ms;
+                    extraSubMenu.value = 'awr-result';
+                    showToast('AWR 분석이 완료되었습니다.', 'success');
+                } else {
+                    awrError.value = data.error || '분석에 실패했습니다.';
+                }
+            } catch (err) {
+                clearTimeout(timeout);
+                if (err.name === 'AbortError') {
+                    awrError.value = '분석 시간이 초과되었습니다. (3분)';
+                } else {
+                    awrError.value = err.message;
+                }
+            } finally {
+                awrLoading.value = false;
+            }
+        }
+
+        async function sendAwrFollowup() {
+            const question = awrFollowupInput.value.trim();
+            if (!question || awrFollowupLoading.value) return;
+
+            awrFollowupMessages.value.push({ role: 'user', content: question });
+            awrFollowupInput.value = '';
+
+            const assistantMsg = { role: 'assistant', content: '', loading: true };
+            awrFollowupMessages.value.push(assistantMsg);
+            awrFollowupLoading.value = true;
+
+            try {
+                const response = await fetch('/api/awr/followup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        question: question,
+                        session_id: awrSessionId.value,
+                        profile_name: awrProfileName.value,
+                    }),
+                });
+                const data = await response.json();
+                assistantMsg.loading = false;
+
+                if (data.success) {
+                    assistantMsg.content = data.answer;
+                } else {
+                    assistantMsg.content = '오류: ' + (data.error || '응답 생성에 실패했습니다.');
+                }
+            } catch (err) {
+                assistantMsg.loading = false;
+                assistantMsg.content = '오류: ' + err.message;
+            } finally {
+                awrFollowupLoading.value = false;
+                await nextTick();
+                const el = document.querySelector('.awr-followup-messages');
+                if (el) el.scrollTop = el.scrollHeight;
+            }
+        }
+
         onMounted(() => {
             checkHealth();
             loadProfiles();
@@ -1416,6 +1572,27 @@ const app = createApp({
             explainPlanLoading,
             fetchRecentSql,
             fetchExplainPlan,
+
+            // AWR Analyzer
+            extraSubMenu,
+            awrProfileName,
+            awrLoading,
+            awrError,
+            awrAnalysis,
+            awrFilename,
+            awrParseInfo,
+            awrElapsedMs,
+            awrSessionId,
+            awrDragOver,
+            awrFollowupInput,
+            awrFollowupLoading,
+            awrFollowupMessages,
+            awrScoreColor,
+            awrScoreDash,
+            awrSnapshotLabel,
+            handleAwrFileSelect,
+            handleAwrFileDrop,
+            sendAwrFollowup,
         };
     },
 });

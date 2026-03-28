@@ -1361,3 +1361,493 @@ html, body {
     color: var(--oracle-red);
     font-weight: 600;
 }
+
+/* === AWR Analyzer Styles === */
+
+/* 사이드바 분석 정보 */
+.awr-info-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.awr-info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.awr-info-label {
+    color: var(--text-secondary);
+}
+
+.awr-info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* 분석 중 */
+.awr-analyzing {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 24px;
+}
+
+.awr-analyzing-text {
+    flex: 1;
+}
+
+.awr-analyzing-text strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.awr-analyzing-text p {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* 결과 콘텐츠 */
+.awr-result-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* 종합 점수 & 요약 카드 */
+.awr-summary-card {
+    display: flex;
+    gap: 24px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-md);
+}
+
+.awr-score-section {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.awr-score-gauge {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.awr-gauge-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 120px;
+    height: 120px;
+}
+
+.awr-score-number {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    z-index: 1;
+}
+
+.awr-score-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    z-index: 1;
+}
+
+.awr-summary-text {
+    flex: 1;
+}
+
+.awr-summary-text h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.awr-summary-text p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    white-space: pre-wrap;
+}
+
+/* 섹션 카드 */
+.awr-section-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.awr-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--oracle-red);
+}
+
+/* Key-Value Grid */
+.awr-kv-grid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 6px 16px;
+    font-size: 13px;
+}
+
+.awr-kv-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.awr-kv-value {
+    color: var(--text-primary);
+}
+
+.awr-kv-highlight {
+    color: var(--oracle-red);
+    font-weight: 600;
+}
+
+/* Findings */
+.awr-findings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.awr-finding-item {
+    border-left: 4px solid;
+    padding: 12px 16px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--bg-secondary);
+}
+
+.awr-finding-critical {
+    border-left-color: #dc3545;
+}
+
+.awr-finding-warning {
+    border-left-color: #ffc107;
+}
+
+.awr-finding-info {
+    border-left-color: #17a2b8;
+}
+
+.awr-finding-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.awr-severity-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: white;
+    letter-spacing: 0.5px;
+}
+
+.awr-severity-critical {
+    background: #dc3545;
+}
+
+.awr-severity-warning {
+    background: #ffc107;
+    color: #333;
+}
+
+.awr-severity-info {
+    background: #17a2b8;
+}
+
+.awr-finding-category {
+    font-size: 11px;
+    color: var(--text-light);
+    background: var(--bg-primary);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border-color);
+}
+
+.awr-finding-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.awr-finding-detail {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 6px;
+}
+
+.awr-finding-rec {
+    font-size: 12px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    background: rgba(199, 70, 52, 0.06);
+    border-radius: 4px;
+}
+
+.awr-finding-rec strong {
+    color: var(--oracle-red);
+}
+
+/* AWR Table */
+.awr-table th {
+    background: var(--bg-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.awr-table td {
+    font-size: 12px;
+}
+
+.awr-event-name {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px !important;
+}
+
+/* % DB Time bar */
+.awr-pct-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 120px;
+}
+
+.awr-pct-fill {
+    height: 8px;
+    background: var(--oracle-red);
+    border-radius: 4px;
+    min-width: 2px;
+    flex-shrink: 0;
+}
+
+.awr-pct-bar span {
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Wait Event interpretation */
+.awr-event-interp {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    border-bottom: 1px dotted var(--border-color);
+    line-height: 1.5;
+}
+
+.awr-event-interp strong {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+}
+
+/* Section interpretation text */
+.awr-interp {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+}
+
+/* Efficiency bars */
+.awr-efficiency-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.awr-eff-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.awr-eff-label {
+    width: 140px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.awr-eff-bar-wrapper {
+    flex: 1;
+    height: 12px;
+    background: #e9ecef;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.awr-eff-bar {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.6s ease;
+}
+
+.awr-eff-good {
+    background: #28a745;
+}
+
+.awr-eff-warn {
+    background: #ffc107;
+}
+
+.awr-eff-bad {
+    background: #dc3545;
+}
+
+.awr-eff-val {
+    width: 50px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* Exadata section */
+.awr-section-exadata {
+    border-left: 3px solid var(--oracle-red);
+}
+
+/* Action Items */
+.awr-action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.awr-action-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+}
+
+.awr-action-priority {
+    width: 28px;
+    height: 28px;
+    background: var(--oracle-red);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.awr-action-body {
+    flex: 1;
+}
+
+.awr-action-text {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.awr-action-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.awr-action-category {
+    font-size: 11px;
+    color: var(--text-light);
+    background: var(--bg-primary);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border-color);
+}
+
+.awr-action-impact {
+    font-size: 11px;
+    color: var(--oracle-red);
+    font-weight: 500;
+}
+
+.awr-section-actions {
+    border: 2px solid var(--oracle-red);
+}
+
+/* Followup chat */
+.awr-followup-section {
+    margin-top: 8px;
+}
+
+.awr-followup-messages {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.awr-followup-msg {
+    display: flex;
+}
+
+.awr-followup-user {
+    justify-content: flex-end;
+}
+
+.awr-followup-user .awr-followup-bubble {
+    background: var(--bubble-user);
+    color: var(--bubble-user-text);
+    border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
+    max-width: 80%;
+    padding: 10px 14px;
+}
+
+.awr-followup-user .awr-followup-bubble .text-pre {
+    color: var(--bubble-user-text);
+}
+
+.awr-followup-assistant {
+    justify-content: flex-start;
+}
+
+.awr-followup-assistant .awr-followup-bubble {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) 4px;
+    max-width: 90%;
+    padding: 10px 14px;
+}
