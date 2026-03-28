@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20">
+    <link rel="stylesheet" href="/static/css/style.css?v=21">
 </head>
 <body>
     <div id="app">
@@ -975,10 +975,38 @@
                     <!-- 업로드/분석 중 -->
                     <div v-if="awrLoading" class="step-card">
                         <div class="awr-analyzing">
-                            <div class="spinner"></div>
-                            <div class="awr-analyzing-text">
-                                <strong>AWR 리포트 분석 중...</strong>
-                                <p>HTML 파싱 → 핵심 섹션 추출 → AI 분석 진행 중입니다. 잠시 기다려 주세요.</p>
+                            <div class="awr-progress-container">
+                                <div class="awr-progress-spinner">
+                                    <svg viewBox="0 0 50 50" class="awr-circular-progress">
+                                        <circle cx="25" cy="25" r="20" fill="none" stroke="#e9ecef" stroke-width="4"/>
+                                        <circle cx="25" cy="25" r="20" fill="none" stroke="var(--primary)" stroke-width="4" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="31.4" class="awr-progress-circle"/>
+                                    </svg>
+                                    <span class="awr-progress-icon">🔍</span>
+                                </div>
+                                <div class="awr-analyzing-text">
+                                    <strong style="font-size:16px;">AWR 리포트 AI 분석 중...</strong>
+                                    <div class="awr-progress-steps">
+                                        <div class="awr-step" :class="{ active: awrStep >= 1, done: awrStep > 1 }">
+                                            <span class="awr-step-icon">[[ awrStep > 1 ? '✅' : '📄' ]]</span>
+                                            <span>HTML 파싱 및 핵심 섹션 추출</span>
+                                        </div>
+                                        <div class="awr-step" :class="{ active: awrStep >= 2, done: awrStep > 2 }">
+                                            <span class="awr-step-icon">[[ awrStep > 2 ? '✅' : '🤖' ]]</span>
+                                            <span>AI가 성능 지표를 분석하고 있습니다</span>
+                                        </div>
+                                        <div class="awr-step" :class="{ active: awrStep >= 3 }">
+                                            <span class="awr-step-icon">📊</span>
+                                            <span>분석 결과 생성 중</span>
+                                        </div>
+                                    </div>
+                                    <p class="awr-wait-notice">
+                                        ⏱️ AI 분석에는 약 <strong>30초 ~ 2분</strong> 정도 소요됩니다.
+                                        <br><span style="color:var(--text-secondary);font-size:12px;">데이터 양과 LLM 제공자에 따라 시간이 달라질 수 있습니다.</span>
+                                    </p>
+                                    <div class="awr-elapsed-time" v-if="awrElapsed > 0">
+                                        경과 시간: <strong>[[ awrElapsed ]]초</strong>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1280,6 +1308,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20"></script>
+    <script src="/static/js/app.js?v=21"></script>
 </body>
 </html>

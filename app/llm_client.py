@@ -25,8 +25,8 @@ LLM_CONFIGS = {
         "api_key_attr": "GOOGLE_API_KEY",
         "model_attr": "GOOGLE_MODEL",
         "display_name": "Google Gemini 2.5 Flash",
-        "max_tokens": 16000,
-        "max_input_chars": 30000,   # 넉넉한 컨텍스트 활용
+        "max_tokens": 32000,
+        "max_input_chars": 80000,   # 1M 토큰 컨텍스트 활용 → 상세 분석 가능
     },
 }
 

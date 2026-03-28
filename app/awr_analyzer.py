@@ -180,7 +180,7 @@ def _classify_section(section_name: str) -> str:
     return "other"
 
 
-def _table_to_text(table: dict, max_rows: int = 15) -> str:
+def _table_to_text(table: dict, max_rows: int = 25) -> str:
     """테이블 데이터를 텍스트로 변환 (LLM 전송용)"""
     lines = []
     section = table.get("section", "")
@@ -357,12 +357,24 @@ AWR_ANALYSIS_PROMPT = """당신은 Oracle Database 성능 전문가입니다. �
 
 ## 분석 지침
 1. overallScore는 0~100 사이 정수로, DB 전반적 건강도를 나타냅니다 (100=최상)
+   - 90~100: 매우 양호, 70~89: 양호하나 개선 여지 있음, 50~69: 주의 필요, 0~49: 즉시 조치 필요
 2. findings는 severity 기준 critical → warning → info 순으로 정렬하세요
+   - critical: 성능에 심각한 영향, 즉시 조치 필요
+   - warning: 성능 저하 가능성 있음, 모니터링 및 개선 권고
+   - info: 참고사항, 현재는 양호하나 알아둘 필요 있음
 3. 데이터가 부족한 섹션은 해당 필드를 합리적 기본값으로 채우고 interpretation에 "데이터 부족"을 명시하세요
 4. Exadata 환경이 아니면 exadata 필드는 null로 설정하세요
-5. actionItems는 priority 1이 가장 시급한 항목이며, 최대 7개까지만 포함하세요
-6. topSegments는 상위 5개까지만 포함하세요
-7. waitEvents는 상위 5~7개까지만 포함하세요"""
+5. actionItems는 priority 1이 가장 시급한 항목이며, 최대 10개까지 포함하세요
+6. topSegments는 상위 7개까지만 포함하세요
+7. waitEvents는 상위 7~10개까지 포함하세요
+8. summary는 최소 3문단 이상으로 상세히 작성하세요:
+   - 1문단: DB 전반적 상태와 워크로드 특성 요약
+   - 2문단: 주요 병목 지점과 원인 분석
+   - 3문단: 종합적인 성능 개선 방향 제시
+9. 각 findings의 detail은 수치를 인용하며 구체적으로 설명하세요 (예: "Buffer Cache Hit Ratio가 85.3%로 권장 기준 95% 대비 낮음")
+10. loadProfile의 interpretation에서 Per Second와 Per Transaction 수치의 의미를 비교 분석하세요
+11. memoryAdvisory에서 SGA/PGA Advisory 데이터가 있으면, 최적 크기를 구체적 수치로 제시하세요
+12. Exadata 환경의 경우 Smart Scan 비율, Cell Offload 효율, Flash Cache 히트율을 반드시 평가하세요"""
 
 
 FOLLOWUP_PROMPT = """당신은 Oracle Database 성능 전문가입니다. 이전에 분석한 AWR 리포트에 대해 사용자가 후속 질문을 합니다.

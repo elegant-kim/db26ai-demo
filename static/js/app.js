@@ -162,6 +162,9 @@ const app = createApp({
         const awrDragOver = ref(false);
         const awrFollowupInput = ref('');
         const awrFollowupLoading = ref(false);
+        const awrStep = ref(0);
+        const awrElapsed = ref(0);
+        let awrTimer = null;
         const awrFollowupMessages = ref([]);
         const awrFollowupMessagesRef = ref(null);
 
@@ -1404,6 +1407,12 @@ const app = createApp({
             awrError.value = '';
             awrAnalysis.value = null;
             awrFollowupMessages.value = [];
+            awrStep.value = 1;
+            awrElapsed.value = 0;
+
+            // 경과 시간 타이머 시작
+            if (awrTimer) clearInterval(awrTimer);
+            awrTimer = setInterval(() => { awrElapsed.value++; }, 1000);
 
             const formData = new FormData();
             formData.append('file', file);
@@ -1413,6 +1422,10 @@ const app = createApp({
 
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 180000);
+
+            // 단계 진행 시뮬레이션 (파싱은 빠르고, AI 분석이 오래 걸림)
+            setTimeout(() => { if (awrLoading.value) awrStep.value = 2; }, 2000);
+            setTimeout(() => { if (awrLoading.value) awrStep.value = 3; }, 15000);
 
             try {
                 const response = await fetch('/api/awr/analyze', {
@@ -1430,7 +1443,7 @@ const app = createApp({
                     awrParseInfo.value = data.parse_info;
                     awrElapsedMs.value = data.elapsed_ms;
                     extraSubMenu.value = 'awr-result';
-                    showToast('AWR 분석이 완료되었습니다.', 'success');
+                    showToast(`AWR 분석 완료 (${awrElapsed.value}초 소요)`, 'success');
                 } else {
                     awrError.value = data.error || '분석에 실패했습니다.';
                 }
@@ -1443,6 +1456,8 @@ const app = createApp({
                 }
             } finally {
                 awrLoading.value = false;
+                awrStep.value = 0;
+                if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
             }
         }
 
@@ -1603,6 +1618,8 @@ const app = createApp({
             // AWR Analyzer
             extraSubMenu,
             awrLoading,
+            awrStep,
+            awrElapsed,
             awrError,
             awrAnalysis,
             awrFilename,
