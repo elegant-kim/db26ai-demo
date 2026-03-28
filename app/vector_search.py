@@ -498,11 +498,19 @@ async def compare_search(pool, query: str, top_k: int = 5) -> dict:
 
 # === RAG Answer Generation ===
 
-async def generate_rag_answer(pool, query: str, chunks: list, profile_name: str) -> str:
-    """검색된 청크를 컨텍스트로 LLM 답변을 생성한다."""
+async def generate_rag_answer(query: str, chunks: list, provider: str = None) -> str:
+    """검색된 청크를 컨텍스트로 외부 LLM API를 통해 답변을 생성한다."""
+    from app.llm_client import call_llm
+
     context = "\n\n".join([c["chunk_text"] for c in chunks if c.get("chunk_text")])
 
-    prompt = f"""다음 문서 내용을 참고하여 질문에 답변하세요.
+    system_prompt = (
+        "당신은 문서 기반 질의응답 AI 어시스턴트입니다. "
+        "제공된 참고 문서 내용만을 근거로 한국어로 답변하세요. "
+        "문서에 없는 내용은 답변하지 마세요."
+    )
+
+    prompt = f"""다음 문서 내용을 참고하여 질문에 한국어로 답변하세요.
 
 [참고 문서]
 {context}
@@ -510,26 +518,10 @@ async def generate_rag_answer(pool, query: str, chunks: list, profile_name: str)
 [질문]
 {query}
 
-문서에 없는 내용은 답변하지 마세요."""
+반드시 참고 문서에 있는 내용만을 근거로 답변하세요."""
 
     try:
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                sql = """
-                    SELECT DBMS_CLOUD_AI.GENERATE(
-                        prompt       => :prompt,
-                        profile_name => :profile,
-                        action       => 'chat'
-                    ) FROM dual
-                """
-                await cursor.execute(sql, {
-                    "prompt": prompt,
-                    "profile": profile_name,
-                })
-                row = await cursor.fetchone()
-                if row:
-                    return await _lob_to_str(row[0])
-                return "답변을 생성할 수 없습니다."
+        return await call_llm(prompt, provider=provider, system_prompt=system_prompt)
     except Exception as e:
         return f"LLM 답변 생성 중 오류: {str(e)}"
 

@@ -58,6 +58,7 @@ class VectorSearchRequest(BaseModel):
     mode: str = "vector"  # "vector", "keyword", "compare"
     top_k: int = 5
     profile_name: str = ""
+    provider: str = ""
 
 
 class SetProfileRequest(BaseModel):
@@ -355,10 +356,10 @@ async def vector_search_endpoint(req: VectorSearchRequest):
         else:
             search_result = await vector_search(pool, req.query, req.top_k)
 
-        # RAG 답변 생성
+        # RAG 답변 생성 (외부 LLM API 사용)
         answer = ""
         if search_result["chunks"]:
-            answer = await generate_rag_answer(pool, req.query, search_result["chunks"], req.profile_name)
+            answer = await generate_rag_answer(req.query, search_result["chunks"], provider=req.provider or None)
 
         elapsed_ms = int((time.time() - start) * 1000)
 

@@ -1043,6 +1043,7 @@ const app = createApp({
                         mode: mode,
                         top_k: 5,
                         profile_name: profileName,
+                        provider: llmProvider.value,
                     }),
                 });
 
