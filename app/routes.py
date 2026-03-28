@@ -738,6 +738,8 @@ async def awr_followup(req: AWRFollowupRequest):
 @router.get("/awr/source/{session_id}")
 async def awr_source_html(session_id: str, section: str = ""):
     """업로드된 AWR HTML 원문을 새 탭에서 볼 수 있도록 제공 (앵커 이동 지원)"""
+    import re as _re
+
     cached = _awr_cache.get(session_id)
     if not cached or "html" not in cached:
         return HTMLResponse(
@@ -747,65 +749,68 @@ async def awr_source_html(session_id: str, section: str = ""):
 
     html = cached["html"]
 
-    # section 파라미터가 있으면 해당 텍스트 위치로 자동 스크롤 + 하이라이트
+    # 한글 깨짐 방지: meta charset이 없으면 UTF-8 추가
+    if "<meta" not in html[:500].lower() or "charset" not in html[:500].lower():
+        html = '<meta charset="UTF-8">\n' + html
+
     if section:
-        safe_target = section.replace("'", "\\'")
-        scroll_script = f"""
+        # 서버 측에서 Python으로 해당 텍스트 위치를 찾아 앵커+하이라이트 삽입
+        section_lower = section.lower()
+        anchor_id = "awr_highlight_target"
+        highlight_css = (
+            f'<style>#awr_highlight_target {{ '
+            f'outline: 3px solid #f59e0b !important; '
+            f'outline-offset: 4px !important; '
+            f'background-color: #fff3cd !important; '
+            f'}}</style>'
+        )
+        inserted = False
+
+        # 1차: 대소문자 무시하고 텍스트에서 직접 검색 (가장 확실)
+        # AWR HTML에서 섹션 키워드가 포함된 위치를 찾아 앵커 삽입
+        search_pos = html.lower().find(section_lower)
+        if search_pos >= 0:
+            # 해당 위치 바로 앞에 앵커 삽입
+            anchor_tag = f'<a id="{anchor_id}"></a>'
+            html = html[:search_pos] + anchor_tag + html[search_pos:]
+            inserted = True
+
+        if inserted:
+            # CSS + 자동 스크롤 스크립트 삽입
+            scroll_script = f"""
+{highlight_css}
 <script>
-(function() {{
-    var target = '{safe_target}'.toLowerCase();
-    var found = false;
-
-    // 1차: table[summary] 속성에서 검색 (AWR의 주요 테이블은 summary 속성 보유)
-    var tables = document.querySelectorAll('table[summary]');
-    for (var i = 0; i < tables.length; i++) {{
-        if (tables[i].getAttribute('summary').toLowerCase().indexOf(target) >= 0) {{
-            tables[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-            tables[i].style.outline = '3px solid #f59e0b';
-            tables[i].style.outlineOffset = '4px';
-            found = true;
-            break;
-        }}
-    }}
-
-    // 2차: 모든 텍스트 노드에서 검색 (h2, h3, caption, a, b, th, td)
-    if (!found) {{
-        var elems = document.querySelectorAll('h2, h3, caption, a, b, th, td, p, font');
-        for (var i = 0; i < elems.length; i++) {{
-            var txt = (elems[i].textContent || '').toLowerCase();
-            if (txt.indexOf(target) >= 0 && txt.length < 200) {{
-                elems[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                elems[i].style.backgroundColor = '#fff3cd';
-                elems[i].style.padding = '4px 8px';
-                elems[i].style.borderLeft = '4px solid #f59e0b';
-                found = true;
-                break;
+document.addEventListener('DOMContentLoaded', function() {{
+    var el = document.getElementById('{anchor_id}');
+    if (el) {{
+        // 앵커 다음의 가장 가까운 테이블 또는 부모 요소에 하이라이트
+        var target = el.nextElementSibling || el.parentElement;
+        if (target && target.tagName === 'TABLE') {{
+            target.id = '{anchor_id}';
+            el.remove();
+        }} else {{
+            // 부모 중 테이블을 찾기
+            var parent = el.parentElement;
+            while (parent && parent.tagName !== 'TABLE' && parent.tagName !== 'BODY') {{
+                parent = parent.parentElement;
+            }}
+            if (parent && parent.tagName === 'TABLE') {{
+                parent.id = '{anchor_id}';
+                el.remove();
             }}
         }}
-    }}
-
-    // 3차: 부분 매칭 (첫 단어로 검색)
-    if (!found) {{
-        var firstWord = target.split(' ')[0];
-        var elems = document.querySelectorAll('h2, h3, caption, a, b, th');
-        for (var i = 0; i < elems.length; i++) {{
-            var txt = (elems[i].textContent || '').toLowerCase();
-            if (txt.indexOf(firstWord) >= 0 && txt.length < 200) {{
-                elems[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                elems[i].style.backgroundColor = '#fff3cd';
-                elems[i].style.padding = '4px 8px';
-                found = true;
-                break;
-            }}
+        var highlighted = document.getElementById('{anchor_id}');
+        if (highlighted) {{
+            setTimeout(function() {{ highlighted.scrollIntoView({{ behavior: 'smooth', block: 'start' }}); }}, 300);
         }}
     }}
-}})();
+}});
 </script>
 """
-        if "</body>" in html.lower():
-            idx = html.lower().rfind("</body>")
-            html = html[:idx] + scroll_script + html[idx:]
-        else:
-            html += scroll_script
+            if "</body>" in html.lower():
+                idx = html.lower().rfind("</body>")
+                html = html[:idx] + scroll_script + html[idx:]
+            else:
+                html += scroll_script
 
-    return HTMLResponse(html)
+    return HTMLResponse(html, media_type="text/html; charset=utf-8")
