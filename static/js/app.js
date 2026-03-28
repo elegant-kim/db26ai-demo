@@ -1459,6 +1459,15 @@ const app = createApp({
             }
         }
 
+        function openAwrSource(sectionKeyword) {
+            if (!awrSessionId.value) {
+                showToast('AWR 세션이 없습니다.', 'error');
+                return;
+            }
+            const url = `/api/awr/source/${awrSessionId.value}?section=${encodeURIComponent(sectionKeyword)}`;
+            window.open(url, '_blank');
+        }
+
         async function sendAwrFollowup() {
             const question = awrFollowupInput.value.trim();
             if (!question || awrFollowupLoading.value) return;
@@ -1628,10 +1637,12 @@ const app = createApp({
             awrFollowupInput,
             awrFollowupLoading,
             awrFollowupMessages,
+            awrFollowupMessagesRef,
             awrScoreClass,
             awrSnapshotLabel,
             handleAwrFileSelect,
             handleAwrFileDrop,
+            openAwrSource,
             sendAwrFollowup,
         };
     },

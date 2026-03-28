@@ -4,7 +4,7 @@ import tempfile
 import time
 
 from fastapi import APIRouter, Form, Request, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
@@ -666,12 +666,13 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
         llm_result = await analyze_awr_with_llm(prompt, provider=llm_provider)
         total_ms = int((time.time() - start) * 1000)
 
-        # 캐싱 (후속 질문용)
+        # 캐싱 (후속 질문 + 원문 보기용)
         session_id = f"awr_{int(time.time())}"
         _awr_cache[session_id] = {
             "parsed": parsed,
             "summary": llm_result.get("summary", ""),
             "provider": provider,
+            "html": html_text,  # 원문 HTML 저장 (원문 보기 기능용)
         }
 
         return {
@@ -731,3 +732,44 @@ async def awr_followup(req: AWRFollowupRequest):
             status_code=500,
             content={"success": False, "error": str(e), "elapsed_ms": elapsed_ms},
         )
+
+
+@router.get("/awr/source/{session_id}")
+async def awr_source_html(session_id: str, section: str = ""):
+    """업로드된 AWR HTML 원문을 새 탭에서 볼 수 있도록 제공 (앵커 이동 지원)"""
+    cached = _awr_cache.get(session_id)
+    if not cached or "html" not in cached:
+        return HTMLResponse(
+            "<h2>AWR 원문을 찾을 수 없습니다. 파일을 다시 업로드해 주세요.</h2>",
+            status_code=404,
+        )
+
+    html = cached["html"]
+
+    # section 파라미터가 있으면 해당 텍스트 위치로 자동 스크롤 + 하이라이트
+    if section:
+        safe_target = section.replace("'", "\\'")
+        scroll_script = f"""
+<script>
+(function() {{
+    var target = '{safe_target}';
+    var elems = document.querySelectorAll('h2, h3, caption, th, a[name], td');
+    for (var i = 0; i < elems.length; i++) {{
+        if (elems[i].textContent && elems[i].textContent.indexOf(target) >= 0) {{
+            elems[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+            elems[i].style.backgroundColor = '#fff3cd';
+            elems[i].style.padding = '4px 8px';
+            elems[i].style.borderLeft = '4px solid #f59e0b';
+            break;
+        }}
+    }}
+}})();
+</script>
+"""
+        if "</body>" in html.lower():
+            idx = html.lower().rfind("</body>")
+            html = html[:idx] + scroll_script + html[idx:]
+        else:
+            html += scroll_script
+
+    return HTMLResponse(html)

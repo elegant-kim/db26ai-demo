@@ -13,13 +13,18 @@ from app.llm_client import call_llm, call_llm_json
 
 # ── AWR HTML 파싱 ──────────────────────────────────────────────
 
-# AWR 헤더 테이블 패턴 (summary 속성 또는 캡션 기준)
+# AWR 헤더 테이블 패턴 (summary 속성, 캡션, 또는 셀 내용 기준)
 HEADER_PATTERNS = [
     (r"database instance information", "db_info"),
     (r"host information", "host_info"),
     (r"snap(shot)? information", "snapshot_info"),
     (r"snap(shot)? set", "snapshot_info"),
     (r"Begin Snap|End Snap|Elapsed|DB Time", "snapshot_info"),
+    # AWR 헤더에 있는 DB 정보 테이블 (헤더: DB Name, DB Id 등)
+    (r"DB Name.*DB Id|DB Id.*DB Name", "db_info"),
+    (r"Instance.*Inst Num|Inst Num.*Instance", "instance_info"),
+    (r"Host Name.*Platform|Platform.*Host Name", "host_info"),
+    (r"Release.*RAC|RAC.*Release|Edition.*Release", "db_info"),
 ]
 
 # 추출 대상 섹션 패턴 (AWR HTML의 <h3> 또는 테이블 캡션 기준)
@@ -112,10 +117,12 @@ class AWRTableExtractor(HTMLParser):
             self.text_buffer = ""
         elif tag == "table":
             attrs_dict = dict(attrs)
-            # AWR 보고서의 데이터 테이블 (summary 속성이 있는 테이블)
+            # summary 속성이 있으면 섹션명으로 활용 (AWR 헤더 테이블 식별에 유용)
+            summary = attrs_dict.get("summary", "")
+            table_section = summary if summary else self.current_section
             self.in_table = True
             self.current_table = {
-                "section": self.current_section,
+                "section": table_section,
                 "headers": [],
                 "rows": [],
             }

@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=22">
+    <link rel="stylesheet" href="/static/css/style.css?v=23">
 </head>
 <body>
     <div id="app">
@@ -1068,8 +1068,10 @@
                         <h3 class="awr-section-title">스냅샷 정보</h3>
                         <div class="awr-kv-grid">
                             <template v-for="(val, key) in awrAnalysis.snapshotInfo" :key="key">
-                                <span class="awr-kv-label">[[ awrSnapshotLabel(key) ]]</span>
-                                <span class="awr-kv-value">[[ val ]]</span>
+                                <template v-if="val !== null && val !== 'Unknown' && val !== 'N/A' && val !== ''">
+                                    <span class="awr-kv-label">[[ awrSnapshotLabel(key) ]]</span>
+                                    <span class="awr-kv-value">[[ val ]]</span>
+                                </template>
                             </template>
                         </div>
                     </div>
@@ -1096,7 +1098,9 @@
 
                     <!-- Top Wait Events -->
                     <div v-if="awrAnalysis.waitEvents && awrAnalysis.waitEvents.length > 0" class="awr-section-card">
-                        <h3 class="awr-section-title">Top Wait Events</h3>
+                        <h3 class="awr-section-title">Top Wait Events
+                            <button class="awr-source-btn" @click="openAwrSource('Top 10 Foreground Events')" title="AWR 원문에서 보기">📋 원문</button>
+                        </h3>
                         <div class="table-wrapper">
                             <table class="result-table awr-table">
                                 <thead>
@@ -1133,7 +1137,9 @@
 
                     <!-- Load Profile -->
                     <div v-if="awrAnalysis.loadProfile" class="awr-section-card">
-                        <h3 class="awr-section-title">Load Profile</h3>
+                        <h3 class="awr-section-title">Load Profile
+                            <button class="awr-source-btn" @click="openAwrSource('Load Profile')" title="AWR 원문에서 보기">📋 원문</button>
+                        </h3>
                         <div class="awr-kv-grid">
                             <span class="awr-kv-label">DB Time/Sec</span>
                             <span class="awr-kv-value">[[ awrAnalysis.loadProfile.dbTimePerSec ]]</span>
@@ -1161,7 +1167,9 @@
 
                     <!-- Instance Efficiency -->
                     <div v-if="awrAnalysis.instanceEfficiency" class="awr-section-card">
-                        <h3 class="awr-section-title">Instance Efficiency</h3>
+                        <h3 class="awr-section-title">Instance Efficiency
+                            <button class="awr-source-btn" @click="openAwrSource('Instance Efficiency')" title="AWR 원문에서 보기">📋 원문</button>
+                        </h3>
                         <div class="awr-efficiency-bars">
                             <div class="awr-eff-item">
                                 <span class="awr-eff-label">Buffer Hit %</span>
@@ -1196,7 +1204,9 @@
 
                     <!-- Memory Advisory -->
                     <div v-if="awrAnalysis.memoryAdvisory" class="awr-section-card">
-                        <h3 class="awr-section-title">Memory Advisory</h3>
+                        <h3 class="awr-section-title">Memory Advisory
+                            <button class="awr-source-btn" @click="openAwrSource('SGA Target Advisory')" title="AWR 원문에서 보기">📋 원문</button>
+                        </h3>
                         <div class="awr-kv-grid">
                             <span class="awr-kv-label">SGA 현재</span>
                             <span class="awr-kv-value">[[ awrAnalysis.memoryAdvisory.sgaCurrent ]]</span>
@@ -1212,7 +1222,9 @@
 
                     <!-- I/O Analysis -->
                     <div v-if="awrAnalysis.ioAnalysis" class="awr-section-card">
-                        <h3 class="awr-section-title">I/O Analysis</h3>
+                        <h3 class="awr-section-title">I/O Analysis
+                            <button class="awr-source-btn" @click="openAwrSource('Tablespace IO Stats')" title="AWR 원문에서 보기">📋 원문</button>
+                        </h3>
                         <div v-if="awrAnalysis.ioAnalysis.topTablespaces && awrAnalysis.ioAnalysis.topTablespaces.length > 0" class="table-wrapper">
                             <table class="result-table awr-table">
                                 <thead>
@@ -1233,7 +1245,9 @@
 
                     <!-- Top Segments -->
                     <div v-if="awrAnalysis.topSegments && awrAnalysis.topSegments.length > 0" class="awr-section-card">
-                        <h3 class="awr-section-title">Top Segments</h3>
+                        <h3 class="awr-section-title">Top Segments
+                            <button class="awr-source-btn" @click="openAwrSource('Segments by Logical Reads')" title="AWR 원문에서 보기">📋 원문</button>
+                        </h3>
                         <div class="table-wrapper">
                             <table class="result-table awr-table">
                                 <thead>
@@ -1303,7 +1317,7 @@
                     <!-- 후속 질문 영역 -->
                     <div class="awr-section-card awr-followup-section">
                         <h3 class="awr-section-title">추가 질문</h3>
-                        <div class="awr-followup-messages" ref="awrFollowupMessages">
+                        <div class="awr-followup-messages" ref="awrFollowupMessagesRef">
                             <div v-for="(msg, mi) in awrFollowupMessages" :key="mi" class="awr-followup-msg" :class="'awr-followup-' + msg.role">
                                 <div class="awr-followup-bubble">
                                     <div v-if="msg.loading" class="loading-area">
@@ -1335,6 +1349,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=22"></script>
+    <script src="/static/js/app.js?v=23"></script>
 </body>
 </html>
