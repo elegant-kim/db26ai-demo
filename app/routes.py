@@ -623,8 +623,9 @@ class AWRFollowupRequest(BaseModel):
 
 @router.get("/llm/providers")
 async def llm_providers():
-    """사용 가능한 LLM 제공자 목록 반환"""
-    return {"success": True, "providers": get_available_providers()}
+    """사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함)"""
+    from app.config import settings
+    return {"success": True, "providers": get_available_providers(), "default": settings.LLM_PROVIDER}
 
 
 @router.post("/awr/analyze")
@@ -752,15 +753,50 @@ async def awr_source_html(session_id: str, section: str = ""):
         scroll_script = f"""
 <script>
 (function() {{
-    var target = '{safe_target}';
-    var elems = document.querySelectorAll('h2, h3, caption, th, a[name], td');
-    for (var i = 0; i < elems.length; i++) {{
-        if (elems[i].textContent && elems[i].textContent.indexOf(target) >= 0) {{
-            elems[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-            elems[i].style.backgroundColor = '#fff3cd';
-            elems[i].style.padding = '4px 8px';
-            elems[i].style.borderLeft = '4px solid #f59e0b';
+    var target = '{safe_target}'.toLowerCase();
+    var found = false;
+
+    // 1차: table[summary] 속성에서 검색 (AWR의 주요 테이블은 summary 속성 보유)
+    var tables = document.querySelectorAll('table[summary]');
+    for (var i = 0; i < tables.length; i++) {{
+        if (tables[i].getAttribute('summary').toLowerCase().indexOf(target) >= 0) {{
+            tables[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+            tables[i].style.outline = '3px solid #f59e0b';
+            tables[i].style.outlineOffset = '4px';
+            found = true;
             break;
+        }}
+    }}
+
+    // 2차: 모든 텍스트 노드에서 검색 (h2, h3, caption, a, b, th, td)
+    if (!found) {{
+        var elems = document.querySelectorAll('h2, h3, caption, a, b, th, td, p, font');
+        for (var i = 0; i < elems.length; i++) {{
+            var txt = (elems[i].textContent || '').toLowerCase();
+            if (txt.indexOf(target) >= 0 && txt.length < 200) {{
+                elems[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                elems[i].style.backgroundColor = '#fff3cd';
+                elems[i].style.padding = '4px 8px';
+                elems[i].style.borderLeft = '4px solid #f59e0b';
+                found = true;
+                break;
+            }}
+        }}
+    }}
+
+    // 3차: 부분 매칭 (첫 단어로 검색)
+    if (!found) {{
+        var firstWord = target.split(' ')[0];
+        var elems = document.querySelectorAll('h2, h3, caption, a, b, th');
+        for (var i = 0; i < elems.length; i++) {{
+            var txt = (elems[i].textContent || '').toLowerCase();
+            if (txt.indexOf(firstWord) >= 0 && txt.length < 200) {{
+                elems[i].scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                elems[i].style.backgroundColor = '#fff3cd';
+                elems[i].style.padding = '4px 8px';
+                found = true;
+                break;
+            }}
         }}
     }}
 }})();

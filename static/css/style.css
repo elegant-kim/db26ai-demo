@@ -1516,6 +1516,80 @@ html, body {
     gap: 20px;
 }
 
+/* 다중 결과 탭 바 */
+.awr-result-tabs {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.awr-result-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.2s;
+    min-width: 0;
+}
+
+.awr-result-tab:hover {
+    background: var(--bg-tertiary);
+}
+
+.awr-result-tab.active {
+    background: #fff;
+    border-bottom-color: #fff;
+    font-weight: 600;
+    box-shadow: 0 -2px 0 var(--oracle-red) inset;
+}
+
+.awr-tab-label {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+}
+
+.awr-tab-provider {
+    color: var(--primary);
+    font-size: 10px;
+    padding: 1px 5px;
+    background: var(--primary-bg);
+    border-radius: 3px;
+}
+
+.awr-tab-time {
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.awr-tab-close {
+    width: 16px;
+    height: 16px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.awr-tab-close:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
 /* 종합 점수 & 요약 카드 */
 .awr-summary-card {
     display: flex;
@@ -1973,15 +2047,16 @@ html, body {
 }
 
 .awr-followup-user .awr-followup-bubble {
-    background: var(--bubble-user);
-    color: var(--bubble-user-text);
+    background: #f0f4f8;
+    color: #1a202c;
+    border: 1px solid #d1d9e0;
     border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
     max-width: 80%;
     padding: 10px 14px;
 }
 
 .awr-followup-user .awr-followup-bubble .text-pre {
-    color: var(--bubble-user-text);
+    color: #1a202c;
 }
 
 .awr-followup-assistant {

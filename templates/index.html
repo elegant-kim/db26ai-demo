@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=23">
+    <link rel="stylesheet" href="/static/css/style.css?v=24">
 </head>
 <body>
     <div id="app">
@@ -1020,6 +1020,18 @@
                 <!-- AWR 분석 결과 화면 -->
                 <div v-if="extraSubMenu === 'awr-result' && awrAnalysis" class="step-content awr-result-content">
 
+                    <!-- 분석 결과 탭 바 (다중 결과 전환) -->
+                    <div v-if="awrResults.length > 1" class="awr-result-tabs">
+                        <div v-for="(tab, ti) in awrResults" :key="ti"
+                             class="awr-result-tab" :class="{ active: awrActiveTab === ti }"
+                             @click="switchAwrTab(ti)">
+                            <span class="awr-tab-label">[[ tab.filename ]]</span>
+                            <span class="awr-tab-provider">[[ tab.provider ]]</span>
+                            <span class="awr-tab-time">[[ tab.timestamp ]]</span>
+                            <button v-if="awrResults.length > 1" class="awr-tab-close" @click.stop="removeAwrTab(ti)" title="결과 닫기">×</button>
+                        </div>
+                    </div>
+
                     <!-- 카테고리별 점수 -->
                     <div v-if="awrAnalysis.categoryScores" class="awr-section-card">
                         <h3 class="awr-section-title">카테고리별 성능 점수</h3>
@@ -1349,6 +1361,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=23"></script>
+    <script src="/static/js/app.js?v=24"></script>
 </body>
 </html>

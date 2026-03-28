@@ -167,6 +167,9 @@ const app = createApp({
         let awrTimer = null;
         const awrFollowupMessages = ref([]);
         const awrFollowupMessagesRef = ref(null);
+        // 다중 분석 결과 보관
+        const awrResults = ref([]);  // [{filename, analysis, sessionId, parseInfo, elapsedMs, provider, timestamp}]
+        const awrActiveTab = ref(0);
 
         // === Constants ===
         const actionModesLeft = [
@@ -1440,6 +1443,20 @@ const app = createApp({
                     awrFilename.value = data.filename;
                     awrParseInfo.value = data.parse_info;
                     awrElapsedMs.value = data.elapsed_ms;
+                    // 결과를 이력에 추가
+                    const providerInfo = selectedLlmProvider.value;
+                    awrResults.value.push({
+                        filename: data.filename,
+                        analysis: data.analysis,
+                        sessionId: data.session_id,
+                        parseInfo: data.parse_info,
+                        elapsedMs: data.elapsed_ms,
+                        provider: providerInfo ? providerInfo.name : llmProvider.value,
+                        timestamp: new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}),
+                        followupMessages: [],
+                    });
+                    awrActiveTab.value = awrResults.value.length - 1;
+                    awrFollowupMessages.value = [];
                     extraSubMenu.value = 'awr-result';
                     showToast(`AWR 분석 완료 (${awrElapsed.value}초 소요)`, 'success');
                 } else {
@@ -1457,6 +1474,31 @@ const app = createApp({
                 awrStep.value = 0;
                 if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
             }
+        }
+
+        function switchAwrTab(index) {
+            if (index < 0 || index >= awrResults.value.length) return;
+            // 현재 탭의 followup 메시지를 저장
+            if (awrActiveTab.value < awrResults.value.length) {
+                awrResults.value[awrActiveTab.value].followupMessages = [...awrFollowupMessages.value];
+            }
+            awrActiveTab.value = index;
+            const result = awrResults.value[index];
+            awrAnalysis.value = result.analysis;
+            awrSessionId.value = result.sessionId;
+            awrFilename.value = result.filename;
+            awrParseInfo.value = result.parseInfo;
+            awrElapsedMs.value = result.elapsedMs;
+            awrFollowupMessages.value = result.followupMessages || [];
+        }
+
+        function removeAwrTab(index) {
+            if (awrResults.value.length <= 1) return;
+            awrResults.value.splice(index, 1);
+            if (awrActiveTab.value >= awrResults.value.length) {
+                awrActiveTab.value = awrResults.value.length - 1;
+            }
+            switchAwrTab(awrActiveTab.value);
         }
 
         function openAwrSource(sectionKeyword) {
@@ -1515,7 +1557,10 @@ const app = createApp({
                 const data = await res.json();
                 if (data.success && data.providers.length > 0) {
                     llmProviders.value = data.providers;
-                    llmProvider.value = data.providers[0].id;
+                    // 서버 설정의 기본 제공자를 선택, 없으면 첫 번째
+                    const defaultId = data.default || '';
+                    const hasDefault = data.providers.some(p => p.id === defaultId);
+                    llmProvider.value = hasDefault ? defaultId : data.providers[0].id;
                 }
             } catch (e) {
                 console.error('LLM 제공자 목록 로드 실패:', e);
@@ -1644,6 +1689,10 @@ const app = createApp({
             handleAwrFileDrop,
             openAwrSource,
             sendAwrFollowup,
+            awrResults,
+            awrActiveTab,
+            switchAwrTab,
+            removeAwrTab,
         };
     },
 });
