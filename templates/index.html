@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=24">
+    <link rel="stylesheet" href="/static/css/style.css?v=25">
 </head>
 <body>
     <div id="app">
@@ -1099,6 +1099,7 @@
                                     </span>
                                     <span class="awr-finding-category">[[ f.category ]]</span>
                                     <span class="awr-finding-title">[[ f.title ]]</span>
+                                    <button class="awr-source-btn awr-source-btn-sm" @click="openAwrSource(findingSourceKeyword(f))" title="AWR 원문에서 관련 섹션 보기">📋 원문</button>
                                 </div>
                                 <p class="awr-finding-detail">[[ f.detail ]]</p>
                                 <div v-if="f.recommendation" class="awr-finding-rec">
@@ -1361,6 +1362,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=24"></script>
+    <script src="/static/js/app.js?v=25"></script>
 </body>
 </html>

@@ -1723,6 +1723,12 @@ html, body {
     color: #fff;
 }
 
+.awr-source-btn-sm {
+    padding: 2px 7px;
+    font-size: 10px;
+    margin-left: 4px;
+}
+
 /* Key-Value Grid */
 .awr-kv-grid {
     display: grid;

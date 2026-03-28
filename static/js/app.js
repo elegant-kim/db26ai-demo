@@ -1501,6 +1501,30 @@ const app = createApp({
             switchAwrTab(awrActiveTab.value);
         }
 
+        // 발견사항 category → AWR 원문 검색 키워드 매핑
+        function findingSourceKeyword(finding) {
+            // detail에서 구체적 이벤트명/지표명을 추출 시도
+            const detail = finding.detail || '';
+            const category = (finding.category || '').toLowerCase();
+
+            // Wait Event 이름이 detail에 있으면 그걸 사용 (가장 정확)
+            const eventMatch = detail.match(/['"`]([a-z][a-z_ :]+(?:read|write|scan|sync|lock|wait|contention|cpu)[a-z_ ]*)['"`]/i)
+                || detail.match(/(db file (?:sequential|scattered) read|log file (?:sync|parallel write)|cell smart (?:table|index) scan|enq: \w+ - \w+|DB CPU)/i);
+            if (eventMatch) return eventMatch[1];
+
+            // category별 기본 AWR 섹션
+            const map = {
+                'wait events': 'Top 10 Foreground Events',
+                'db time': 'Load Profile',
+                'cpu': 'Host CPU',
+                'memory': 'SGA Target Advisory',
+                'i/o': 'Tablespace IO Stats',
+                'sql': 'SQL ordered by Elapsed Time',
+                'exadata': 'Exadata',
+            };
+            return map[category] || finding.title || category;
+        }
+
         function openAwrSource(sectionKeyword) {
             if (!awrSessionId.value) {
                 showToast('AWR 세션이 없습니다.', 'error');
@@ -1688,6 +1712,7 @@ const app = createApp({
             handleAwrFileSelect,
             handleAwrFileDrop,
             openAwrSource,
+            findingSourceKeyword,
             sendAwrFollowup,
             awrResults,
             awrActiveTab,
