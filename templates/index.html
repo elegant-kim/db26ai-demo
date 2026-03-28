@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=21">
+    <link rel="stylesheet" href="/static/css/style.css?v=22">
 </head>
 <body>
     <div id="app">
@@ -1020,29 +1020,46 @@
                 <!-- AWR 분석 결과 화면 -->
                 <div v-if="extraSubMenu === 'awr-result' && awrAnalysis" class="step-content awr-result-content">
 
-                    <!-- 종합 점수 & 요약 -->
-                    <div class="awr-summary-card">
-                        <div class="awr-score-section">
-                            <div class="awr-score-gauge">
-                                <svg viewBox="0 0 120 120" class="awr-gauge-svg">
-                                    <circle cx="60" cy="60" r="50" fill="none" stroke="#e9ecef" stroke-width="10"/>
-                                    <circle cx="60" cy="60" r="50" fill="none"
-                                            :stroke="awrScoreColor"
-                                            stroke-width="10"
-                                            stroke-linecap="round"
-                                            :stroke-dasharray="awrScoreDash"
-                                            stroke-dashoffset="0"
-                                            transform="rotate(-90 60 60)"/>
-                                </svg>
-                                <div class="awr-score-number" :style="{ color: awrScoreColor }">
-                                    [[ awrAnalysis.overallScore ]]
+                    <!-- 카테고리별 점수 -->
+                    <div v-if="awrAnalysis.categoryScores" class="awr-section-card">
+                        <h3 class="awr-section-title">카테고리별 성능 점수</h3>
+                        <div class="awr-category-scores">
+                            <div v-for="(cat, catKey) in awrAnalysis.categoryScores" :key="catKey" class="awr-cat-score-item">
+                                <div class="awr-cat-score-header">
+                                    <span class="awr-cat-score-label">[[ cat.label ]]</span>
+                                    <span class="awr-cat-score-value" :class="awrScoreClass(cat.score)">[[ cat.score ]]</span>
                                 </div>
-                                <div class="awr-score-label">건강도 점수</div>
+                                <div class="awr-cat-score-bar">
+                                    <div class="awr-cat-score-fill" :class="awrScoreClass(cat.score)" :style="{ width: cat.score + '%' }"></div>
+                                </div>
+                                <p class="awr-cat-score-detail">[[ cat.detail ]]</p>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- DB Time 분석 -->
+                    <div v-if="awrAnalysis.dbTimeAnalysis" class="awr-section-card">
+                        <h3 class="awr-section-title">DB Time 분석</h3>
+                        <div class="awr-kv-grid">
+                            <span class="awr-kv-label">DB Time</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.dbTimeSec ]] sec</span>
+                            <span class="awr-kv-label">Elapsed Time</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.elapsedSec ]] sec</span>
+                            <span class="awr-kv-label">Avg Active Sessions</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.avgActiveSessions ]]</span>
+                            <span class="awr-kv-label">CPU Time %</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.cpuTimePct ]]%</span>
+                            <span class="awr-kv-label">Wait Time %</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.waitTimePct ]]%</span>
+                        </div>
+                        <p class="awr-interp">[[ awrAnalysis.dbTimeAnalysis.interpretation ]]</p>
+                    </div>
+
+                    <!-- 종합 소견 -->
+                    <div class="awr-summary-card">
                         <div class="awr-summary-text">
                             <h3>종합 소견</h3>
-                            <p>[[ awrAnalysis.summary ]]</p>
+                            <p style="white-space:pre-line;">[[ awrAnalysis.summary ]]</p>
                         </div>
                     </div>
 
@@ -1085,6 +1102,7 @@
                                 <thead>
                                     <tr>
                                         <th>Event</th>
+                                        <th>Wait Class</th>
                                         <th>Waits</th>
                                         <th>Total Time</th>
                                         <th>Avg Wait</th>
@@ -1094,6 +1112,7 @@
                                 <tbody>
                                     <tr v-for="(w, wi) in awrAnalysis.waitEvents" :key="wi">
                                         <td class="awr-event-name">[[ w.event ]]</td>
+                                        <td>[[ w.waitClass ]]</td>
                                         <td>[[ w.waits?.toLocaleString?.() || w.waits ]]</td>
                                         <td>[[ w.totalTime ]]</td>
                                         <td>[[ w.avgWait ]]</td>
@@ -1118,12 +1137,20 @@
                         <div class="awr-kv-grid">
                             <span class="awr-kv-label">DB Time/Sec</span>
                             <span class="awr-kv-value">[[ awrAnalysis.loadProfile.dbTimePerSec ]]</span>
+                            <span class="awr-kv-label">DB CPU/Sec</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.dbCpuPerSec ]]</span>
                             <span class="awr-kv-label">Logical Reads/Sec</span>
                             <span class="awr-kv-value">[[ awrAnalysis.loadProfile.logicalReadsPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.logicalReadsPerSec ]]</span>
                             <span class="awr-kv-label">Physical Reads/Sec</span>
                             <span class="awr-kv-value">[[ awrAnalysis.loadProfile.physicalReadsPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.physicalReadsPerSec ]]</span>
+                            <span class="awr-kv-label">Physical Writes/Sec</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.physicalWritesPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.physicalWritesPerSec ]]</span>
                             <span class="awr-kv-label">Redo/Sec</span>
                             <span class="awr-kv-value">[[ awrAnalysis.loadProfile.redoPerSec ]]</span>
+                            <span class="awr-kv-label">Executions/Sec</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.executionsPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.executionsPerSec ]]</span>
+                            <span class="awr-kv-label">Transactions/Sec</span>
+                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.transactionsPerSec ]]</span>
                             <span class="awr-kv-label">Parses/Sec</span>
                             <span class="awr-kv-value">[[ awrAnalysis.loadProfile.parsesPerSec ]]</span>
                             <span class="awr-kv-label">Hard Parses/Sec</span>
@@ -1308,6 +1335,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=21"></script>
+    <script src="/static/js/app.js?v=22"></script>
 </body>
 </html>

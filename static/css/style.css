@@ -1527,43 +1527,68 @@ html, body {
     box-shadow: var(--shadow-md);
 }
 
-.awr-score-section {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.awr-score-gauge {
-    position: relative;
-    width: 120px;
-    height: 120px;
+/* 카테고리별 점수 */
+.awr-category-scores {
     display: flex;
     flex-direction: column;
+    gap: 16px;
+}
+
+.awr-cat-score-item {
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.awr-cat-score-header {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
+    margin-bottom: 6px;
 }
 
-.awr-gauge-svg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 120px;
-    height: 120px;
+.awr-cat-score-label {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
 }
 
-.awr-score-number {
-    font-size: 32px;
+.awr-cat-score-value {
     font-weight: 700;
-    line-height: 1;
-    z-index: 1;
+    font-size: 18px;
+    min-width: 36px;
+    text-align: right;
 }
 
-.awr-score-label {
-    font-size: 11px;
+.awr-cat-score-value.score-good { color: #22c55e; }
+.awr-cat-score-value.score-warn { color: #f59e0b; }
+.awr-cat-score-value.score-caution { color: #f97316; }
+.awr-cat-score-value.score-bad { color: #ef4444; }
+
+.awr-cat-score-bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.awr-cat-score-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s ease;
+}
+
+.awr-cat-score-fill.score-good { background: #22c55e; }
+.awr-cat-score-fill.score-warn { background: #f59e0b; }
+.awr-cat-score-fill.score-caution { background: #f97316; }
+.awr-cat-score-fill.score-bad { background: #ef4444; }
+
+.awr-cat-score-detail {
+    font-size: 12px;
     color: var(--text-secondary);
-    margin-top: 2px;
-    z-index: 1;
+    line-height: 1.5;
+    margin: 0;
 }
 
 .awr-summary-text {

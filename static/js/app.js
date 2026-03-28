@@ -1351,25 +1351,23 @@ const app = createApp({
 
         // === AWR Analyzer Methods ===
 
-        const awrScoreColor = computed(() => {
-            const score = awrAnalysis.value?.overallScore || 0;
-            if (score >= 80) return '#28a745';
-            if (score >= 60) return '#ffc107';
-            if (score >= 40) return '#fd7e14';
-            return '#dc3545';
-        });
-
-        const awrScoreDash = computed(() => {
-            const score = awrAnalysis.value?.overallScore || 0;
-            const circumference = 2 * Math.PI * 50;
-            const filled = (score / 100) * circumference;
-            return `${filled} ${circumference}`;
-        });
+        function awrScoreClass(score) {
+            if (score >= 80) return 'score-good';
+            if (score >= 60) return 'score-warn';
+            if (score >= 40) return 'score-caution';
+            return 'score-bad';
+        }
 
         function awrSnapshotLabel(key) {
             const labels = {
                 dbName: 'DB Name',
                 instanceName: 'Instance',
+                hostName: 'Host',
+                platform: 'Platform',
+                cpus: 'CPUs',
+                memory: 'Memory',
+                dbVersion: 'DB Version',
+                isRAC: 'RAC',
                 startTime: '시작 시간',
                 endTime: '종료 시간',
                 elapsed: '경과 시간',
@@ -1630,8 +1628,7 @@ const app = createApp({
             awrFollowupInput,
             awrFollowupLoading,
             awrFollowupMessages,
-            awrScoreColor,
-            awrScoreDash,
+            awrScoreClass,
             awrSnapshotLabel,
             handleAwrFileSelect,
             handleAwrFileDrop,
