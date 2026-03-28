@@ -114,68 +114,6 @@ const app = createApp({
                     UNIT_PRICE: '단위 판매가 (USD)',
                 },
             },
-            SSB: {
-                CUSTOMER: {
-                    _table: '고객 마스터 (SSB)',
-                    C_CUSTKEY: '고객 키 (PK)',
-                    C_NAME: '고객명',
-                    C_ADDRESS: '주소',
-                    C_CITY: '도시 (앞 10자리가 국가코드)',
-                    C_NATION: '국가명',
-                    C_REGION: '대륙 (AMERICA, ASIA, EUROPE 등)',
-                    C_PHONE: '전화번호',
-                    C_MKTSEGMENT: '시장세분화: AUTOMOBILE, BUILDING, FURNITURE, MACHINERY, HOUSEHOLD',
-                },
-                LINEORDER: {
-                    _table: '주문 라인 팩트 테이블 (SSB)',
-                    LO_ORDERKEY: '주문 키',
-                    LO_CUSTKEY: '고객 키 (FK: CUSTOMER.C_CUSTKEY)',
-                    LO_PARTKEY: '부품 키 (FK: PART.P_PARTKEY)',
-                    LO_SUPPKEY: '공급자 키 (FK: SUPPLIER.S_SUPPKEY)',
-                    LO_ORDERDATE: '주문일자 (FK: DATE_DIM.D_DATEKEY)',
-                    LO_QUANTITY: '주문 수량',
-                    LO_EXTENDEDPRICE: '총 금액 (단가 x 수량)',
-                    LO_DISCOUNT: '할인율 (0~10, 퍼센트)',
-                    LO_REVENUE: '매출 (할인 적용후)',
-                    LO_SUPPLYCOST: '공급 비용',
-                    LO_ORDERPRIORITY: '주문 우선순위: 1-URGENT ~ 5-LOW',
-                    LO_SHIPPRIORITY: '배송 우선순위',
-                },
-                PART: {
-                    _table: '부품/제품 마스터 (SSB)',
-                    P_PARTKEY: '부품 키 (PK)',
-                    P_NAME: '부품명',
-                    P_MFGR: '제조사 (Manufacturer#1~5)',
-                    P_BRAND: '브랜드 (MFGR#1#1 형식)',
-                    P_CATEGORY: '카테고리 (MFGR#1#1 형식)',
-                    P_COLOR: '색상',
-                    P_SIZE: '크기 (1~50)',
-                    P_CONTAINER: '포장 유형',
-                    P_TYPE: '부품 유형',
-                },
-                SUPPLIER: {
-                    _table: '공급자 마스터 (SSB)',
-                    S_SUPPKEY: '공급자 키 (PK)',
-                    S_NAME: '공급자명',
-                    S_ADDRESS: '주소',
-                    S_CITY: '도시',
-                    S_NATION: '국가명',
-                    S_REGION: '대륙 (AMERICA, ASIA, EUROPE 등)',
-                    S_PHONE: '전화번호',
-                },
-                DATE_DIM: {
-                    _table: '날짜 차원 테이블 (SSB)',
-                    D_DATEKEY: '날짜 키 (PK, YYYYMMDD 형식 숫자)',
-                    D_DATE: '날짜 문자열',
-                    D_DAYOFWEEK: '요일명',
-                    D_MONTH: '월명',
-                    D_YEAR: '연도',
-                    D_YEARMONTHNUM: '연월 (YYYYMM 숫자)',
-                    D_WEEKNUMINYEAR: '주차 (연간)',
-                    D_SELLINGSEASON: '판매 시즌 (Christmas, Summer 등)',
-                    D_HOLIDAY: '공휴일 여부',
-                },
-            },
         };
 
         // === Vector Search State ===
@@ -250,10 +188,6 @@ const app = createApp({
                 '할인율 20% 이상 적용된 주문의 연도별 매출 비중을 분석해줘',
                 '제품 카테고리별 수익성(매출-공급비용)이 가장 높은 상위 5개 제품은?',
                 '분기별 주문량 추이와 전분기 대비 증감률을 보여줘',
-                // Annotation 데모용 질문
-                '자동차 시장 고객 중 아시아 지역 매출 합계를 알려줘',
-                '긴급 주문의 비율과 평균 금액을 보여줘',
-                '크리스마스 시즌 매출을 연도별로 비교해줘',
             ],
             DEFAULT: [
                 '테이블 목록을 보여줘',
@@ -1313,7 +1247,6 @@ const app = createApp({
 
         function getAnnotationSet() {
             const profile = (selectedProfile.value || '').toUpperCase();
-            if (profile.includes('SSB')) return { owner: 'ADMIN', tables: annotationSets.SSB };
             if (profile.includes('SH')) return { owner: 'ADMIN', tables: annotationSets.SH };
             return null;
         }
