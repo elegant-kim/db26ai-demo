@@ -17,12 +17,16 @@ LLM_CONFIGS = {
         "api_key_attr": "GROQ_API_KEY",
         "model_attr": "GROQ_MODEL",
         "display_name": "Groq (Llama 3.3 70B)",
+        "max_tokens": 16000,
+        "max_input_chars": 12000,   # 요청 크기 제한 대응
     },
     "google": {
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/v1/chat/completions",
         "api_key_attr": "GOOGLE_API_KEY",
         "model_attr": "GOOGLE_MODEL",
         "display_name": "Google Gemini 2.0 Flash",
+        "max_tokens": 16000,
+        "max_input_chars": 30000,   # 넉넉한 컨텍스트 활용
     },
 }
 
@@ -39,6 +43,13 @@ def get_available_providers() -> list:
                 "model": getattr(settings, config["model_attr"], ""),
             })
     return providers
+
+
+def get_max_input_chars(provider: str = None) -> int:
+    """제공자별 최대 입력 글자 수 반환"""
+    provider = provider or settings.LLM_PROVIDER
+    config = LLM_CONFIGS.get(provider, {})
+    return config.get("max_input_chars", 12000)
 
 
 async def call_llm(prompt: str, provider: str = None, system_prompt: str = None) -> str:
@@ -76,7 +87,7 @@ async def call_llm(prompt: str, provider: str = None, system_prompt: str = None)
         "model": model,
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 8000,
+        "max_tokens": config.get("max_tokens", 8000),
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:

@@ -379,12 +379,12 @@ FOLLOWUP_PROMPT = """당신은 Oracle Database 성능 전문가입니다. 이전
 한국어로 답변하되, Oracle 기술 용어는 영문 그대로 유지하세요. 가능한 한 구체적이고 실행 가능한 조언을 제공하세요."""
 
 
-def build_analysis_prompt(parsed_awr: dict) -> str:
+def build_analysis_prompt(parsed_awr: dict, max_input_chars: int = 12000) -> str:
     """파싱된 AWR 데이터로 LLM 분석 프롬프트를 생성"""
     exadata_info = "이 시스템은 Exadata 환경입니다. Exadata 관련 지표도 분석해 주세요." if parsed_awr["is_exadata"] else "Exadata 환경이 아닙니다."
 
     return AWR_ANALYSIS_PROMPT.format(
-        awr_data=parsed_awr["raw_text"][:12000],  # Groq API 크기 제한 대응
+        awr_data=parsed_awr["raw_text"][:max_input_chars],
         exadata_info=exadata_info,
     )
 

@@ -658,9 +658,11 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
 
         parse_ms = int((time.time() - start) * 1000)
 
-        # 2) LLM 분석 프롬프트 생성 및 호출
-        prompt = build_analysis_prompt(parsed)
+        # 2) LLM 분석 프롬프트 생성 및 호출 (제공자별 입력 크기 적용)
+        from app.llm_client import get_max_input_chars
         llm_provider = provider or None
+        max_chars = get_max_input_chars(llm_provider)
+        prompt = build_analysis_prompt(parsed, max_input_chars=max_chars)
         llm_result = await analyze_awr_with_llm(prompt, provider=llm_provider)
         total_ms = int((time.time() - start) * 1000)
 
