@@ -146,9 +146,12 @@ const app = createApp({
         const recentSqlLoading = ref(false);
         const explainPlanLoading = ref(false);
 
+        // === LLM 제공자 (AWR 분석, RAG 공통) ===
+        const llmProviders = ref([]);
+        const llmProvider = ref('');
+
         // === AWR Analyzer State ===
         const extraSubMenu = ref('awr-upload');
-        const awrProfileName = ref('');
         const awrLoading = ref(false);
         const awrError = ref('');
         const awrAnalysis = ref(null);
@@ -1404,8 +1407,8 @@ const app = createApp({
 
             const formData = new FormData();
             formData.append('file', file);
-            if (awrProfileName.value) {
-                formData.append('profile_name', awrProfileName.value);
+            if (llmProvider.value) {
+                formData.append('provider', llmProvider.value);
             }
 
             const controller = new AbortController();
@@ -1461,7 +1464,7 @@ const app = createApp({
                     body: JSON.stringify({
                         question: question,
                         session_id: awrSessionId.value,
-                        profile_name: awrProfileName.value,
+                        provider: llmProvider.value,
                     }),
                 });
                 const data = await response.json();
@@ -1483,10 +1486,29 @@ const app = createApp({
             }
         }
 
+        // LLM 제공자 목록 로드
+        async function loadLlmProviders() {
+            try {
+                const res = await fetch('/api/llm/providers');
+                const data = await res.json();
+                if (data.success && data.providers.length > 0) {
+                    llmProviders.value = data.providers;
+                    llmProvider.value = data.providers[0].id;
+                }
+            } catch (e) {
+                console.error('LLM 제공자 목록 로드 실패:', e);
+            }
+        }
+
+        const selectedLlmProvider = computed(() => {
+            return llmProviders.value.find(p => p.id === llmProvider.value) || null;
+        });
+
         onMounted(() => {
             checkHealth();
             loadProfiles();
             fetchDocuments();
+            loadLlmProviders();
         });
 
         return {
@@ -1573,9 +1595,13 @@ const app = createApp({
             fetchRecentSql,
             fetchExplainPlan,
 
+            // LLM 제공자
+            llmProviders,
+            llmProvider,
+            selectedLlmProvider,
+
             // AWR Analyzer
             extraSubMenu,
-            awrProfileName,
             awrLoading,
             awrError,
             awrAnalysis,

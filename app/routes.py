@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 
-from fastapi import APIRouter, Request, UploadFile, File
+from fastapi import APIRouter, Form, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -20,6 +20,7 @@ from app.awr_analyzer import (
     analyze_awr_with_llm,
     followup_question,
 )
+from app.llm_client import get_available_providers
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -617,19 +618,18 @@ MAX_AWR_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
 class AWRFollowupRequest(BaseModel):
     question: str
     session_id: str = "default"
-    profile_name: str = ""
+    provider: str = ""
+
+
+@router.get("/llm/providers")
+async def llm_providers():
+    """사용 가능한 LLM 제공자 목록 반환"""
+    return {"success": True, "providers": get_available_providers()}
 
 
 @router.post("/awr/analyze")
-async def awr_analyze(file: UploadFile = File(...), profile_name: str = ""):
+async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
     """AWR HTML 파일 업로드 → 파싱 → LLM 분석"""
-    pool = await get_pool()
-    if pool is None:
-        return JSONResponse(
-            status_code=503,
-            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
-        )
-
     # 파일 유효성 검사
     if not file.filename.lower().endswith((".html", ".htm")):
         return JSONResponse(
@@ -660,19 +660,8 @@ async def awr_analyze(file: UploadFile = File(...), profile_name: str = ""):
 
         # 2) LLM 분석 프롬프트 생성 및 호출
         prompt = build_analysis_prompt(parsed)
-
-        # 프로필이 지정되지 않으면 기본 프로필 사용
-        if not profile_name:
-            profiles = await list_profiles(pool)
-            if profiles:
-                profile_name = profiles[0]["name"]
-            else:
-                return JSONResponse(
-                    status_code=400,
-                    content={"success": False, "error": "사용 가능한 AI 프로필이 없습니다."},
-                )
-
-        llm_result = await analyze_awr_with_llm(pool, prompt, profile_name)
+        llm_provider = provider or None
+        llm_result = await analyze_awr_with_llm(prompt, provider=llm_provider)
         total_ms = int((time.time() - start) * 1000)
 
         # 캐싱 (후속 질문용)
@@ -680,7 +669,7 @@ async def awr_analyze(file: UploadFile = File(...), profile_name: str = ""):
         _awr_cache[session_id] = {
             "parsed": parsed,
             "summary": llm_result.get("summary", ""),
-            "profile_name": profile_name,
+            "provider": provider,
         }
 
         return {
@@ -698,6 +687,8 @@ async def awr_analyze(file: UploadFile = File(...), profile_name: str = ""):
         }
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         elapsed_ms = int((time.time() - start) * 1000)
         return JSONResponse(
             status_code=500,
@@ -708,26 +699,11 @@ async def awr_analyze(file: UploadFile = File(...), profile_name: str = ""):
 @router.post("/awr/followup")
 async def awr_followup(req: AWRFollowupRequest):
     """AWR 분석 결과에 대한 후속 질문"""
-    pool = await get_pool()
-    if pool is None:
-        return JSONResponse(
-            status_code=503,
-            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
-        )
-
-    # 캐시에서 이전 분석 데이터 조회
     cached = _awr_cache.get(req.session_id)
     if not cached:
         return JSONResponse(
             status_code=400,
             content={"success": False, "error": "이전 AWR 분석 세션을 찾을 수 없습니다. 파일을 다시 업로드해 주세요."},
-        )
-
-    profile_name = req.profile_name or cached.get("profile_name", "")
-    if not profile_name:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "error": "사용 가능한 AI 프로필이 없습니다."},
         )
 
     start = time.time()
@@ -737,7 +713,8 @@ async def awr_followup(req: AWRFollowupRequest):
             cached["summary"],
             req.question,
         )
-        answer = await followup_question(pool, prompt, profile_name)
+        llm_provider = req.provider or cached.get("provider") or None
+        answer = await followup_question(prompt, provider=llm_provider)
         elapsed_ms = int((time.time() - start) * 1000)
 
         return {

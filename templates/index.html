@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=19">
+    <link rel="stylesheet" href="/static/css/style.css?v=20">
 </head>
 <body>
     <div id="app">
@@ -893,23 +893,23 @@
                     </button>
                 </div>
 
-                <!-- AI 프로필 선택 (AWR 분석용) -->
+                <!-- LLM 제공자 선택 (AWR 분석 / RAG 공통) -->
                 <div class="sidebar-section">
                     <h3 class="sidebar-title">
                         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 10v2"></path>
-                            <circle cx="12" cy="6" r="4"></circle>
-                            <rect x="8" y="14" width="8" height="8" rx="1"></rect>
-                            <line x1="12" y1="18" x2="12" y2="18.01"></line>
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                         </svg>
-                        AI 프로필
+                        LLM 모델
                     </h3>
-                    <select v-model="awrProfileName" class="select-input">
-                        <option value="">기본 프로필</option>
-                        <option v-for="p in profiles" :key="'awr-'+p.profile_name" :value="p.profile_name">
-                            [[ p.profile_name ]]
+                    <select v-model="llmProvider" class="select-input">
+                        <option v-for="p in llmProviders" :key="p.id" :value="p.id">
+                            [[ p.name ]]
                         </option>
                     </select>
+                    <div class="llm-model-info" v-if="selectedLlmProvider">
+                        <span class="awr-info-label">모델:</span>
+                        <span class="awr-info-value">[[ selectedLlmProvider.model ]]</span>
+                    </div>
                 </div>
 
                 <!-- 분석 정보 (결과가 있을 때) -->
@@ -1280,6 +1280,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=19"></script>
+    <script src="/static/js/app.js?v=20"></script>
 </body>
 </html>

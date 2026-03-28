@@ -1,14 +1,14 @@
 """
 AWR HTML Report Analyzer
 - AWR HTML 파일을 파싱하여 핵심 섹션 추출
-- LLM(DBMS_CLOUD_AI.GENERATE)에 전송하여 구조화된 JSON 분석 결과 생성
+- 외부 LLM API(Groq/Gemini)를 통해 구조화된 JSON 분석 결과 생성
 - 후속 질문 지원
 """
 
-import json
 import re
 from html.parser import HTMLParser
-from typing import Optional
+
+from app.llm_client import call_llm, call_llm_json
 
 
 # ── AWR HTML 파싱 ──────────────────────────────────────────────
@@ -398,77 +398,16 @@ def build_followup_prompt(parsed_awr: dict, previous_summary: str, question: str
     )
 
 
-# ── LLM 호출 (DBMS_CLOUD_AI.GENERATE) ─────────────────────────
+# ── LLM 호출 (외부 API: Groq / Gemini) ────────────────────────
 
-async def _lob_to_str(val) -> str:
-    """Oracle LOB → str 변환"""
-    if val is None:
-        return ""
-    if hasattr(val, "read"):
-        return await val.read()
-    return str(val)
-
-
-async def analyze_awr_with_llm(pool, prompt: str, profile_name: str) -> dict:
+async def analyze_awr_with_llm(prompt: str, provider: str = None) -> dict:
     """
-    DBMS_CLOUD_AI.GENERATE를 사용하여 AWR 분석 실행.
+    외부 LLM API를 사용하여 AWR 분석 실행.
     Returns: 파싱된 JSON dict 또는 에러 정보
     """
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            sql = """
-                SELECT DBMS_CLOUD_AI.GENERATE(
-                    prompt       => :prompt,
-                    profile_name => :profile,
-                    action       => 'chat'
-                ) FROM dual
-            """
-            await cursor.execute(sql, {"prompt": prompt, "profile": profile_name})
-            row = await cursor.fetchone()
-            if not row or row[0] is None:
-                return {"error": "LLM으로부터 응답을 받지 못했습니다."}
-
-            raw_response = await _lob_to_str(row[0])
-
-    # JSON 추출 시도
-    return _extract_json_from_response(raw_response)
+    return await call_llm_json(prompt, provider=provider)
 
 
-def _extract_json_from_response(raw: str) -> dict:
-    """LLM 응답에서 JSON을 추출"""
-    # 1) ```json ... ``` 블록 추출
-    match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    # 2) { ... } 전체 추출
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
-
-    # 3) 파싱 실패 시 원문 반환
-    return {"raw_response": raw, "parse_error": "JSON 파싱에 실패했습니다. 원문 응답을 확인하세요."}
-
-
-async def followup_question(pool, prompt: str, profile_name: str) -> str:
+async def followup_question(prompt: str, provider: str = None) -> str:
     """후속 질문에 대한 LLM 응답 (자유 형식 텍스트)"""
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            sql = """
-                SELECT DBMS_CLOUD_AI.GENERATE(
-                    prompt       => :prompt,
-                    profile_name => :profile,
-                    action       => 'chat'
-                ) FROM dual
-            """
-            await cursor.execute(sql, {"prompt": prompt, "profile": profile_name})
-            row = await cursor.fetchone()
-            if not row or row[0] is None:
-                return "LLM으로부터 응답을 받지 못했습니다."
-            return await _lob_to_str(row[0])
+    return await call_llm(prompt, provider=provider)
