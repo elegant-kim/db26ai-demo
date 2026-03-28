@@ -990,7 +990,7 @@
                 </div>
 
                 <!-- AWR 분석 결과 화면 -->
-                <div v-show="extraSubMenu === 'awr-result' && awrAnalysis" class="step-content awr-result-content">
+                <div v-if="extraSubMenu === 'awr-result' && awrAnalysis" class="step-content awr-result-content">
 
                     <!-- 종합 점수 & 요약 -->
                     <div class="awr-summary-card">
@@ -1265,7 +1265,7 @@
                 </div><!-- /step-content-scroll -->
 
                 <!-- 후속 질문 입력창 (결과 화면에서만) -->
-                <div class="input-area" v-show="extraSubMenu === 'awr-result' && awrAnalysis">
+                <div class="input-area" v-if="extraSubMenu === 'awr-result' && awrAnalysis">
                     <div class="input-wrapper">
                         <input type="text" v-model="awrFollowupInput" @keyup.enter="sendAwrFollowup" :disabled="awrFollowupLoading" class="chat-input" placeholder="분석 결과에 대해 추가 질문하세요... (예: cell smart table scan에 대해 자세히 설명해줘)">
                         <button @click="sendAwrFollowup" :disabled="awrFollowupLoading || !awrFollowupInput.trim()" class="btn btn-primary send-btn">질문</button>
