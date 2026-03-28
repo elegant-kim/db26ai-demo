@@ -42,10 +42,11 @@ async def shutdown():
 
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "default_profile": settings.SELECT_AI_PROFILE,
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"default_profile": settings.SELECT_AI_PROFILE},
+    )
 
 
 if __name__ == "__main__":

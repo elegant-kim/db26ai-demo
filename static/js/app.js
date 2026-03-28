@@ -19,53 +19,199 @@ const app = createApp({
 
         // === NL2SQL State ===
         const userInput = ref('');
+        const sqlInput = ref('');
         const isLoading = ref(false);
-        const selectedAction = ref('runsql');
-        const messages = reactive([]);
+        const isSqlLoading = ref(false);
+        const selectedAction = ref('showsql');
+        const messages = ref([]);
         const chatMessages = ref(null);
         const chartInstances = {};
 
+        // === Profile Info State ===
+        const profileInfo = ref(null);
+        const schemaInfo = ref(null);
+        const schemaLoading = ref(false);
+        const schemaExpanded = ref({});
+        const annotationApplying = ref(false);
+        const annotationRemoving = ref(false);
+
+        // SH 스키마 Annotation 세트
+        const annotationSets = {
+            SH: {
+                CUSTOMERS: {
+                    _table: '고객 마스터 테이블 - 인구통계 및 신용정보 포함',
+                    CUST_ID: '고객 고유 식별자 (PK)',
+                    CUST_FIRST_NAME: '고객 이름 (First Name)',
+                    CUST_LAST_NAME: '고객 성 (Last Name)',
+                    CUST_GENDER: '성별: M=Male, F=Female',
+                    CUST_YEAR_OF_BIRTH: '출생연도 (4자리)',
+                    CUST_MARITAL_STATUS: '결혼상태: married, single 등',
+                    CUST_STREET_ADDRESS: '거주지 주소',
+                    CUST_POSTAL_CODE: '우편번호',
+                    CUST_CITY: '거주 도시',
+                    CUST_STATE_PROVINCE: '거주 주/도',
+                    CUST_MAIN_PHONE_NUMBER: '주요 전화번호',
+                    CUST_INCOME_LEVEL: '소득구간: A: Under 30,000 ~ L: 300,000 and above',
+                    CUST_CREDIT_LIMIT: '신용한도 (USD)',
+                    CUST_EMAIL: '이메일 주소',
+                    CUST_VALID: '고객 유효 상태: A=Active, I=Inactive',
+                },
+                SALES: {
+                    _table: '판매 트랜잭션 팩트 테이블',
+                    PROD_ID: '제품 ID (FK: PRODUCTS.PROD_ID)',
+                    CUST_ID: '고객 ID (FK: CUSTOMERS.CUST_ID)',
+                    TIME_ID: '판매 일자 (FK: TIMES.TIME_ID)',
+                    CHANNEL_ID: '판매 채널 ID (FK: CHANNELS.CHANNEL_ID)',
+                    PROMO_ID: '프로모션 ID (FK: PROMOTIONS.PROMO_ID)',
+                    QUANTITY_SOLD: '판매 수량',
+                    AMOUNT_SOLD: '판매 금액 (USD)',
+                },
+                PRODUCTS: {
+                    _table: '제품 마스터 테이블',
+                    PROD_ID: '제품 고유 식별자 (PK)',
+                    PROD_NAME: '제품명',
+                    PROD_DESC: '제품 설명',
+                    PROD_SUBCATEGORY: '제품 소분류',
+                    PROD_CATEGORY: '제품 대분류',
+                    PROD_STATUS: '제품 상태: Status 값으로 활성여부 판단',
+                    PROD_LIST_PRICE: '정가 (USD)',
+                    PROD_MIN_PRICE: '최저가 (USD)',
+                },
+                CHANNELS: {
+                    _table: '판매 채널 (Direct Sales, Internet, Catalog, Partners)',
+                    CHANNEL_ID: '채널 고유 식별자 (PK)',
+                    CHANNEL_DESC: '채널명: Direct Sales, Internet, Catalog, Partners',
+                    CHANNEL_CLASS: '채널 분류: Direct, Indirect, Others',
+                },
+                TIMES: {
+                    _table: '시간 차원 테이블 (1998~2001년)',
+                    TIME_ID: '날짜 (PK)',
+                    DAY_NAME: '요일명 (Monday~Sunday)',
+                    CALENDAR_MONTH_DESC: '월 (예: 2000-01)',
+                    CALENDAR_QUARTER_DESC: '분기 (예: 2000-Q1)',
+                    CALENDAR_YEAR: '연도 (예: 2000)',
+                    FISCAL_YEAR: '회계연도',
+                },
+                PROMOTIONS: {
+                    _table: '프로모션 정보',
+                    PROMO_ID: '프로모션 ID (PK)',
+                    PROMO_NAME: '프로모션명',
+                    PROMO_SUBCATEGORY: '프로모션 소분류',
+                    PROMO_CATEGORY: '프로모션 대분류',
+                },
+                COUNTRIES: {
+                    _table: '국가 정보 (고객 국가 참조)',
+                    COUNTRY_ID: '국가 ID (PK)',
+                    COUNTRY_NAME: '국가명',
+                    COUNTRY_REGION: '대륙/지역 (Americas, Europe, Asia 등)',
+                    COUNTRY_SUBREGION: '세부지역',
+                },
+                COSTS: {
+                    _table: '제품 원가 테이블',
+                    PROD_ID: '제품 ID (FK)',
+                    TIME_ID: '날짜 (FK)',
+                    UNIT_COST: '단위 원가 (USD)',
+                    UNIT_PRICE: '단위 판매가 (USD)',
+                },
+            },
+        };
+
         // === Vector Search State ===
+        const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
         const vectorInput = ref('');
         const vectorLoading = ref(false);
         const vectorSearchMode = ref('vector');
-        const vectorMessages = reactive([]);
+        const vectorMessages = ref([]);
         const vectorChatMessages = ref(null);
-        const uploadedDocs = reactive([]);
+        const uploadedDocs = ref([]);
         const isUploading = ref(false);
         const dragOver = ref(false);
 
+        // Step 1: Table Management State
+        const tableActionLoading = ref(false);
+        const tableActionResult = ref(null);
+
+        // Step 2: Table Inspection State
+        const tableInspectTarget = ref('DOC_CHUNKS');
+        const tableDefResult = ref(null);
+        const tableDataResult = ref(null);
+        const tableIdxResult = ref(null);
+        const tableDefLoading = ref(false);
+        const tableDataLoading = ref(false);
+        const tableIdxLoading = ref(false);
+
+        // Step 4: Query Inspection State
+        const recentSqlResult = ref(null);
+        const explainPlanResult = ref(null);
+        const recentSqlLoading = ref(false);
+        const explainPlanLoading = ref(false);
+
         // === Constants ===
-        const actionModes = [
-            { value: 'runsql', label: '실행' },
+        const actionModesLeft = [
             { value: 'showsql', label: 'SQL 보기' },
             { value: 'narrate', label: '설명' },
-            { value: 'explainsql', label: 'SQL 해설' },
             { value: 'showprompt', label: '프롬프트' },
-            { value: 'summarize', label: '요약' },
             { value: 'chat', label: '대화' },
         ];
-
-        const exampleQuestions = reactive([
-            '매출 상위 5개 제품',
-            '월별 매출 추이',
-            '국가별 고객 수',
-            '연도별 총 매출액',
-            '채널별 주문 건수',
-        ]);
-
-        const vectorExampleQuestions = reactive([
-            '연차 사용 규정',
-            '퇴직금 산정 기준',
-            '출장비 정산 절차',
-        ]);
-
-        const loadingMessages = [
-            '자연어 분석 중...',
-            'SQL 생성 중...',
-            '쿼리 실행 중...',
-            '결과 정리 중...',
+        const actionModesRight = [
+            { value: 'runsql', label: '실행' },
+            { value: 'explainsql', label: 'SQL 해설' },
+            { value: 'summarize', label: '요약' },
         ];
+
+        const exampleQuestionsMap = {
+            SH: [
+                '매출 상위 5개 제품을 알려주세요',
+                '월별 매출 추이를 알려주세요',
+                '국가별 고객 수를 알려주세요',
+                '연도별 총 매출액을 알려주세요',
+                '채널별 주문 건수를 알려주세요',
+                '2000년 인터넷 채널에서 가장 많이 판매된 제품 카테고리 상위 3개와 매출액을 알려줘',
+                '미국 고객 중 연간 구매금액이 가장 높은 상위 10명의 이름과 총 구매금액은?',
+                '프로모션 유형별 평균 할인율과 그에 따른 매출 변화를 분석해줘',
+                '분기별 매출 성장률을 전년 동기 대비로 보여줘',
+                '고객 연령대별 선호 제품 카테고리와 평균 구매단가를 알려줘',
+                // Annotation 데모용 질문
+                '유효한 고객 수를 알려줘',
+                '유효하지 않은 고객 중 신용한도가 가장 높은 5명은?',
+                '소득구간별 고객 수와 평균 신용한도를 보여줘',
+                '인터넷 채널과 직접판매 채널의 매출 비교',
+            ],
+            SSB: [
+                '총 매출액이 가장 높은 공급업체 5곳을 알려줘',
+                '연도별 총 주문금액 추이를 보여줘',
+                '지역별 고객 수와 평균 주문금액을 알려줘',
+                '제품 브랜드별 판매수량 순위를 알려줘',
+                '월별 주문건수와 평균 할인율을 보여줘',
+                '1997년에 아시아 지역 고객이 주문한 제품 중 매출 상위 5개 브랜드는?',
+                '공급업체 국가별 평균 공급비용과 총 매출을 비교해줘',
+                '할인율 20% 이상 적용된 주문의 연도별 매출 비중을 분석해줘',
+                '제품 카테고리별 수익성(매출-공급비용)이 가장 높은 상위 5개 제품은?',
+                '분기별 주문량 추이와 전분기 대비 증감률을 보여줘',
+            ],
+            DEFAULT: [
+                '테이블 목록을 보여줘',
+                '전체 레코드 수를 알려줘',
+                '최근 데이터 10건을 보여줘',
+            ],
+        };
+        const exampleQuestions = ref(exampleQuestionsMap.SH);
+
+        const vectorExampleQuestions = ref([
+            '연차 사용 규정을 알려주세요',
+            '퇴직금 산정 기준을 알려주세요',
+            '출장비 정산 절차를 알려주세요',
+        ]);
+
+        const loadingMessageMap = {
+            showsql: 'AI가 SQL을 생성하고 있습니다',
+            runsql: 'AI가 SQL을 생성하고 실행하고 있습니다',
+            narrate: 'AI가 자연어 설명을 생성하고 있습니다',
+            explainsql: 'AI가 SQL 해설을 작성하고 있습니다',
+            showprompt: 'AI 프롬프트를 조회하고 있습니다',
+            summarize: 'AI가 요약을 생성하고 있습니다',
+            chat: 'AI가 응답을 생성하고 있습니다',
+        };
 
         const vectorLoadingMessages = [
             '질문 임베딩 중...',
@@ -81,16 +227,16 @@ const app = createApp({
                 { action: 'chart', label: '차트' },
                 { action: 'narrate', label: '설명' },
                 { action: 'explainsql', label: 'SQL 해설' },
+                { action: 'explainplan', label: '실행계획' },
                 { action: 'showprompt', label: '프롬프트 보기' },
                 { action: 'summarize', label: '요약' },
-                { action: 'feedback', label: '피드백 제출' },
             ],
             showsql: [
                 { action: 'runsql', label: '실행' },
                 { action: 'narrate', label: '설명' },
                 { action: 'explainsql', label: 'SQL 해설' },
+                { action: 'explainplan', label: '실행계획' },
                 { action: 'showprompt', label: '프롬프트 보기' },
-                { action: 'feedback', label: '피드백 제출' },
             ],
             narrate: [
                 { action: 'showsql', label: 'SQL 보기' },
@@ -152,11 +298,10 @@ const app = createApp({
         // === Oracle SQL Highlighting ===
         function highlightOracleSQL(sql) {
             if (!sql) return '';
-            // Escape HTML first
             let s = sql.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
             // Oracle-specific functions (Oracle Red)
-            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE)\b/g,
+            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE|DBMS_LOB\.SUBSTR|DBMS_XPLAN\.DISPLAY|VECTOR_SERIALIZE|VECTOR_INDEX_TRANSFORM)\b/g,
                 '<span style="color: #C74634; font-weight: 600;">$1</span>');
 
             // String literals (green)
@@ -170,16 +315,29 @@ const app = createApp({
                 'DESC', 'ASC', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'GROUP', 'HAVING',
                 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'LOWER', 'UPPER',
                 'SCORE', 'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
-                'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY'];
+                'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY',
+                'INMEMORY', 'GRAPH', 'WITH', 'TARGET', 'ACCURACY', 'CASCADE', 'CONSTRAINTS',
+                'PURGE', 'DROP', 'EXPLAIN', 'PLAN', 'FOR', 'SUBSTR', 'CASE', 'WHEN', 'THEN', 'ELSE',
+                'FETCH APPROX FIRST', 'USER_TAB_COLUMNS', 'USER_INDEXES', 'USER_IND_COLUMNS',
+                'COLUMN_ID', 'COLUMN_NAME', 'DATA_TYPE', 'DATA_LENGTH', 'NULLABLE'];
             for (const kw of keywords) {
                 const regex = new RegExp(`\\b(${kw})\\b`, 'gi');
                 s = s.replace(regex, (match) => {
-                    // Don't re-color if already inside a span
                     return `<span style="color: #7c3aed;">${match}</span>`;
                 });
             }
 
             return s;
+        }
+
+        function highlightSQLWithLines(sql) {
+            if (!sql) return '';
+            const lines = sql.split('\n');
+            return lines.map((line, i) => {
+                const num = `<span class="sql-line-num">${i + 1}</span>`;
+                const highlighted = highlightOracleSQL(line);
+                return `<div class="sql-line">${num}${highlighted}</div>`;
+            }).join('');
         }
 
         // === NL2SQL Methods ===
@@ -201,21 +359,33 @@ const app = createApp({
             const action = selectedAction.value;
             const profileName = selectedProfile.value;
 
-            messages.push({
+            // 이전 질문 찾기 (같은 프로필의 마지막 user 메시지)
+            let prevPrompt = null;
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+                const m = messages.value[i];
+                if (m.role === 'user' && !m.isSql) {
+                    prevPrompt = m.content;
+                    break;
+                }
+            }
+
+            messages.value.push({
                 role: 'user',
                 content: prompt,
+                prevPrompt: prevPrompt,
                 timestamp: formatTime(),
             });
 
             userInput.value = '';
 
+            const baseLoadingText = loadingMessageMap[action] || 'AI가 처리하고 있습니다';
             const assistantMsg = reactive({
                 role: 'assistant',
                 action: action,
                 prompt: prompt,
                 profileName: profileName,
                 loading: true,
-                loadingText: loadingMessages[0],
+                loadingText: baseLoadingText + '... (0초)',
                 sql: null,
                 tableData: null,
                 textResult: null,
@@ -224,28 +394,31 @@ const app = createApp({
                 showChart: false,
                 chartType: 'bar',
                 sqlExpanded: true,
-                showFeedback: false,
-                feedbackText: '',
                 actionLoading: false,
+                actionLoadingText: '',
                 cachedActions: {},
                 timestamp: formatTime(),
             });
-            messages.push(assistantMsg);
+            messages.value.push(assistantMsg);
             scrollToBottom();
 
             isLoading.value = true;
-            let loadIdx = 0;
+            let elapsedSec = 0;
             const loadingInterval = setInterval(() => {
-                loadIdx = (loadIdx + 1) % loadingMessages.length;
-                assistantMsg.loadingText = loadingMessages[loadIdx];
+                elapsedSec++;
+                assistantMsg.loadingText = baseLoadingText + `... (${elapsedSec}초)`;
             }, 1500);
 
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
                 const response = await fetch('/api/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt, action, profile_name: profileName }),
+                    signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
 
                 const data = await response.json();
                 clearInterval(loadingInterval);
@@ -259,10 +432,78 @@ const app = createApp({
                 }
             } catch (err) {
                 clearInterval(loadingInterval);
-                assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                if (err.name === 'AbortError') {
+                    assistantMsg.error = '요청 시간이 초과되었습니다 (120초). 질문을 단순화하거나 다시 시도해 주세요.';
+                } else {
+                    assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                }
             } finally {
                 assistantMsg.loading = false;
                 isLoading.value = false;
+                scrollToBottom();
+            }
+        }
+
+        async function executeSql() {
+            const sql = sqlInput.value.trim();
+            if (!sql || isSqlLoading.value) return;
+
+            messages.value.push({
+                role: 'user',
+                content: sql,
+                timestamp: formatTime(),
+                isSql: true,
+            });
+            sqlInput.value = '';
+
+            const assistantMsg = reactive({
+                role: 'assistant',
+                action: 'rawsql',
+                loading: true,
+                loadingText: 'SQL 실행 중...',
+                sqlResult: null,
+                error: null,
+                elapsed_ms: null,
+                timestamp: formatTime(),
+            });
+            messages.value.push(assistantMsg);
+            scrollToBottom();
+
+            isSqlLoading.value = true;
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
+                const response = await fetch('/api/execute-sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql }),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+                const data = await response.json();
+                if (data.success) {
+                    assistantMsg.elapsed_ms = data.elapsed_ms;
+                    assistantMsg.sqlResult = {
+                        sql_executed: data.sql_executed,
+                        columns: data.columns,
+                        data: data.data,
+                        row_count: data.row_count,
+                    };
+                } else {
+                    assistantMsg.error = data.error || 'SQL 실행에 실패했습니다.';
+                    if (data.sql_executed) {
+                        assistantMsg.sqlResult = { sql_executed: data.sql_executed };
+                    }
+                }
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    assistantMsg.error = '요청 시간이 초과되었습니다 (120초). 질문을 단순화하거나 다시 시도해 주세요.';
+                } else {
+                    assistantMsg.error = '서버 연결에 실패했습니다: ' + err.message;
+                }
+            } finally {
+                assistantMsg.loading = false;
+                isSqlLoading.value = false;
                 scrollToBottom();
             }
         }
@@ -294,7 +535,7 @@ const app = createApp({
         }
 
         async function executeAction(msgIdx, action) {
-            const msg = messages[msgIdx];
+            const msg = messages.value[msgIdx];
             if (!msg || msg.actionLoading) return;
 
             if (action === 'chart') {
@@ -305,8 +546,53 @@ const app = createApp({
                 return;
             }
 
-            if (action === 'feedback') {
-                msg.showFeedback = !msg.showFeedback;
+            // 실행계획: showsql 캐시에서 SQL 추출 후 /api/explain-plan 호출
+            if (action === 'explainplan') {
+                // SQL 텍스트 확보 (showsql 캐시 또는 현재 msg.sql)
+                let sqlText = msg.sql;
+                if (!sqlText && msg.cachedActions && msg.cachedActions['showsql']) {
+                    sqlText = msg.cachedActions['showsql'];
+                }
+                if (!sqlText) {
+                    // showsql을 먼저 호출하여 SQL 획득
+                    showToast('SQL을 먼저 확인해주세요. (SQL 보기 클릭)', 'error');
+                    return;
+                }
+                if (msg.cachedActions && msg.cachedActions['explainplan']) {
+                    msg.explainPlan = msg.cachedActions['explainplan'];
+                    msg.action = 'explainplan';
+                    scrollToBottom();
+                    return;
+                }
+                msg.actionLoading = true;
+                msg.actionLoadingText = '실행계획을 조회하고 있습니다... (0초)';
+                let planElapsed = 0;
+                const planTimer = setInterval(() => {
+                    planElapsed++;
+                    msg.actionLoadingText = `실행계획을 조회하고 있습니다... (${planElapsed}초)`;
+                }, 1000);
+                try {
+                    const response = await fetch('/api/explain-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sql: sqlText }),
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        msg.explainPlan = data.plan;
+                        msg.cachedActions['explainplan'] = data.plan;
+                        msg.action = 'explainplan';
+                    } else {
+                        showToast(data.error || '실행계획 조회 실패', 'error');
+                    }
+                } catch (err) {
+                    showToast('실행계획 조회 실패: ' + err.message, 'error');
+                } finally {
+                    clearInterval(planTimer);
+                    msg.actionLoading = false;
+                    msg.actionLoadingText = '';
+                    scrollToBottom();
+                }
                 return;
             }
 
@@ -317,8 +603,18 @@ const app = createApp({
                 return;
             }
 
+            const actionLabel = loadingMessageMap[action] || 'AI가 처리하고 있습니다';
             msg.actionLoading = true;
+            msg.actionLoadingText = actionLabel + '... (0초)';
+            let actionElapsed = 0;
+            const actionTimer = setInterval(() => {
+                actionElapsed++;
+                msg.actionLoadingText = actionLabel + `... (${actionElapsed}초)`;
+            }, 1000);
+            scrollToBottom();
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
                 const response = await fetch('/api/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -327,7 +623,9 @@ const app = createApp({
                         action: action,
                         profile_name: msg.profileName,
                     }),
+                    signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
 
                 const data = await response.json();
                 if (data.success) {
@@ -339,43 +637,21 @@ const app = createApp({
                     showToast(data.error || '오류가 발생했습니다.', 'error');
                 }
             } catch (err) {
-                showToast('서버 연결에 실패했습니다.', 'error');
+                if (err.name === 'AbortError') {
+                    showToast('요청 시간이 초과되었습니다 (120초).', 'error');
+                } else {
+                    showToast('서버 연결에 실패했습니다.', 'error');
+                }
             } finally {
+                clearInterval(actionTimer);
                 msg.actionLoading = false;
+                msg.actionLoadingText = '';
                 scrollToBottom();
             }
         }
 
-        async function submitFeedback(msgIdx) {
-            const msg = messages[msgIdx];
-            if (!msg || !msg.feedbackText) return;
-
-            try {
-                const response = await fetch('/api/feedback', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        prompt: msg.prompt,
-                        feedback: msg.feedbackText,
-                        profile_name: msg.profileName,
-                    }),
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast('피드백이 제출되었습니다.');
-                    msg.showFeedback = false;
-                    msg.feedbackText = '';
-                } else {
-                    showToast(data.error || '피드백 제출에 실패했습니다.', 'error');
-                }
-            } catch (err) {
-                showToast('서버 연결에 실패했습니다.', 'error');
-            }
-        }
-
         function renderChart(msgIdx) {
-            const msg = messages[msgIdx];
+            const msg = messages.value[msgIdx];
             if (!msg || !msg.tableData || msg.tableData.length === 0) return;
 
             nextTick(() => {
@@ -465,6 +741,155 @@ const app = createApp({
 
         // === Vector Search Methods ===
 
+        // --- Step 1: Table Management ---
+
+        async function dropVectorTables() {
+            if (!confirm('Vector Store 테이블(documents, doc_chunks)을 삭제합니다. 모든 데이터가 손실됩니다. 계속하시겠습니까?')) return;
+            tableActionLoading.value = true;
+            tableActionResult.value = null;
+            try {
+                const response = await fetch('/api/vector/drop-tables', { method: 'POST' });
+                const data = await response.json();
+                tableActionResult.value = {
+                    action: 'drop',
+                    success: data.success,
+                    tables: data.tables || [],
+                    sql_executed: data.sql_executed || '',
+                    error: data.error || null,
+                };
+                if (data.success) {
+                    showToast('테이블이 삭제되었습니다.');
+                    uploadedDocs.value = [];
+                } else {
+                    showToast(data.error || '삭제에 실패했습니다.', 'error');
+                }
+            } catch (err) {
+                tableActionResult.value = { action: 'drop', success: false, error: err.message };
+                showToast('서버 연결에 실패했습니다.', 'error');
+            } finally {
+                tableActionLoading.value = false;
+            }
+        }
+
+        async function createVectorTables() {
+            tableActionLoading.value = true;
+            tableActionResult.value = null;
+            try {
+                const response = await fetch('/api/vector/create-tables', { method: 'POST' });
+                const data = await response.json();
+                tableActionResult.value = {
+                    action: 'create',
+                    success: data.success,
+                    tables: data.tables || [],
+                    created: data.created || [],
+                    existing: data.existing || [],
+                    sql_executed: data.sql_executed || '',
+                    error: data.error || null,
+                };
+                if (data.success) {
+                    const msg = (data.created && data.created.length > 0)
+                        ? `테이블 생성 완료: ${data.created.join(', ')}`
+                        : '기존 테이블에 연결되었습니다.';
+                    showToast(msg);
+                } else {
+                    showToast(data.error || '생성에 실패했습니다.', 'error');
+                }
+            } catch (err) {
+                tableActionResult.value = { action: 'create', success: false, error: err.message };
+                showToast('서버 연결에 실패했습니다.', 'error');
+            } finally {
+                tableActionLoading.value = false;
+            }
+        }
+
+        // --- Step 2: Table Inspection ---
+
+        async function fetchTableDefinition() {
+            tableDefLoading.value = true;
+            tableDefResult.value = null;
+            try {
+                const response = await fetch('/api/vector/table-definition', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_name: tableInspectTarget.value }),
+                });
+                const data = await response.json();
+                tableDefResult.value = data;
+            } catch (err) {
+                tableDefResult.value = { success: false, error: err.message };
+            } finally {
+                tableDefLoading.value = false;
+            }
+        }
+
+        async function fetchTableData() {
+            tableDataLoading.value = true;
+            tableDataResult.value = null;
+            try {
+                const response = await fetch('/api/vector/table-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_name: tableInspectTarget.value, limit: 50 }),
+                });
+                const data = await response.json();
+                tableDataResult.value = data;
+            } catch (err) {
+                tableDataResult.value = { success: false, error: err.message };
+            } finally {
+                tableDataLoading.value = false;
+            }
+        }
+
+        async function fetchTableIndexes() {
+            tableIdxLoading.value = true;
+            tableIdxResult.value = null;
+            try {
+                const response = await fetch('/api/vector/table-indexes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_name: tableInspectTarget.value }),
+                });
+                const data = await response.json();
+                tableIdxResult.value = data;
+            } catch (err) {
+                tableIdxResult.value = { success: false, error: err.message };
+            } finally {
+                tableIdxLoading.value = false;
+            }
+        }
+
+        // --- Step 4: Query Inspection ---
+
+        async function fetchRecentSql() {
+            recentSqlLoading.value = true;
+            recentSqlResult.value = null;
+            try {
+                const response = await fetch('/api/vector/recent-queries');
+                const data = await response.json();
+                recentSqlResult.value = data;
+            } catch (err) {
+                recentSqlResult.value = { success: false, error: err.message };
+            } finally {
+                recentSqlLoading.value = false;
+            }
+        }
+
+        async function fetchExplainPlan() {
+            explainPlanLoading.value = true;
+            explainPlanResult.value = null;
+            try {
+                const response = await fetch('/api/vector/explain-plan', { method: 'POST' });
+                const data = await response.json();
+                explainPlanResult.value = data;
+            } catch (err) {
+                explainPlanResult.value = { success: false, error: err.message };
+            } finally {
+                explainPlanLoading.value = false;
+            }
+        }
+
+        // --- Upload & Search (existing) ---
+
         async function handleFileSelect(event) {
             const file = event.target.files[0];
             if (file) {
@@ -518,7 +943,7 @@ const app = createApp({
                 const response = await fetch('/api/vector/documents');
                 const data = await response.json();
                 if (data.success) {
-                    uploadedDocs.splice(0, uploadedDocs.length, ...data.documents);
+                    uploadedDocs.value = data.documents;
                 }
             } catch (err) {
                 // 조용히 실패
@@ -547,7 +972,7 @@ const app = createApp({
             const mode = vectorSearchMode.value;
             const profileName = selectedProfile.value;
 
-            vectorMessages.push({
+            vectorMessages.value.push({
                 role: 'user',
                 content: query,
                 timestamp: formatTime(),
@@ -570,12 +995,11 @@ const app = createApp({
                 embeddingInfo: null,
                 indexInfo: null,
                 keywordCompare: null,
-                // compare mode
                 keywordResults: null,
                 vectorResults: null,
                 timestamp: formatTime(),
             });
-            vectorMessages.push(assistantMsg);
+            vectorMessages.value.push(assistantMsg);
             scrollVectorToBottom();
 
             vectorLoading.value = true;
@@ -625,7 +1049,7 @@ const app = createApp({
         }
 
         async function showEmbeddingInfo(msgIdx) {
-            const msg = vectorMessages[msgIdx];
+            const msg = vectorMessages.value[msgIdx];
             if (!msg || !msg.query) return;
 
             if (msg.embeddingInfo) {
@@ -652,7 +1076,7 @@ const app = createApp({
         }
 
         async function showIndexInfo(msgIdx) {
-            const msg = vectorMessages[msgIdx];
+            const msg = vectorMessages.value[msgIdx];
             if (!msg) return;
 
             if (msg.indexInfo) {
@@ -675,7 +1099,7 @@ const app = createApp({
         }
 
         async function doKeywordCompare(msgIdx) {
-            const msg = vectorMessages[msgIdx];
+            const msg = vectorMessages.value[msgIdx];
             if (!msg || !msg.query) return;
 
             if (msg.keywordCompare) {
@@ -729,15 +1153,177 @@ const app = createApp({
                 if (data.success && data.profiles.length > 0) {
                     profiles.value = data.profiles;
                     if (!selectedProfile.value) {
-                        selectedProfile.value = data.profiles[0].profile_name;
+                        // GROQ_SH_PROFILE 우선 선택, 없으면 첫 번째 프로필
+                        const defaultProfile = data.profiles.find(p => p.profile_name === 'GROQ_SH_PROFILE');
+                        selectedProfile.value = defaultProfile ? defaultProfile.profile_name : data.profiles[0].profile_name;
+                        updateExampleQuestions(selectedProfile.value);
+                        await callSetProfile(selectedProfile.value);
+                        loadSchemaInfo(selectedProfile.value);
                     }
                 } else {
-                    profiles.value = [{ profile_name: 'GROQ_PROFILE', status: 'ENABLED' }];
-                    selectedProfile.value = 'GROQ_PROFILE';
+                    profiles.value = [];
+                    showToast('DB에 등록된 AI 프로필이 없습니다.', 'error');
                 }
-            } catch {
-                profiles.value = [{ profile_name: 'GROQ_PROFILE', status: 'ENABLED' }];
-                selectedProfile.value = 'GROQ_PROFILE';
+            } catch (err) {
+                profiles.value = [];
+                showToast('프로필 목록 조회 실패: ' + err.message, 'error');
+            }
+        }
+
+        async function callSetProfile(profileName) {
+            try {
+                const response = await fetch('/api/set-profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_name: profileName }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    // 프로필 상세 속성을 메인 창에 메시지로 표시
+                    profileInfo.value = data.attributes || null;
+
+                    messages.value.push({
+                        role: 'assistant',
+                        action: 'profile',
+                        loading: false,
+                        profileResult: {
+                            profile_name: profileName,
+                            attributes: data.attributes || null,
+                        },
+                        timestamp: formatTime(),
+                    });
+                    scrollToBottom();
+                    showToast(`프로필 설정 완료: ${profileName}`);
+                } else {
+                    showToast(data.error || '프로필 설정 실패', 'error');
+                }
+            } catch (err) {
+                showToast('프로필 설정 실패: ' + err.message, 'error');
+            }
+        }
+
+        function updateExampleQuestions(profileName) {
+            const upper = (profileName || '').toUpperCase();
+            if (upper.includes('SSB')) {
+                exampleQuestions.value = exampleQuestionsMap.SSB;
+            } else if (upper.includes('SH')) {
+                exampleQuestions.value = exampleQuestionsMap.SH;
+            } else {
+                exampleQuestions.value = exampleQuestionsMap.DEFAULT;
+            }
+        }
+
+        async function loadSchemaInfo(profileName) {
+            schemaLoading.value = true;
+            schemaInfo.value = null;
+            schemaExpanded.value = {};
+            try {
+                const response = await fetch('/api/schema-info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_name: profileName }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    schemaInfo.value = data.tables || [];
+                    if (data.tables && data.tables.length === 0 && data.error) {
+                        console.warn('Schema info:', data.error);
+                    }
+                } else {
+                    console.error('Schema info error:', data.error);
+                    schemaInfo.value = [];
+                }
+            } catch (err) {
+                console.error('Schema info fetch error:', err);
+                schemaInfo.value = [];
+            } finally {
+                schemaLoading.value = false;
+            }
+        }
+
+        function toggleSchemaTable(tableName) {
+            schemaExpanded.value[tableName] = !schemaExpanded.value[tableName];
+        }
+
+        function getAnnotationSet() {
+            const profile = (selectedProfile.value || '').toUpperCase();
+            if (profile.includes('SH')) return { owner: 'ADMIN', tables: annotationSets.SH };
+            return null;
+        }
+
+        async function applyAnnotations() {
+            const info = getAnnotationSet();
+            if (!info) {
+                showToast('현재 프로필에 해당하는 Annotation 세트가 없습니다.', 'error');
+                return;
+            }
+            // 각 테이블에 _owner 주입
+            const annoSet = {};
+            for (const [tbl, cols] of Object.entries(info.tables)) {
+                annoSet[tbl] = { ...cols, _owner: info.owner };
+            }
+            annotationApplying.value = true;
+            try {
+                const response = await fetch('/api/apply-annotations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ annotation_set: annoSet }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    if (data.applied_count > 0) {
+                        showToast(`Annotation 적용 완료 (${data.applied_count}건${data.error_count > 0 ? ', 실패 ' + data.error_count + '건' : ''})`);
+                    } else {
+                        const errMsg = data.errors && data.errors.length > 0 ? data.errors[0] : '적용된 항목 없음';
+                        showToast('Annotation 적용 실패: ' + errMsg, 'error');
+                    }
+                    if (data.error_count > 0) {
+                        console.error('Annotation errors:', data.errors);
+                    }
+                    await loadSchemaInfo(selectedProfile.value);
+                } else {
+                    showToast('Annotation 적용 실패: ' + (data.error || ''), 'error');
+                }
+            } catch (err) {
+                showToast('Annotation 적용 실패: ' + err.message, 'error');
+            } finally {
+                annotationApplying.value = false;
+            }
+        }
+
+        async function removeAnnotations() {
+            const info = getAnnotationSet();
+            if (!info) {
+                showToast('현재 프로필에 해당하는 Annotation 세트가 없습니다.', 'error');
+                return;
+            }
+            annotationRemoving.value = true;
+            try {
+                const tableNames = Object.keys(info.tables);
+                const response = await fetch('/api/remove-annotations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_names: tableNames, owner: info.owner }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`Annotation 제거 완료 (${data.removed_count}건)`);
+                    await loadSchemaInfo(selectedProfile.value);
+                } else {
+                    showToast('Annotation 제거 실패: ' + (data.error || ''), 'error');
+                }
+            } catch (err) {
+                showToast('Annotation 제거 실패: ' + err.message, 'error');
+            } finally {
+                annotationRemoving.value = false;
+            }
+        }
+
+        async function onProfileChange() {
+            if (selectedProfile.value) {
+                updateExampleQuestions(selectedProfile.value);
+                await callSetProfile(selectedProfile.value);
+                loadSchemaInfo(selectedProfile.value);
             }
         }
 
@@ -754,25 +1340,40 @@ const app = createApp({
             schema,
             profiles,
             selectedProfile,
+            onProfileChange,
+            profileInfo,
+            schemaInfo,
+            schemaLoading,
+            schemaExpanded,
+            toggleSchemaTable,
+            annotationApplying,
+            annotationRemoving,
+            applyAnnotations,
+            removeAnnotations,
             toast,
             highlightOracleSQL,
+            highlightSQLWithLines,
 
             // NL2SQL
             userInput,
+            sqlInput,
             isLoading,
+            isSqlLoading,
             selectedAction,
             messages,
             chatMessages,
-            actionModes,
+            actionModesLeft,
+            actionModesRight,
             exampleQuestions,
             setPrompt,
             sendQuestion,
+            executeSql,
             getActionButtons,
             executeAction,
-            submitFeedback,
             renderChart,
 
             // Vector Search
+            vectorSubMenu,
             vectorInput,
             vectorLoading,
             vectorSearchMode,
@@ -789,6 +1390,32 @@ const app = createApp({
             showEmbeddingInfo,
             showIndexInfo,
             doKeywordCompare,
+
+            // Step 1: Table Management
+            tableActionLoading,
+            tableActionResult,
+            dropVectorTables,
+            createVectorTables,
+
+            // Step 2: Table Inspection
+            tableInspectTarget,
+            tableDefResult,
+            tableDataResult,
+            tableIdxResult,
+            tableDefLoading,
+            tableDataLoading,
+            tableIdxLoading,
+            fetchTableDefinition,
+            fetchTableData,
+            fetchTableIndexes,
+
+            // Step 4: Query Inspection
+            recentSqlResult,
+            explainPlanResult,
+            recentSqlLoading,
+            explainPlanLoading,
+            fetchRecentSql,
+            fetchExplainPlan,
         };
     },
 });

@@ -8,7 +8,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
-from app.select_ai import ask_select_ai, submit_feedback, list_profiles, get_current_schema
+from app.select_ai import (
+    ask_select_ai, list_profiles, set_profile, get_profile_attributes,
+    execute_raw_sql, get_current_schema, get_schema_info, get_explain_plan,
+    get_annotations, apply_annotations, remove_annotations,
+)
 from app.vector_search import (
     upload_document,
     vector_search,
@@ -19,6 +23,13 @@ from app.vector_search import (
     delete_document,
     get_index_info,
     get_embedding_info,
+    drop_vector_tables,
+    create_vector_tables_explicit,
+    query_table_definition,
+    query_table_data,
+    query_table_indexes,
+    query_recent_sql,
+    query_explain_plan,
 )
 
 router = APIRouter(prefix="/api")
@@ -31,20 +42,22 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 class AskRequest(BaseModel):
     prompt: str
     action: str = "runsql"
-    profile_name: str = "GROQ_PROFILE"
-
-
-class FeedbackRequest(BaseModel):
-    prompt: str
-    feedback: str
-    profile_name: str = "GROQ_PROFILE"
+    profile_name: str = ""
 
 
 class VectorSearchRequest(BaseModel):
     query: str
     mode: str = "vector"  # "vector", "keyword", "compare"
     top_k: int = 5
-    profile_name: str = "GROQ_PROFILE"
+    profile_name: str = ""
+
+
+class SetProfileRequest(BaseModel):
+    profile_name: str
+
+
+class ExecuteSqlRequest(BaseModel):
+    sql: str
 
 
 class EmbeddingInfoRequest(BaseModel):
@@ -68,9 +81,13 @@ async def ask(req: AskRequest):
             content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
         )
 
+    prompt = req.prompt
+    if req.action == "explainsql":
+        prompt = f"{req.prompt} (Please explain in Korean / 한국어로 설명해 주세요)"
+
     start = time.time()
     try:
-        result = await ask_select_ai(pool, req.prompt, req.action, req.profile_name)
+        result = await ask_select_ai(pool, prompt, req.action, req.profile_name)
         elapsed_ms = int((time.time() - start) * 1000)
 
         # runsql의 경우 JSON 결과를 파싱 시도
@@ -99,25 +116,6 @@ async def ask(req: AskRequest):
         )
 
 
-@router.post("/feedback")
-async def feedback(req: FeedbackRequest):
-    pool = await get_pool()
-    if pool is None:
-        return JSONResponse(
-            status_code=503,
-            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
-        )
-
-    try:
-        await submit_feedback(pool, req.prompt, req.feedback, req.profile_name)
-        return {"success": True, "message": "피드백이 제출되었습니다."}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)},
-        )
-
-
 @router.get("/profiles")
 async def profiles():
     pool = await get_pool()
@@ -134,6 +132,126 @@ async def profiles():
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/set-profile")
+async def set_profile_endpoint(req: SetProfileRequest):
+    """DBMS_CLOUD_AI.SET_PROFILE 실행"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await set_profile(pool, req.profile_name)
+        # SET_PROFILE 성공 시 프로필 상세 속성도 조회하여 함께 반환
+        if result.get("success"):
+            attrs = await get_profile_attributes(pool, req.profile_name)
+            result["attributes"] = attrs
+        return result
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/apply-annotations")
+async def apply_annotations_endpoint(req: Request):
+    """annotation 세트를 DB에 일괄 적용한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        body = await req.json()
+        annotation_set = body.get("annotation_set", {})
+        result = await apply_annotations(pool, annotation_set)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/remove-annotations")
+async def remove_annotations_endpoint(req: Request):
+    """annotation을 일괄 제거한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        body = await req.json()
+        table_names = body.get("table_names", [])
+        owner = body.get("owner")
+        result = await remove_annotations(pool, table_names, owner)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/schema-info")
+async def schema_info_endpoint(req: SetProfileRequest):
+    """프로필에 등록된 테이블의 컬럼 정보를 조회한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+    try:
+        result = await get_schema_info(pool, req.profile_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/explain-plan")
+async def explain_plan_endpoint(req: ExecuteSqlRequest):
+    """SQL에 대한 실행계획을 조회한다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+    try:
+        result = await get_explain_plan(pool, req.sql)
+        if "error" in result:
+            return {"success": False, "error": result["error"], "sql_used": result.get("sql_used")}
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/execute-sql")
+async def execute_sql_endpoint(req: ExecuteSqlRequest):
+    """사용자가 입력한 SQL을 직접 실행"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    start = time.time()
+    try:
+        result = await execute_raw_sql(pool, req.sql)
+        elapsed_ms = int((time.time() - start) * 1000)
+        if result.get("error"):
+            return {"success": False, "error": result["error"], "sql_executed": result.get("sql_executed", ""), "elapsed_ms": elapsed_ms}
+        return {"success": True, **result, "elapsed_ms": elapsed_ms}
+    except Exception as e:
+        elapsed_ms = int((time.time() - start) * 1000)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "elapsed_ms": elapsed_ms},
         )
 
 
@@ -327,6 +445,153 @@ async def vector_embedding_info(req: EmbeddingInfoRequest):
     try:
         info = await get_embedding_info(pool, req.text)
         return {"success": True, **info}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+# === Vector Store Table Management Endpoints ===
+
+@router.post("/vector/drop-tables")
+async def vector_drop_tables():
+    """Vector Store 테이블 삭제"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await drop_vector_tables(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/create-tables")
+async def vector_create_tables():
+    """Vector Store 테이블 생성/연결"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await create_vector_tables_explicit(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+class TableQueryRequest(BaseModel):
+    table_name: str = "DOC_CHUNKS"
+    limit: int = 50
+
+
+@router.post("/vector/table-definition")
+async def vector_table_definition(req: TableQueryRequest):
+    """테이블 컬럼 정의 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_table_definition(pool, req.table_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/table-data")
+async def vector_table_data(req: TableQueryRequest):
+    """테이블 데이터 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_table_data(pool, req.table_name, req.limit)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/table-indexes")
+async def vector_table_indexes(req: TableQueryRequest):
+    """테이블 인덱스 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_table_indexes(pool, req.table_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.get("/vector/recent-queries")
+async def vector_recent_queries():
+    """V$SQL에서 최근 벡터 관련 쿼리 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_recent_sql(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/explain-plan")
+async def vector_explain_plan():
+    """벡터 검색 SQL의 실행 계획 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await query_explain_plan(pool)
+        return {"success": True, **result}
     except Exception as e:
         return JSONResponse(
             status_code=500,

@@ -25,6 +25,8 @@ async def init_pool():
         increment=1,
         **connect_params,
     )
+    # DB call timeout: 120초 (밀리초 단위)
+    pool.call_timeout = 120000
 
 
 async def close_pool():

@@ -58,20 +58,21 @@ async def init_vector_tables(pool):
                 END;
             """)
 
-            # 벡터 인덱스 생성 시도 (환경에 따라 실패할 수 있음)
+            # HNSW 벡터 인덱스 생성 시도
             await cursor.execute("""
                 DECLARE
                     v_cnt NUMBER;
                 BEGIN
                     SELECT COUNT(*) INTO v_cnt
-                    FROM user_indexes WHERE index_name = 'DOC_CHUNKS_VEC_IDX';
+                    FROM user_indexes WHERE index_name = 'DOC_CHUNKS_HNSW_IDX';
                     IF v_cnt = 0 THEN
                         BEGIN
                             EXECUTE IMMEDIATE '
-                                CREATE VECTOR INDEX doc_chunks_vec_idx
+                                CREATE VECTOR INDEX doc_chunks_hnsw_idx
                                 ON doc_chunks(embedding)
-                                ORGANIZATION NEIGHBOR PARTITIONS
+                                ORGANIZATION INMEMORY NEIGHBOR GRAPH
                                 DISTANCE COSINE
+                                WITH TARGET ACCURACY 95
                             ';
                         EXCEPTION
                             WHEN OTHERS THEN
@@ -640,3 +641,284 @@ async def get_embedding_info(pool, text: str) -> dict:
         result["error"] = str(e)
 
     return result
+
+
+# === Vector Store Table Management ===
+
+async def drop_vector_tables(pool) -> dict:
+    """Vector Store 테이블(doc_chunks, documents)을 삭제한다."""
+    results = []
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            # doc_chunks 먼저 삭제 (외래키 의존성)
+            for tbl in ["DOC_CHUNKS", "DOCUMENTS"]:
+                try:
+                    await cursor.execute(f"""
+                        DECLARE v_cnt NUMBER;
+                        BEGIN
+                            SELECT COUNT(*) INTO v_cnt FROM user_tables WHERE table_name = '{tbl}';
+                            IF v_cnt > 0 THEN
+                                EXECUTE IMMEDIATE 'DROP TABLE {tbl.lower()} CASCADE CONSTRAINTS PURGE';
+                            END IF;
+                        END;
+                    """)
+                    results.append({"table": tbl, "status": "dropped"})
+                except Exception as e:
+                    results.append({"table": tbl, "status": "error", "message": str(e)})
+            await conn.commit()
+    return {
+        "tables": results,
+        "sql_executed": "DROP TABLE doc_chunks CASCADE CONSTRAINTS PURGE;\nDROP TABLE documents CASCADE CONSTRAINTS PURGE;",
+    }
+
+
+async def create_vector_tables_explicit(pool) -> dict:
+    """Vector Store 테이블을 생성(또는 기존 테이블 연결)한다. HNSW 인덱스 포함."""
+    results = []
+    created = []
+    existing = []
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            # documents 테이블
+            await cursor.execute("SELECT COUNT(*) FROM user_tables WHERE table_name = 'DOCUMENTS'")
+            cnt = (await cursor.fetchone())[0]
+            if cnt == 0:
+                await cursor.execute("""
+                    CREATE TABLE documents (
+                        doc_id      NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                        filename    VARCHAR2(500),
+                        upload_date TIMESTAMP DEFAULT SYSTIMESTAMP,
+                        status      VARCHAR2(20) DEFAULT 'processing',
+                        chunks_count NUMBER DEFAULT 0
+                    )
+                """)
+                created.append("DOCUMENTS")
+                results.append({"table": "DOCUMENTS", "status": "created"})
+            else:
+                existing.append("DOCUMENTS")
+                results.append({"table": "DOCUMENTS", "status": "existing"})
+
+            # doc_chunks 테이블
+            await cursor.execute("SELECT COUNT(*) FROM user_tables WHERE table_name = 'DOC_CHUNKS'")
+            cnt = (await cursor.fetchone())[0]
+            if cnt == 0:
+                await cursor.execute("""
+                    CREATE TABLE doc_chunks (
+                        chunk_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                        doc_id      NUMBER NOT NULL,
+                        chunk_text  CLOB,
+                        source_file VARCHAR2(500),
+                        page_num    NUMBER,
+                        embedding   VECTOR(768, FLOAT32)
+                    )
+                """)
+                created.append("DOC_CHUNKS")
+                results.append({"table": "DOC_CHUNKS", "status": "created"})
+            else:
+                existing.append("DOC_CHUNKS")
+                results.append({"table": "DOC_CHUNKS", "status": "existing"})
+
+            # HNSW 벡터 인덱스
+            await cursor.execute("SELECT COUNT(*) FROM user_indexes WHERE index_name = 'DOC_CHUNKS_HNSW_IDX'")
+            idx_cnt = (await cursor.fetchone())[0]
+            if idx_cnt == 0:
+                try:
+                    await cursor.execute("""
+                        CREATE VECTOR INDEX doc_chunks_hnsw_idx
+                        ON doc_chunks(embedding)
+                        ORGANIZATION INMEMORY NEIGHBOR GRAPH
+                        DISTANCE COSINE
+                        WITH TARGET ACCURACY 95
+                    """)
+                    results.append({"table": "DOC_CHUNKS_HNSW_IDX", "status": "created"})
+                except Exception as e:
+                    results.append({"table": "DOC_CHUNKS_HNSW_IDX", "status": "error", "message": str(e)})
+            else:
+                results.append({"table": "DOC_CHUNKS_HNSW_IDX", "status": "existing"})
+
+            await conn.commit()
+
+    sql_list = []
+    if "DOC_CHUNKS" in created:
+        sql_list.append("""CREATE TABLE doc_chunks (
+    chunk_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    doc_id      NUMBER NOT NULL,
+    chunk_text  CLOB,
+    source_file VARCHAR2(500),
+    page_num    NUMBER,
+    embedding   VECTOR(768, FLOAT32)
+)""")
+    sql_list.append("""CREATE VECTOR INDEX doc_chunks_hnsw_idx
+ON doc_chunks(embedding)
+ORGANIZATION INMEMORY NEIGHBOR GRAPH
+DISTANCE COSINE
+WITH TARGET ACCURACY 95""")
+
+    return {
+        "tables": results,
+        "created": created,
+        "existing": existing,
+        "sql_executed": ";\n\n".join(sql_list) if sql_list else "-- 모든 테이블이 이미 존재합니다.",
+    }
+
+
+# === Table Inspection Queries ===
+
+async def query_table_definition(pool, table_name: str = "DOC_CHUNKS") -> dict:
+    """테이블 컬럼 정의를 USER_TAB_COLUMNS에서 조회한다."""
+    sql = """SELECT COLUMN_ID, COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE
+FROM USER_TAB_COLUMNS
+WHERE TABLE_NAME = :table_name
+ORDER BY COLUMN_ID"""
+    sql_display = sql.replace(":table_name", f"'{table_name}'")
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql, {"table_name": table_name.upper()})
+                columns = [col[0] for col in cursor.description]
+                rows = await cursor.fetchall()
+                data = [dict(zip(columns, row)) for row in rows]
+        return {"sql_executed": sql_display, "columns": columns, "data": data, "row_count": len(data)}
+    except Exception as e:
+        return {"sql_executed": sql_display, "columns": [], "data": [], "row_count": 0, "error": str(e)}
+
+
+async def query_table_data(pool, table_name: str = "DOC_CHUNKS", limit: int = 50) -> dict:
+    """테이블 데이터를 조회한다. 임베딩은 축약 표시."""
+    if table_name.upper() == "DOC_CHUNKS":
+        sql = """SELECT chunk_id, doc_id,
+       DBMS_LOB.SUBSTR(chunk_text, 80) AS chunk_text,
+       source_file, page_num,
+       CASE WHEN embedding IS NOT NULL THEN 'VECTOR(768)' ELSE NULL END AS embedding
+FROM doc_chunks
+FETCH FIRST :lmt ROWS ONLY"""
+        sql_display = sql.replace(":lmt", str(limit))
+    elif table_name.upper() == "DOCUMENTS":
+        sql = """SELECT doc_id, filename, upload_date, status, chunks_count
+FROM documents
+ORDER BY upload_date DESC
+FETCH FIRST :lmt ROWS ONLY"""
+        sql_display = sql.replace(":lmt", str(limit))
+    else:
+        return {"sql_executed": "", "columns": [], "data": [], "row_count": 0, "error": "Unknown table"}
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql, {"lmt": limit})
+                columns = [col[0] for col in cursor.description]
+                rows = await cursor.fetchall()
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, val in enumerate(row):
+                        if hasattr(val, 'read'):
+                            val = await _lob_to_str(val)
+                        if hasattr(val, 'isoformat'):
+                            val = val.isoformat()
+                        row_dict[columns[i]] = val
+                    data.append(row_dict)
+        return {"sql_executed": sql_display, "columns": columns, "data": data, "row_count": len(data)}
+    except Exception as e:
+        return {"sql_executed": sql_display, "columns": [], "data": [], "row_count": 0, "error": str(e)}
+
+
+async def query_table_indexes(pool, table_name: str = "DOC_CHUNKS") -> dict:
+    """테이블 인덱스 정보를 조회한다."""
+    sql = """SELECT i.INDEX_NAME, i.INDEX_TYPE, i.UNIQUENESS, i.STATUS,
+       c.COLUMN_POSITION, c.COLUMN_NAME
+FROM USER_INDEXES i
+LEFT JOIN USER_IND_COLUMNS c ON i.INDEX_NAME = c.INDEX_NAME
+WHERE i.TABLE_NAME = :table_name
+ORDER BY i.INDEX_NAME, c.COLUMN_POSITION"""
+    sql_display = sql.replace(":table_name", f"'{table_name}'")
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql, {"table_name": table_name.upper()})
+                columns = [col[0] for col in cursor.description]
+                rows = await cursor.fetchall()
+                data = [dict(zip(columns, row)) for row in rows]
+        return {"sql_executed": sql_display, "columns": columns, "data": data, "row_count": len(data)}
+    except Exception as e:
+        return {"sql_executed": sql_display, "columns": [], "data": [], "row_count": 0, "error": str(e)}
+
+
+# === V$SQL & Explain Plan ===
+
+async def query_recent_sql(pool) -> dict:
+    """V$SQL에서 최근 실행된 벡터 관련 쿼리를 조회한다."""
+    sql = """SELECT SQL_ID, PARSING_SCHEMA_NAME,
+       SUBSTR(SQL_TEXT, 1, 200) AS SQL_TEXT,
+       LAST_ACTIVE_TIME, EXECUTIONS, ELAPSED_TIME
+FROM V$SQL
+WHERE (LOWER(SQL_TEXT) LIKE '%doc_chunks%' OR LOWER(SQL_TEXT) LIKE '%vector_distance%')
+  AND SQL_TEXT NOT LIKE '%V$SQL%'
+ORDER BY LAST_ACTIVE_TIME DESC
+FETCH FIRST 10 ROWS ONLY"""
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql)
+                columns = [col[0] for col in cursor.description]
+                rows = await cursor.fetchall()
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, val in enumerate(row):
+                        if hasattr(val, 'read'):
+                            val = await _lob_to_str(val)
+                        if hasattr(val, 'isoformat'):
+                            val = val.isoformat()
+                        row_dict[columns[i]] = val
+                    data.append(row_dict)
+        return {"sql_executed": sql, "columns": columns, "data": data, "row_count": len(data)}
+    except Exception as e:
+        return {"sql_executed": sql, "columns": [], "data": [], "row_count": 0, "error": str(e)}
+
+
+async def query_explain_plan(pool) -> dict:
+    """대표적인 벡터 검색 SQL의 실행 계획을 조회한다."""
+    model_name = settings.EMBEDDING_MODEL
+
+    target_sql = f"""SELECT chunk_text, source_file, page_num,
+       VECTOR_DISTANCE(embedding,
+           VECTOR_EMBEDDING({model_name} USING 'sample query' AS data),
+           COSINE) AS distance
+FROM doc_chunks
+WHERE embedding IS NOT NULL
+ORDER BY distance
+FETCH FIRST 5 ROWS ONLY"""
+
+    explain_sql = f"EXPLAIN PLAN FOR {target_sql}"
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                # EXPLAIN PLAN 실행
+                await cursor.execute(explain_sql)
+
+                # DBMS_XPLAN.DISPLAY로 실행 계획 조회
+                await cursor.execute("SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY())")
+                rows = await cursor.fetchall()
+                plan_lines = [str(row[0]) for row in rows]
+                plan_text = "\n".join(plan_lines)
+
+        return {
+            "target_sql": target_sql,
+            "explain_sql": explain_sql,
+            "plan_text": plan_text,
+            "plan_lines": plan_lines,
+        }
+    except Exception as e:
+        return {
+            "target_sql": target_sql,
+            "explain_sql": explain_sql,
+            "plan_text": "",
+            "plan_lines": [],
+            "error": str(e),
+        }

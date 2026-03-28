@@ -4,16 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oracle AI Database 26ai 데모</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=17">
 </head>
 <body>
     <div id="app">
         <!-- 헤더 -->
         <header class="header">
             <div class="header-left">
-                <h1 class="header-title">Oracle AI Database 26ai 데모</h1>
+                <h1 class="header-title">
+                    <svg class="oracle-logo" viewBox="0 0 100 64" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M32,2 L68,2 C84.6,2 98,15.4 98,32 C98,48.6 84.6,62 68,62 L32,62 C15.4,62 2,48.6 2,32 C2,15.4 15.4,2 32,2 Z M32,12 C21,12 12,21 12,32 C12,43 21,52 32,52 L68,52 C79,52 88,43 88,32 C88,21 79,12 68,12 L32,12 Z" fill="#C74634"/>
+                    </svg>
+                    Oracle AI Database 26ai 데모
+                </h1>
             </div>
             <div class="header-right">
                 <span class="badge badge-schema" v-if="schema">[[ schema ]] 스키마</span>
@@ -28,7 +33,7 @@
             <button @click="activeTab = 'nl2sql'"
                     class="tab-btn"
                     :class="{ 'tab-btn-active': activeTab === 'nl2sql' }">
-                NL2SQL
+                NL2SQL(Select AI)
             </button>
             <button @click="activeTab = 'vector'"
                     class="tab-btn"
@@ -43,8 +48,16 @@
             <aside class="sidebar">
                 <!-- AI 프로필 -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">AI 프로필</h3>
-                    <select v-model="selectedProfile" class="select-input">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 10v2"></path>
+                            <circle cx="12" cy="6" r="4"></circle>
+                            <rect x="8" y="14" width="8" height="8" rx="1"></rect>
+                            <line x1="12" y1="18" x2="12" y2="18.01"></line>
+                        </svg>
+                        AI 프로필
+                    </h3>
+                    <select v-model="selectedProfile" @change="onProfileChange" class="select-input">
                         <option v-for="p in profiles" :key="p.profile_name" :value="p.profile_name">
                             [[ p.profile_name ]]
                         </option>
@@ -53,25 +66,96 @@
 
                 <!-- 실행 모드 -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">실행 모드</h3>
-                    <label v-for="mode in actionModes" :key="mode.value" class="radio-label">
-                        <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
-                        <span class="radio-text">
-                            <strong>[[ mode.value ]]</strong>
-                            <small>[[ mode.label ]]</small>
-                        </span>
-                    </label>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        실행 모드
+                    </h3>
+                    <div class="action-mode-grid">
+                        <div class="action-mode-col">
+                            <label v-for="mode in actionModesLeft" :key="mode.value" class="radio-label">
+                                <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
+                                <span class="radio-text">
+                                    <strong>[[ mode.value ]]</strong>
+                                    <small>[[ mode.label ]]</small>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="action-mode-col">
+                            <label v-for="mode in actionModesRight" :key="mode.value" class="radio-label">
+                                <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
+                                <span class="radio-text">
+                                    <strong>[[ mode.value ]]</strong>
+                                    <small>[[ mode.label ]]</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 예시 질문 -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">예시 질문</h3>
-                    <button
-                        v-for="q in exampleQuestions"
-                        :key="q"
-                        class="example-btn"
-                        @click="setPrompt(q)"
-                    >[[ q ]]</button>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="9" y1="18" x2="15" y2="18"></line>
+                            <line x1="10" y1="22" x2="14" y2="22"></line>
+                            <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path>
+                        </svg>
+                        예시 질문
+                    </h3>
+                    <select class="example-select" @change="setPrompt($event.target.value); $event.target.selectedIndex = 0">
+                        <option value="" disabled selected>질문을 선택하세요...</option>
+                        <option v-for="q in exampleQuestions" :key="q" :value="q">[[ q ]]</option>
+                    </select>
+                </div>
+
+                <!-- 참조 테이블 (스키마 뷰어) -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="3" y1="15" x2="21" y2="15"></line>
+                            <line x1="9" y1="3" x2="9" y2="21"></line>
+                        </svg>
+                        참조 테이블
+                    </h3>
+                    <!-- Annotation 적용/제거 버튼 -->
+                    <div v-if="schemaInfo && schemaInfo.length > 0" class="annotation-btn-row">
+                        <button class="btn-anno btn-anno-apply" @click="applyAnnotations" :disabled="annotationApplying || annotationRemoving">
+                            <span v-if="annotationApplying"><span class="spinner-sm"></span></span>
+                            <span v-else>Annotation 적용</span>
+                        </button>
+                        <button class="btn-anno btn-anno-remove" @click="removeAnnotations" :disabled="annotationApplying || annotationRemoving">
+                            <span v-if="annotationRemoving"><span class="spinner-sm"></span></span>
+                            <span v-else>Annotation 제거</span>
+                        </button>
+                    </div>
+                    <div v-if="schemaLoading" class="schema-loading">
+                        <span class="spinner-sm"></span> 스키마 로딩 중...
+                    </div>
+                    <div v-else-if="schemaInfo && schemaInfo.length > 0" class="schema-tree">
+                        <div v-for="tbl in schemaInfo" :key="tbl.table_name" class="schema-table-item">
+                            <div class="schema-table-header" @click="toggleSchemaTable(tbl.table_name)">
+                                <span class="schema-toggle">[[ schemaExpanded[tbl.table_name] ? '▼' : '▶' ]]</span>
+                                <span class="schema-table-name">[[ tbl.owner ]].[[ tbl.table_name ]]</span>
+                                <span class="schema-table-meta">([[ tbl.column_count ]]컬럼<span v-if="tbl.num_rows != null">, [[ tbl.num_rows?.toLocaleString() ]]행</span>)</span>
+                            </div>
+                            <div v-if="tbl.annotation" class="schema-table-anno">[[ tbl.annotation ]]</div>
+                            <div v-if="schemaExpanded[tbl.table_name]" class="schema-columns">
+                                <div v-for="col in tbl.columns" :key="col.column_name" class="schema-col-item">
+                                    <div class="schema-col-row">
+                                        <span class="schema-col-name">[[ col.column_name ]]</span>
+                                        <span class="schema-col-type">[[ col.data_type ]]</span>
+                                    </div>
+                                    <div v-if="col.annotation" class="schema-col-anno">[[ col.annotation ]]</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="schema-empty">프로필을 선택하면 참조 테이블이 표시됩니다.</div>
                 </div>
             </aside>
 
@@ -89,6 +173,10 @@
                         <!-- 사용자 메시지 -->
                         <div v-if="msg.role === 'user'" class="message message-user">
                             <div class="message-bubble bubble-user">
+                                <span v-if="msg.isSql" class="user-sql-badge">SQL</span>
+                                <div v-if="msg.prevPrompt" class="prev-prompt-ref">
+                                    <span class="prev-prompt-icon">↩</span> 이전: [[ msg.prevPrompt ]]
+                                </div>
                                 <p>[[ msg.content ]]</p>
                                 <span class="message-time">[[ msg.timestamp ]]</span>
                             </div>
@@ -108,6 +196,47 @@
                                     <!-- 에러 -->
                                     <div v-if="msg.error" class="error-box">
                                         <strong>오류:</strong> [[ msg.error ]]
+                                    </div>
+
+                                    <!-- 프로필 설정 결과 -->
+                                    <div v-if="msg.profileResult" class="profile-result-section">
+                                        <div class="profile-result-header">프로필 설정 완료 : [[ msg.profileResult.profile_name ]]</div>
+                                        <template v-if="msg.profileResult.attributes">
+                                            <div v-if="msg.profileResult.attributes.error" class="error-box" style="margin-top:8px;">[[ msg.profileResult.attributes.error ]]</div>
+                                            <div v-if="msg.profileResult.attributes.sql_executed" class="sql-section" style="margin-top:8px;">
+                                                <div class="sql-header"><span>SQL</span></div>
+                                                <pre class="sql-code"><code v-html="highlightSQLWithLines(msg.profileResult.attributes.sql_executed)"></code></pre>
+                                            </div>
+                                            <div v-if="msg.profileResult.attributes.data && msg.profileResult.attributes.data.length > 0" class="table-section" style="margin-top:8px;">
+                                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                                    <th v-for="col in msg.profileResult.attributes.columns" :key="col">[[ col ]]</th>
+                                                </tr></thead><tbody>
+                                                    <tr v-for="(row, ri) in msg.profileResult.attributes.data" :key="ri">
+                                                        <td v-for="col in msg.profileResult.attributes.columns" :key="col">[[ row[col] ]]</td>
+                                                    </tr>
+                                                </tbody></table></div>
+                                                <p class="row-count">[[ msg.profileResult.attributes.row_count ]]건</p>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- SQL 직접 실행 결과 -->
+                                    <div v-if="msg.sqlResult" class="profile-result-section">
+                                        <div class="profile-result-header">SQL 실행 결과</div>
+                                        <div v-if="msg.sqlResult.sql_executed" class="sql-section" style="margin-top:8px;">
+                                            <div class="sql-header"><span>SQL</span></div>
+                                            <pre class="sql-code"><code v-html="highlightSQLWithLines(msg.sqlResult.sql_executed)"></code></pre>
+                                        </div>
+                                        <div v-if="msg.sqlResult.data && msg.sqlResult.data.length > 0" class="table-section" style="margin-top:8px;">
+                                            <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                                <th v-for="col in msg.sqlResult.columns" :key="col">[[ col ]]</th>
+                                            </tr></thead><tbody>
+                                                <tr v-for="(row, ri) in msg.sqlResult.data" :key="ri">
+                                                    <td v-for="col in msg.sqlResult.columns" :key="col">[[ row[col] ]]</td>
+                                                </tr>
+                                            </tbody></table></div>
+                                            <p class="row-count">[[ msg.sqlResult.row_count ]]건</p>
+                                        </div>
                                     </div>
 
                                     <!-- SQL 코드 블록 -->
@@ -147,12 +276,18 @@
                                                 <option value="pie">파이 차트</option>
                                             </select>
                                         </div>
-                                        <canvas :ref="'chart-' + idx" width="500" height="280"></canvas>
+                                        <canvas :data-v-chart="idx" width="500" height="280"></canvas>
                                     </div>
 
                                     <!-- 텍스트 결과 (narrate, explainsql, showprompt, summarize, chat) -->
                                     <div v-if="msg.textResult" class="text-result">
                                         <pre class="text-pre">[[ msg.textResult ]]</pre>
+                                    </div>
+
+                                    <!-- 실행계획 -->
+                                    <div v-if="msg.explainPlan" class="explain-plan-section">
+                                        <div class="explain-plan-header">Execution Plan</div>
+                                        <pre class="plan-code">[[ msg.explainPlan ]]</pre>
                                     </div>
 
                                     <!-- 경과 시간 -->
@@ -172,19 +307,12 @@
                                         >[[ btn.label ]]</button>
                                     </div>
 
-                                    <!-- 피드백 폼 -->
-                                    <div v-if="msg.showFeedback" class="feedback-section">
-                                        <textarea
-                                            v-model="msg.feedbackText"
-                                            class="feedback-input"
-                                            placeholder="이 SQL이 올바르지 않다면 수정 방향을 알려주세요"
-                                            rows="3"
-                                        ></textarea>
-                                        <div class="feedback-actions">
-                                            <button class="btn btn-primary btn-small" @click="submitFeedback(idx)" :disabled="!msg.feedbackText">제출</button>
-                                            <button class="btn btn-secondary btn-small" @click="msg.showFeedback = false">취소</button>
-                                        </div>
+                                    <!-- Follow-up 액션 로딩 표시 -->
+                                    <div v-if="msg.actionLoading" class="action-loading-indicator">
+                                        <span class="spinner-sm"></span>
+                                        <span>[[ msg.actionLoadingText ]]</span>
                                     </div>
+
                                 </template>
 
                                 <span v-if="!msg.loading" class="message-time">[[ msg.timestamp ]]</span>
@@ -195,20 +323,15 @@
 
                 <!-- 입력창 -->
                 <div class="input-area">
-                    <div class="input-wrapper">
-                        <input
-                            type="text"
-                            v-model="userInput"
-                            @keyup.enter="sendQuestion"
-                            :disabled="isLoading"
-                            class="chat-input"
-                            placeholder="데이터에 대해 자연어로 질문하세요..."
-                        >
-                        <button
-                            @click="sendQuestion"
-                            :disabled="isLoading || !userInput.trim()"
-                            class="btn btn-primary send-btn"
-                        >질문</button>
+                    <div class="input-dual-row">
+                        <div class="input-wrapper">
+                            <input type="text" v-model="userInput" @keyup.enter="sendQuestion" :disabled="isLoading" class="chat-input" placeholder="자연어로 질문하세요...">
+                            <button @click="sendQuestion" :disabled="isLoading || !userInput.trim()" class="btn btn-primary send-btn">질문</button>
+                        </div>
+                        <div class="input-wrapper">
+                            <input type="text" v-model="sqlInput" @keyup.enter="executeSql" :disabled="isSqlLoading" class="chat-input" placeholder="SELECT 문을 직접 입력하세요...">
+                            <button @click="executeSql" :disabled="isSqlLoading || !sqlInput.trim()" class="btn btn-secondary send-btn">실행</button>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -220,97 +343,253 @@
             <aside class="sidebar">
                 <!-- 문서 관리 -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">문서 관리</h3>
-                    <div class="upload-area"
-                         @click="$refs.fileInput.click()"
-                         @dragover.prevent="dragOver = true"
-                         @dragleave="dragOver = false"
-                         @drop.prevent="handleFileDrop($event)"
-                         :class="{ 'upload-area-hover': dragOver }">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="12" y1="18" x2="12" y2="12"></line>
+                            <line x1="9" y1="15" x2="15" y2="15"></line>
                         </svg>
-                        <span class="upload-text">PDF 파일 업로드</span>
-                        <span class="upload-sub">클릭 또는 드래그 앤 드롭</span>
-                    </div>
-                    <input type="file" ref="fileInput" accept=".pdf" @change="handleFileSelect($event)" style="display: none;">
-
-                    <!-- 업로드 진행 -->
-                    <div v-if="isUploading" class="upload-progress">
-                        <div class="spinner"></div>
-                        <span>업로드 처리 중...</span>
-                    </div>
-
-                    <!-- 업로드된 문서 목록 -->
-                    <div v-if="uploadedDocs.length > 0" class="doc-list">
-                        <div v-for="doc in uploadedDocs" :key="doc.doc_id" class="doc-item">
-                            <div class="doc-info">
-                                <span class="doc-name">[[ doc.filename ]]</span>
-                                <span class="doc-badge"
-                                      :class="{
-                                          'doc-badge-indexed': doc.status === 'indexed',
-                                          'doc-badge-processing': doc.status === 'processing',
-                                          'doc-badge-error': doc.status === 'error'
-                                      }">[[ doc.status ]]</span>
-                            </div>
-                            <button class="doc-delete" @click="deleteDoc(doc.doc_id)" title="삭제">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
+                        문서 관리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'load' }" @click="vectorSubMenu = 'load'">
+                        문서 로드 &amp; 스플릿 &amp; 저장
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'table' }" @click="vectorSubMenu = 'table'">
+                        DB Table 확인
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'upload' }" @click="vectorSubMenu = 'upload'">
+                        PDF 업로드
+                    </button>
                 </div>
 
-                <!-- 검색 모드 -->
+                <!-- RAG -->
                 <div class="sidebar-section">
-                    <h3 class="sidebar-title">검색 모드</h3>
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 10v2"></path>
+                            <circle cx="12" cy="6" r="4"></circle>
+                            <rect x="8" y="14" width="8" height="8" rx="1"></rect>
+                            <line x1="12" y1="18" x2="12" y2="18.01"></line>
+                        </svg>
+                        RAG (검색증강생성)
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'search' }" @click="vectorSubMenu = 'search'">
+                        비정형 문서 검색
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'query' }" @click="vectorSubMenu = 'query'">
+                        실행 쿼리 확인
+                    </button>
+                </div>
+
+                <!-- 검색 모드 (Step 3 활성 시만 표시) -->
+                <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        검색 모드
+                    </h3>
                     <label class="radio-label">
                         <input type="radio" value="vector" v-model="vectorSearchMode" name="vectorMode">
-                        <span class="radio-text">
-                            <strong>의미 검색</strong>
-                            <small>VECTOR_DISTANCE 사용</small>
-                        </span>
+                        <span class="radio-text"><strong>의미 검색</strong><small>VECTOR_DISTANCE 사용</small></span>
                     </label>
                     <label class="radio-label">
                         <input type="radio" value="keyword" v-model="vectorSearchMode" name="vectorMode">
-                        <span class="radio-text">
-                            <strong>키워드 검색</strong>
-                            <small>CONTAINS / LIKE 사용</small>
-                        </span>
+                        <span class="radio-text"><strong>키워드 검색</strong><small>CONTAINS / LIKE 사용</small></span>
                     </label>
                     <label class="radio-label">
                         <input type="radio" value="compare" v-model="vectorSearchMode" name="vectorMode">
-                        <span class="radio-text">
-                            <strong>비교 모드</strong>
-                            <small>양쪽 방식 동시 비교</small>
-                        </span>
+                        <span class="radio-text"><strong>비교 모드</strong><small>양쪽 방식 동시 비교</small></span>
                     </label>
                 </div>
 
-                <!-- 예시 질문 -->
-                <div class="sidebar-section">
-                    <h3 class="sidebar-title">예시 질문</h3>
-                    <button
-                        v-for="q in vectorExampleQuestions"
-                        :key="q"
-                        class="example-btn"
-                        @click="vectorInput = q"
-                    >[[ q ]]</button>
+                <!-- 예시 질문 (Step 3 활성 시만 표시) -->
+                <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="9" y1="18" x2="15" y2="18"></line>
+                            <line x1="10" y1="22" x2="14" y2="22"></line>
+                            <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path>
+                        </svg>
+                        예시 질문
+                    </h3>
+                    <button v-for="q in vectorExampleQuestions" :key="q" class="example-btn" @click="vectorInput = q">[[ q ]]</button>
                 </div>
             </aside>
 
             <!-- Vector 메인 영역 -->
             <main class="chat-area">
-                <div class="chat-messages" ref="vectorChatMessages">
-                    <!-- 빈 상태 -->
+                <div class="step-content-scroll">
+
+                <!-- ========== Step 1: 문서 로드 & 스플릿 & 저장 ========== -->
+                <div v-show="vectorSubMenu === 'load'" class="step-content">
+                    <h2 class="step-title">Step 1. 문서 로드 &amp; 스플릿 &amp; 저장</h2>
+                    <div class="step-card">
+                        <p class="step-desc">클릭하면, 테이블을 삭제합니다. 새 테이블, 데이터로 다시 시작하려면 클릭합니다.</p>
+                        <button class="btn btn-danger btn-small" :disabled="tableActionLoading" @click="dropVectorTables">
+                            <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
+                            Vector Store 테이블 삭제
+                        </button>
+                    </div>
+                    <div class="step-card">
+                        <p class="step-desc">클릭하면, 테이블이 없는 경우 새로이 생성하고, 있는 경우 기존 테이블 데이터를 그대로 사용합니다.</p>
+                        <button class="btn btn-primary btn-small" :disabled="tableActionLoading" @click="createVectorTables">
+                            <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
+                            Vector Store 테이블 연결
+                        </button>
+                    </div>
+                    <!-- 결과 표시 -->
+                    <div v-if="tableActionResult" class="step-result">
+                        <div v-if="tableActionResult.error" class="error-box">[[ tableActionResult.error ]]</div>
+                        <template v-else>
+                            <div v-for="t in tableActionResult.tables" :key="t.table" class="step-result-item">
+                                <span class="badge" :class="t.status === 'created' ? 'badge-ok' : t.status === 'existing' ? 'badge-schema' : t.status === 'dropped' ? 'badge-error' : 'badge-ok'">
+                                    [[ t.table ]]: [[ t.status ]]
+                                </span>
+                                <span v-if="t.message" class="step-result-msg">[[ t.message ]]</span>
+                            </div>
+                            <div v-if="tableActionResult.sql_executed" class="sql-section" style="margin-top:12px;">
+                                <div class="sql-header"><span>실행된 SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableActionResult.sql_executed)"></code></pre>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ========== Step 2: DB Table 확인 ========== -->
+                <div v-show="vectorSubMenu === 'table'" class="step-content">
+                    <h2 class="step-title">Step 2. DB Table 확인</h2>
+                    <div class="step-toolbar">
+                        <label class="step-toolbar-label">대상 테이블:</label>
+                        <select v-model="tableInspectTarget" class="select-input select-small">
+                            <option value="DOC_CHUNKS">DOC_CHUNKS</option>
+                            <option value="DOCUMENTS">DOCUMENTS</option>
+                        </select>
+                    </div>
+
+                    <!-- 2-1: 테이블 정의 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">테이블 정의 조회</span>
+                            <button class="btn btn-primary btn-small" :disabled="tableDefLoading" @click="fetchTableDefinition">
+                                <span v-if="tableDefLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="tableDefResult" class="step-query-result">
+                            <div v-if="tableDefResult.error" class="error-box">[[ tableDefResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableDefResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="tableDefResult.data && tableDefResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in tableDefResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in tableDefResult.data" :key="ri">
+                                        <td v-for="col in tableDefResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ tableDefResult.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2-2: 테이블 데이터 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">테이블 데이터 조회</span>
+                            <button class="btn btn-primary btn-small" :disabled="tableDataLoading" @click="fetchTableData">
+                                <span v-if="tableDataLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="tableDataResult" class="step-query-result">
+                            <div v-if="tableDataResult.error" class="error-box">[[ tableDataResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableDataResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="tableDataResult.data && tableDataResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in tableDataResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in tableDataResult.data" :key="ri">
+                                        <td v-for="col in tableDataResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ tableDataResult.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2-3: 인덱스 조회 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">인덱스 조회 (HNSW 벡터 인덱스 포함)</span>
+                            <button class="btn btn-primary btn-small" :disabled="tableIdxLoading" @click="fetchTableIndexes">
+                                <span v-if="tableIdxLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="tableIdxResult" class="step-query-result">
+                            <div v-if="tableIdxResult.error" class="error-box">[[ tableIdxResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableIdxResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="tableIdxResult.data && tableIdxResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in tableIdxResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in tableIdxResult.data" :key="ri">
+                                        <td v-for="col in tableIdxResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ tableIdxResult.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== PDF 업로드 ========== -->
+                <div v-show="vectorSubMenu === 'upload'" class="step-content">
+                    <h2 class="step-title">PDF 업로드</h2>
+                    <div class="step-card">
+                        <div class="upload-area"
+                             @click="$refs.fileInput.click()"
+                             @dragover.prevent="dragOver = true"
+                             @dragleave="dragOver = false"
+                             @drop.prevent="handleFileDrop($event)"
+                             :class="{ 'upload-area-hover': dragOver }">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            <span class="upload-text">PDF 파일 업로드</span>
+                            <span class="upload-sub">클릭 또는 드래그 앤 드롭 (최대 10MB)</span>
+                        </div>
+                        <input type="file" ref="fileInput" accept=".pdf" @change="handleFileSelect($event)" style="display: none;">
+                        <div v-if="isUploading" class="upload-progress"><div class="spinner"></div><span>업로드 처리 중...</span></div>
+                    </div>
+                    <div v-if="uploadedDocs.length > 0" class="step-card">
+                        <h4 style="margin-bottom:8px;color:var(--text-secondary);font-size:13px;">업로드된 문서 목록</h4>
+                        <div class="doc-list">
+                            <div v-for="doc in uploadedDocs" :key="doc.doc_id" class="doc-item">
+                                <div class="doc-info">
+                                    <span class="doc-name">[[ doc.filename ]]</span>
+                                    <span class="doc-badge" :class="{'doc-badge-indexed':doc.status==='indexed','doc-badge-processing':doc.status==='processing','doc-badge-error':doc.status==='error'}">[[ doc.status ]] / [[ doc.chunks_count ]]청크</span>
+                                </div>
+                                <button class="doc-delete" @click="deleteDoc(doc.doc_id)" title="삭제">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== Step 3: 비정형 문서 검색 (기존 채팅 UI) ========== -->
+                <div v-show="vectorSubMenu === 'search'" class="chat-messages" ref="vectorChatMessages">
+                    <h2 class="step-title" style="margin:0 0 16px 0;">Step 3. 비정형 문서 검색</h2>
                     <div v-if="vectorMessages.length === 0" class="empty-state">
                         <div class="empty-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C74634" stroke-width="1.5" opacity="0.5">
-                                <circle cx="11" cy="11" r="8"></circle>
-                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                             </svg>
                         </div>
                         <p>문서를 업로드하고, 자연어로 검색하세요.</p>
@@ -521,22 +800,65 @@
                     </template>
                 </div>
 
-                <!-- 입력창 -->
-                <div class="input-area">
+                <!-- ========== Step 4: 실행 쿼리 확인 ========== -->
+                <div v-show="vectorSubMenu === 'query'" class="step-content">
+                    <h2 class="step-title">Step 4. 실행 쿼리 확인</h2>
+
+                    <!-- V$SQL -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">최근 실행된 벡터 쿼리 조회 (V$SQL)</span>
+                            <button class="btn btn-primary btn-small" :disabled="recentSqlLoading" @click="fetchRecentSql">
+                                <span v-if="recentSqlLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="recentSqlResult" class="step-query-result">
+                            <div v-if="recentSqlResult.error" class="error-box">[[ recentSqlResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(recentSqlResult.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="recentSqlResult.data && recentSqlResult.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in recentSqlResult.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in recentSqlResult.data" :key="ri">
+                                        <td v-for="col in recentSqlResult.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ recentSqlResult.row_count ]]건</p>
+                            </div>
+                            <div v-if="recentSqlResult.data && recentSqlResult.data.length === 0 && !recentSqlResult.error" class="step-empty-msg">조회된 결과가 없습니다. 먼저 Step 3에서 벡터 검색을 실행해 주세요.</div>
+                        </div>
+                    </div>
+
+                    <!-- EXPLAIN PLAN -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">쿼리 실행계획 확인하기 (EXPLAIN PLAN)</span>
+                            <button class="btn btn-primary btn-small" :disabled="explainPlanLoading" @click="fetchExplainPlan">
+                                <span v-if="explainPlanLoading" class="spinner spinner-sm"></span> 실행
+                            </button>
+                        </div>
+                        <div v-if="explainPlanResult" class="step-query-result">
+                            <div v-if="explainPlanResult.error" class="error-box">[[ explainPlanResult.error ]]</div>
+                            <div class="sql-section"><div class="sql-header"><span>EXPLAIN PLAN FOR</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(explainPlanResult.target_sql)"></code></pre>
+                            </div>
+                            <div v-if="explainPlanResult.plan_text" class="sql-section" style="margin-top:12px;">
+                                <div class="sql-header"><span>실행 계획 결과</span></div>
+                                <pre class="sql-code plan-code"><code>[[ explainPlanResult.plan_text ]]</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                </div><!-- /step-content-scroll -->
+
+                <!-- 입력창 (Step 3 검색 시만 표시) -->
+                <div class="input-area" v-show="vectorSubMenu === 'search'">
                     <div class="input-wrapper">
-                        <input
-                            type="text"
-                            v-model="vectorInput"
-                            @keyup.enter="sendVectorQuestion"
-                            :disabled="vectorLoading"
-                            class="chat-input"
-                            placeholder="문서에 대해 자연어로 질문하세요..."
-                        >
-                        <button
-                            @click="sendVectorQuestion"
-                            :disabled="vectorLoading || !vectorInput.trim()"
-                            class="btn btn-primary send-btn"
-                        >검색</button>
+                        <input type="text" v-model="vectorInput" @keyup.enter="sendVectorQuestion" :disabled="vectorLoading" class="chat-input" placeholder="문서에 대해 자연어로 질문하세요...">
+                        <button @click="sendVectorQuestion" :disabled="vectorLoading || !vectorInput.trim()" class="btn btn-primary send-btn">검색</button>
                     </div>
                 </div>
             </main>
@@ -548,6 +870,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=18"></script>
 </body>
 </html>
