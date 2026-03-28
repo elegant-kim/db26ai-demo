@@ -180,7 +180,7 @@ def _classify_section(section_name: str) -> str:
     return "other"
 
 
-def _table_to_text(table: dict, max_rows: int = 30) -> str:
+def _table_to_text(table: dict, max_rows: int = 15) -> str:
     """테이블 데이터를 텍스트로 변환 (LLM 전송용)"""
     lines = []
     section = table.get("section", "")
@@ -384,7 +384,7 @@ def build_analysis_prompt(parsed_awr: dict) -> str:
     exadata_info = "이 시스템은 Exadata 환경입니다. Exadata 관련 지표도 분석해 주세요." if parsed_awr["is_exadata"] else "Exadata 환경이 아닙니다."
 
     return AWR_ANALYSIS_PROMPT.format(
-        awr_data=parsed_awr["raw_text"][:30000],  # 토큰 제한 안전장치
+        awr_data=parsed_awr["raw_text"][:12000],  # Groq API 크기 제한 대응
         exadata_info=exadata_info,
     )
 
