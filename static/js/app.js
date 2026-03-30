@@ -117,15 +117,37 @@ const app = createApp({
         };
 
         // === Vector Search State ===
-        const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
+        const vectorSubMenu = ref('store');  // 'store', 'upload', 'onnx', 'search', 'query'
         const vectorInput = ref('');
         const vectorLoading = ref(false);
         const vectorSearchMode = ref('vector');
         const vectorMessages = ref([]);
         const vectorChatMessages = ref(null);
+        // 검색 세션 탭 (임베딩 소스별로 보관)
+        const vectorSessions = ref([]);  // [{label, source, model, messages, timestamp}]
+        const vectorActiveSession = ref(-1);  // -1 = 현재 작업 중 (저장 전)
         const uploadedDocs = ref([]);
         const isUploading = ref(false);
         const dragOver = ref(false);
+        const uploadPipeline = ref([]);   // 파이프라인 진행 단계
+        const uploadProgress = ref(null); // 임베딩 진행률 {current, total, percent}
+
+        // 파이프라인 전체 진행률 (0~100) — 헤더 프로그레스 링에 사용
+        const pipelineRingPercent = computed(() => {
+            if (!uploadPipeline.value.length) return 0;
+            const doneCount = uploadPipeline.value.filter(p => p.status === 'done').length;
+            const runningStep = uploadPipeline.value.find(p => p.status === 'running');
+            let extra = 0;
+            if (runningStep) {
+                // step 4(임베딩)는 uploadProgress로 세밀 계산, 나머지 running은 50%
+                if (runningStep.step === 4 && uploadProgress.value) {
+                    extra = (uploadProgress.value.percent || 0) / 100;
+                } else {
+                    extra = 0.5;
+                }
+            }
+            return Math.round(((doneCount + extra) / 5) * 100);
+        });
 
         // Step 1: Table Management State
         const tableActionLoading = ref(false);
@@ -146,6 +168,12 @@ const app = createApp({
         const recentSqlLoading = ref(false);
         const explainPlanLoading = ref(false);
 
+        // === 임베딩 설정 ===
+        const embeddingSource = ref('database');  // 'database' or 'external'
+        const embeddingModel = ref('');
+        const embeddingApiUrl = ref('(미설정)');
+        const onnxModels = ref([]);
+
         // === LLM 제공자 (AWR 분석, RAG 공통) ===
         const llmProviders = ref([]);
         const llmProvider = ref('');
@@ -164,9 +192,27 @@ const app = createApp({
         const awrFollowupLoading = ref(false);
         const awrStep = ref(0);
         const awrElapsed = ref(0);
+        const awrProgress = ref(0);  // 추정 기반 프로그레스 (0~100)
         let awrTimer = null;
+        let awrProgressTimer = null;
+        let awrStepTimeouts = [];  // step 전환 setTimeout ID 보관
         const awrFollowupMessages = ref([]);
         const awrFollowupMessagesRef = ref(null);
+
+        // AWR 파이프라인 진행률 (0~100) — 프로그레스 링
+        const awrRingPercent = computed(() => {
+            const step = awrStep.value;
+            if (step <= 0) return 0;
+            // step1(파싱): 10%, step2(AI분석): 10~90% (awrProgress 반영), step3(결과생성): 90%
+            if (step === 1) return 10;
+            if (step === 2) {
+                // awrProgress 0~100을 10~90 범위에 매핑
+                return 10 + Math.round(awrProgress.value * 0.8);
+            }
+            if (step >= 3) return 90;
+            return 0;
+        });
+
         // 다중 분석 결과 보관
         const awrResults = ref([]);  // [{filename, analysis, sessionId, parseInfo, elapsedMs, provider, timestamp}]
         const awrActiveTab = ref(0);
@@ -223,9 +269,18 @@ const app = createApp({
         const exampleQuestions = ref(exampleQuestionsMap.SH);
 
         const vectorExampleQuestions = ref([
-            '연차 사용 규정을 알려주세요',
-            '퇴직금 산정 기준을 알려주세요',
-            '출장비 정산 절차를 알려주세요',
+            // 자동차보험약관
+            '자동차 사고 시 보험금 청구 절차는 어떻게 되나요?',
+            '음주운전 사고도 보험 보상이 되나요?',
+            '피보험자에 보상하지 않는 경우는 어떤 경우인가?',
+            // 카드 개인회원 약관
+            '카드 분실 시 부정사용 책임은 누구에게 있나요?',
+            '카드 연회비 반환 조건은 무엇인가요?',
+            '결제대금 이의제기 절차와 기한을 알려주세요',
+            // 공공언어바로쓰기
+            '외래어 사용 기준은 무엇인가요?',
+            '행정기관의 공문서 작성 원칙을 알려주세요',
+            '쉬운 공공언어로 바꿔야 하는 어려운 용어 사례는?',
         ]);
 
         const loadingMessageMap = {
@@ -326,20 +381,24 @@ const app = createApp({
             let s = sql.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
             // Oracle-specific functions (Oracle Red)
-            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE|DBMS_LOB\.SUBSTR|DBMS_XPLAN\.DISPLAY|VECTOR_SERIALIZE|VECTOR_INDEX_TRANSFORM)\b/g,
+            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|CONTAINS|SCORE|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE|DBMS_LOB\.SUBSTR|DBMS_XPLAN\.DISPLAY|VECTOR_SERIALIZE|VECTOR_INDEX_TRANSFORM)\b/g,
                 '<span style="color: #C74634; font-weight: 600;">$1</span>');
+
+            // SQL comments (gray, italic)
+            s = s.replace(/(--[^\n]*)/g, '<span style="color: #9ca3af; font-style: italic;">$1</span>');
 
             // String literals (green)
             s = s.replace(/'([^']*)'/g, '<span style="color: #16a34a;">\'$1\'</span>');
 
             // SQL keywords (purple)
+            // Note: CONTAINS, SCORE는 Oracle Red 함수로 이미 처리됨 — 여기서 제외
             const keywords = ['SELECT', 'FROM', 'WHERE', 'ORDER BY', 'FETCH FIRST', 'ROWS ONLY',
                 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'TABLE',
                 'INDEX', 'ON', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE',
-                'CONTAINS', 'INTO', 'BEGIN', 'END', 'DECLARE', 'USING', 'BY',
+                'INTO', 'BEGIN', 'END', 'DECLARE', 'USING', 'BY',
                 'DESC', 'ASC', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'GROUP', 'HAVING',
                 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'LOWER', 'UPPER',
-                'SCORE', 'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
+                'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
                 'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY',
                 'INMEMORY', 'GRAPH', 'WITH', 'TARGET', 'ACCURACY', 'CASCADE', 'CONSTRAINTS',
                 'PURGE', 'DROP', 'EXPLAIN', 'PLAN', 'FOR', 'SUBSTR', 'CASE', 'WHEN', 'THEN', 'ELSE',
@@ -940,6 +999,16 @@ const app = createApp({
             }
 
             isUploading.value = true;
+            uploadProgress.value = null;
+            // 5단계 파이프라인 초기화
+            uploadPipeline.value = [
+                { step: 1, label: '문서 등록',     status: 'pending', detail: '', duration_ms: 0 },
+                { step: 2, label: '텍스트 추출',   status: 'pending', detail: '', duration_ms: 0 },
+                { step: 3, label: '청크 분할',     status: 'pending', detail: '', duration_ms: 0 },
+                { step: 4, label: '임베딩 & 저장', status: 'pending', detail: '', duration_ms: 0 },
+                { step: 5, label: '인덱싱 완료',   status: 'pending', detail: '', duration_ms: 0 },
+            ];
+
             const formData = new FormData();
             formData.append('file', file);
 
@@ -949,12 +1018,60 @@ const app = createApp({
                     body: formData,
                 });
 
-                const data = await response.json();
-                if (data.success) {
-                    showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료`);
-                    await fetchDocuments();
+                // SSE 스트리밍 응답 처리
+                if (response.headers.get('content-type')?.includes('text/event-stream')) {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+
+                        // SSE 파싱: "event: xxx\ndata: {...}\n\n"
+                        const parts = buffer.split('\n\n');
+                        buffer = parts.pop(); // 미완성 부분 보존
+
+                        for (const part of parts) {
+                            if (!part.trim()) continue;
+                            let eventType = 'message';
+                            let eventData = '';
+                            for (const line of part.split('\n')) {
+                                if (line.startsWith('event: ')) eventType = line.slice(7);
+                                else if (line.startsWith('data: ')) eventData = line.slice(6);
+                            }
+                            if (!eventData) continue;
+
+                            try {
+                                const data = JSON.parse(eventData);
+                                if (eventType === 'step') {
+                                    const idx = uploadPipeline.value.findIndex(p => p.step === data.step);
+                                    if (idx >= 0) {
+                                        uploadPipeline.value[idx].status = data.status;
+                                        if (data.detail) uploadPipeline.value[idx].detail = data.detail;
+                                        if (data.duration_ms) uploadPipeline.value[idx].duration_ms = data.duration_ms;
+                                    }
+                                } else if (eventType === 'progress') {
+                                    uploadProgress.value = data;
+                                } else if (eventType === 'done') {
+                                    showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료 (${(data.total_ms / 1000).toFixed(1)}초)`);
+                                    await fetchDocuments();
+                                } else if (eventType === 'error') {
+                                    showToast(data.message || '처리 실패', 'error');
+                                }
+                            } catch (e) { /* ignore parse errors */ }
+                        }
+                    }
                 } else {
-                    showToast(data.error || '업로드에 실패했습니다.', 'error');
+                    // 폴백: 일반 JSON 응답
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료`);
+                        await fetchDocuments();
+                    } else {
+                        showToast(data.error || '업로드에 실패했습니다.', 'error');
+                    }
                 }
             } catch (err) {
                 showToast('업로드 중 오류가 발생했습니다: ' + err.message, 'error');
@@ -1022,6 +1139,11 @@ const app = createApp({
                 keywordCompare: null,
                 keywordResults: null,
                 vectorResults: null,
+                // hybrid 전용
+                vectorWeight: null,
+                keywordWeight: null,
+                hybridFallback: false,
+                hybridNote: null,
                 timestamp: formatTime(),
             });
             vectorMessages.value.push(assistantMsg);
@@ -1060,6 +1182,13 @@ const app = createApp({
                         assistantMsg.answer = data.answer;
                         assistantMsg.chunks = data.chunks;
                         assistantMsg.sql_executed = data.sql_executed;
+                        // hybrid 추가 정보
+                        if (mode === 'hybrid') {
+                            assistantMsg.vectorWeight = data.vector_weight;
+                            assistantMsg.keywordWeight = data.keyword_weight;
+                            assistantMsg.hybridFallback = data.hybrid_fallback || false;
+                            assistantMsg.hybridNote = data.hybrid_note || null;
+                        }
                     }
                 } else {
                     assistantMsg.error = data.error || '검색에 실패했습니다.';
@@ -1405,16 +1534,29 @@ const app = createApp({
                 return;
             }
 
+            // 이전 타이머 모두 정리
+            if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
+            if (awrProgressTimer) { clearInterval(awrProgressTimer); awrProgressTimer = null; }
+            awrStepTimeouts.forEach(id => clearTimeout(id));
+            awrStepTimeouts = [];
+
             awrLoading.value = true;
             awrError.value = '';
             awrAnalysis.value = null;
             awrFollowupMessages.value = [];
             awrStep.value = 1;
             awrElapsed.value = 0;
+            awrProgress.value = 0;
 
             // 경과 시간 타이머 시작
-            if (awrTimer) clearInterval(awrTimer);
             awrTimer = setInterval(() => { awrElapsed.value++; }, 1000);
+
+            // 추정 기반 프로그레스 타이머 (100초=100%, 5초 간격)
+            awrProgressTimer = setInterval(() => {
+                if (awrProgress.value < 100) {
+                    awrProgress.value += 5;  // 5초마다 5% 증가
+                }
+            }, 5000);
 
             const formData = new FormData();
             formData.append('file', file);
@@ -1426,8 +1568,8 @@ const app = createApp({
             const timeout = setTimeout(() => controller.abort(), 180000);
 
             // 단계 진행 시뮬레이션 (파싱은 빠르고, AI 분석이 오래 걸림)
-            setTimeout(() => { if (awrLoading.value) awrStep.value = 2; }, 2000);
-            setTimeout(() => { if (awrLoading.value) awrStep.value = 3; }, 15000);
+            awrStepTimeouts.push(setTimeout(() => { if (awrLoading.value) awrStep.value = 2; }, 2000));
+            awrStepTimeouts.push(setTimeout(() => { if (awrLoading.value) awrStep.value = 3; }, 90000));
 
             try {
                 const response = await fetch('/api/awr/analyze', {
@@ -1439,6 +1581,10 @@ const app = createApp({
                 clearTimeout(timeout);
 
                 if (data.success) {
+                    // JSON 파싱 실패 감지 (summary가 없으면 빈 결과)
+                    if (!data.analysis || (!data.analysis.summary && !data.analysis.categoryScores)) {
+                        awrError.value = 'LLM 응답에서 유효한 분석 결과를 추출하지 못했습니다. 다시 시도해 주세요.';
+                    } else {
                     awrAnalysis.value = data.analysis;
                     awrSessionId.value = data.session_id;
                     awrFilename.value = data.filename;
@@ -1460,6 +1606,7 @@ const app = createApp({
                     awrFollowupMessages.value = [];
                     extraSubMenu.value = 'awr-result';
                     showToast(`AWR 분석 완료 (${awrElapsed.value}초 소요)`, 'success');
+                    }  // end of valid analysis check
                 } else {
                     awrError.value = data.error || '분석에 실패했습니다.';
                 }
@@ -1473,7 +1620,11 @@ const app = createApp({
             } finally {
                 awrLoading.value = false;
                 awrStep.value = 0;
+                awrProgress.value = 0;
                 if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
+                if (awrProgressTimer) { clearInterval(awrProgressTimer); awrProgressTimer = null; }
+                awrStepTimeouts.forEach(id => clearTimeout(id));
+                awrStepTimeouts = [];
             }
         }
 
@@ -1575,6 +1726,262 @@ const app = createApp({
             }
         }
 
+        // 임베딩 설정 로드
+        async function loadEmbeddingConfig() {
+            try {
+                const res = await fetch('/api/vector/embedding-config');
+                const data = await res.json();
+                if (data.success) {
+                    embeddingSource.value = data.source;
+                    embeddingModel.value = data.model;
+                    embeddingApiUrl.value = data.external_api_url;
+                }
+            } catch (e) {
+                console.error('임베딩 설정 로드 실패:', e);
+            }
+        }
+
+        // ONNX 모델 목록 로드
+        async function loadOnnxModels() {
+            try {
+                const res = await fetch('/api/vector/onnx-models');
+                const data = await res.json();
+                if (data.success) {
+                    onnxModels.value = data.models;
+                }
+            } catch (e) {
+                console.error('ONNX 모델 목록 로드 실패:', e);
+            }
+        }
+
+        // 검색 세션 탭 관리
+        function saveCurrentVectorSession() {
+            if (vectorMessages.value.length === 0) return;
+            const srcLabel = embeddingSource.value === 'database' ? 'ONNX' : 'API';
+            const label = srcLabel + '/' + embeddingModel.value;
+            vectorSessions.value.push({
+                label,
+                source: embeddingSource.value,
+                model: embeddingModel.value,
+                messages: [...vectorMessages.value],
+                timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+            });
+        }
+        function switchVectorSession(index) {
+            if (index === -1) {
+                // 현재 세션으로 복귀
+                vectorActiveSession.value = -1;
+                return;
+            }
+            if (index < 0 || index >= vectorSessions.value.length) return;
+            vectorActiveSession.value = index;
+        }
+        function removeVectorSession(index) {
+            vectorSessions.value.splice(index, 1);
+            if (vectorActiveSession.value >= vectorSessions.value.length) {
+                vectorActiveSession.value = -1;
+            }
+        }
+
+        // 임베딩 소스 전환
+        async function setEmbeddingSource(source) {
+            if (source === embeddingSource.value) return;
+
+            const confirmed = confirm(
+                '임베딩 소스를 변경하면 벡터 차원이 달라질 수 있습니다.\n' +
+                '기존 문서의 임베딩과 호환되지 않으므로,\n' +
+                'Vector Store를 초기화하고 문서를 재업로드해야 합니다.\n\n' +
+                '임베딩 소스를 변경하시겠습니까?'
+            );
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/vector/embedding-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source, reset_model: true }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    // 현재 검색 결과를 세션으로 저장
+                    saveCurrentVectorSession();
+                    vectorMessages.value = [];
+                    vectorActiveSession.value = -1;
+
+                    embeddingSource.value = data.source;
+                    embeddingModel.value = data.model;
+
+                    // Vector Store 초기화
+                    const resetConfirmed = confirm(
+                        '기존 Vector Store 데이터를 초기화하시겠습니까?\n' +
+                        '(취소하면 데이터를 유지하지만, 검색 시 차원 불일치 오류가 발생할 수 있습니다.)'
+                    );
+                    if (resetConfirmed) {
+                        await fetch('/api/vector/drop-tables', { method: 'POST' });
+                        await fetch('/api/vector/create-tables', { method: 'POST' });
+                        showToast('임베딩 소스 변경 + Vector Store 초기화 완료. 문서를 재업로드하세요.', 'success');
+                        uploadedDocs.value = [];
+                        await fetchDocuments();
+                    } else {
+                        showToast(data.message, 'success');
+                    }
+                } else {
+                    showToast(data.error || '설정 변경 실패', 'error');
+                }
+            } catch (e) {
+                showToast('임베딩 소스 변경 실패: ' + e.message, 'error');
+            }
+        }
+
+        // ONNX 모델 관리 상태
+        const onnxModelLoading = ref(false);
+        const onnxTestResult = ref(null);
+        const onnxUploadName = ref('');
+        const onnxLocationUri = ref('');
+        const onnxFileName = ref('');
+        const onnxSelectedFile = ref(null);
+        const onnxUploading = ref(false);
+        const onnxUploadResult = ref(null);
+        const onnxDragOver = ref(false);
+
+        // ONNX 모델 목록 새로고침
+        async function refreshOnnxModels() {
+            onnxModelLoading.value = true;
+            try {
+                await loadOnnxModels();
+                showToast(`ONNX 모델 ${onnxModels.value.length}개 조회됨`, 'success');
+            } catch (e) {
+                showToast('ONNX 모델 조회 실패', 'error');
+            } finally {
+                onnxModelLoading.value = false;
+            }
+        }
+
+        // ONNX 모델 선택 (DB 임베딩 모델 전환)
+        async function switchOnnxModel(modelName) {
+            embeddingModel.value = modelName;
+            await onEmbeddingModelChange();
+        }
+
+        // ONNX 모델 테스트
+        async function testOnnxModel(modelName) {
+            onnxTestResult.value = { model_name: modelName, loading: true };
+            try {
+                const res = await fetch('/api/vector/onnx-models/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: modelName, sample_text: '한국어 임베딩 모델 테스트 문장입니다.' }),
+                });
+                const data = await res.json();
+                onnxTestResult.value = data.success ? data : { model_name: modelName, error: data.error };
+            } catch (e) {
+                onnxTestResult.value = { model_name: modelName, error: e.message };
+            }
+        }
+
+        // ONNX 모델 삭제
+        async function deleteOnnxModel(modelName) {
+            if (!confirm(`모델 '${modelName}'을(를) DB에서 삭제하시겠습니까?\n\n삭제 후 해당 모델로 생성된 임베딩은 더 이상 사용할 수 없습니다.`)) return;
+
+            try {
+                const res = await fetch(`/api/vector/onnx-models/${modelName}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    await loadOnnxModels();
+                } else {
+                    showToast(data.error || '삭제 실패', 'error');
+                }
+            } catch (e) {
+                showToast('모델 삭제 실패: ' + e.message, 'error');
+            }
+        }
+
+        // ONNX 파일 선택/드롭
+        function handleOnnxFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                onnxSelectedFile.value = file;
+                // 파일명에서 모델명 자동 추천
+                if (!onnxUploadName.value.trim()) {
+                    onnxUploadName.value = file.name.replace('.onnx', '').replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+                }
+            }
+        }
+
+        function handleOnnxFileDrop(event) {
+            onnxDragOver.value = false;
+            const file = event.dataTransfer.files[0];
+            if (file && file.name.toLowerCase().endsWith('.onnx')) {
+                onnxSelectedFile.value = file;
+                if (!onnxUploadName.value.trim()) {
+                    onnxUploadName.value = file.name.replace('.onnx', '').replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+                }
+            } else {
+                showToast('.onnx 파일만 업로드 가능합니다.', 'error');
+            }
+        }
+
+        // OCI Object Storage에서 ONNX 모델 적재
+        async function loadOnnxFromCloud() {
+            if (!onnxLocationUri.value.trim() || !onnxFileName.value.trim()) return;
+
+            onnxUploading.value = true;
+            onnxUploadResult.value = null;
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 600000); // 10분
+
+                const res = await fetch('/api/vector/onnx-models/load-cloud', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        location_uri: onnxLocationUri.value.trim(),
+                        onnx_file_name: onnxFileName.value.trim(),
+                        model_name: onnxUploadName.value.trim(),
+                    }),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+
+                const data = await res.json();
+                onnxUploadResult.value = data;
+
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    await loadOnnxModels();
+                    onnxFileName.value = '';
+                    onnxUploadName.value = '';
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    onnxUploadResult.value = { success: false, error: '적재 시간이 초과되었습니다 (10분).' };
+                } else {
+                    onnxUploadResult.value = { success: false, error: e.message };
+                }
+            } finally {
+                onnxUploading.value = false;
+            }
+        }
+
+        // 임베딩 모델 변경
+        async function onEmbeddingModelChange() {
+            try {
+                const res = await fetch('/api/vector/embedding-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: embeddingModel.value }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                }
+            } catch (e) {
+                showToast('모델 변경 실패: ' + e.message, 'error');
+            }
+        }
+
         // LLM 제공자 목록 로드
         async function loadLlmProviders() {
             try {
@@ -1601,6 +2008,8 @@ const app = createApp({
             loadProfiles();
             fetchDocuments();
             loadLlmProviders();
+            loadEmbeddingConfig();
+            loadOnnxModels();
         });
 
         return {
@@ -1649,9 +2058,16 @@ const app = createApp({
             vectorSearchMode,
             vectorMessages,
             vectorChatMessages,
+            vectorSessions,
+            vectorActiveSession,
+            switchVectorSession,
+            removeVectorSession,
             uploadedDocs,
             isUploading,
             dragOver,
+            uploadPipeline,
+            uploadProgress,
+            pipelineRingPercent,
             vectorExampleQuestions,
             handleFileSelect,
             handleFileDrop,
@@ -1687,6 +2103,31 @@ const app = createApp({
             fetchRecentSql,
             fetchExplainPlan,
 
+            // 임베딩 설정
+            embeddingSource,
+            embeddingModel,
+            embeddingApiUrl,
+            onnxModels,
+            onnxModelLoading,
+            setEmbeddingSource,
+            onEmbeddingModelChange,
+            refreshOnnxModels,
+            switchOnnxModel,
+            // ONNX 모델 관리
+            onnxTestResult,
+            onnxUploadName,
+            onnxLocationUri,
+            onnxFileName,
+            onnxSelectedFile,
+            onnxUploading,
+            onnxUploadResult,
+            onnxDragOver,
+            testOnnxModel,
+            deleteOnnxModel,
+            handleOnnxFileSelect,
+            handleOnnxFileDrop,
+            loadOnnxFromCloud,
+
             // LLM 제공자
             llmProviders,
             llmProvider,
@@ -1697,6 +2138,8 @@ const app = createApp({
             awrLoading,
             awrStep,
             awrElapsed,
+            awrProgress,
+            awrRingPercent,
             awrError,
             awrAnalysis,
             awrFilename,

@@ -3,8 +3,9 @@ import os
 import tempfile
 import time
 
+import asyncio
 from fastapi import APIRouter, Form, Request, UploadFile, File
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.database import get_pool, check_connection
@@ -26,11 +27,18 @@ from app.vector_search import (
     vector_search,
     keyword_search,
     compare_search,
+    hybrid_search,
     generate_rag_answer,
     list_documents,
     delete_document,
     get_index_info,
     get_embedding_info,
+    get_onnx_models,
+    load_onnx_model,
+    load_onnx_model_cloud,
+    drop_onnx_model,
+    test_onnx_model,
+    get_onnx_model_detail,
     drop_vector_tables,
     create_vector_tables_explicit,
     query_table_definition,
@@ -286,7 +294,7 @@ async def health():
 
 @router.post("/vector/upload")
 async def vector_upload(file: UploadFile = File(...)):
-    """PDF 파일 업로드 -> 청킹 -> 임베딩 -> DB 저장"""
+    """PDF 파일 업로드 -> SSE 스트리밍으로 실시간 진행 상황 전달"""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(
@@ -294,7 +302,6 @@ async def vector_upload(file: UploadFile = File(...)):
             content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
         )
 
-    # 파일 크기 확인
     content = await file.read()
     if len(content) > MAX_UPLOAD_SIZE:
         return JSONResponse(
@@ -302,31 +309,53 @@ async def vector_upload(file: UploadFile = File(...)):
             content={"success": False, "error": f"파일 크기가 10MB를 초과합니다."},
         )
 
-    # PDF 확인
     if not file.filename.lower().endswith(".pdf"):
         return JSONResponse(
             status_code=400,
             content={"success": False, "error": "PDF 파일만 업로드 가능합니다."},
         )
 
-    # 임시 파일로 저장
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(content)
             tmp_path = tmp.name
-
-        result = await upload_document(pool, tmp_path, file.filename)
-        return result
-
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)},
-        )
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+    fname = file.filename
+    tmp = tmp_path
+
+    async def event_stream():
+        queue = asyncio.Queue()
+
+        async def on_progress(event_type, data):
+            await queue.put((event_type, data))
+
+        async def run_pipeline():
+            try:
+                await upload_document(pool, tmp, fname, progress_callback=on_progress)
+            except Exception as e:
+                await queue.put(("error", {"message": str(e)}))
+            finally:
+                await queue.put(None)  # sentinel
+
+        task = asyncio.create_task(run_pipeline())
+
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                event_type, data = item
+                yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        finally:
+            if tmp and os.path.exists(tmp):
+                os.unlink(tmp)
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/vector/search")
@@ -351,6 +380,8 @@ async def vector_search_endpoint(req: VectorSearchRequest):
                 "vector_results": result["vector_results"],
                 "elapsed_ms": elapsed_ms,
             }
+        elif req.mode == "hybrid":
+            search_result = await hybrid_search(pool, req.query, req.top_k)
         elif req.mode == "keyword":
             search_result = await keyword_search(pool, req.query, req.top_k)
         else:
@@ -363,7 +394,7 @@ async def vector_search_endpoint(req: VectorSearchRequest):
 
         elapsed_ms = int((time.time() - start) * 1000)
 
-        return {
+        result_data = {
             "success": True,
             "mode": req.mode,
             "answer": answer,
@@ -372,6 +403,14 @@ async def vector_search_endpoint(req: VectorSearchRequest):
             "sql_executed": search_result["sql_executed"],
             "elapsed_ms": elapsed_ms,
         }
+        # 하이브리드 검색 추가 정보
+        if req.mode == "hybrid":
+            result_data["vector_weight"] = search_result.get("vector_weight", 0.7)
+            result_data["keyword_weight"] = search_result.get("keyword_weight", 0.3)
+            if search_result.get("hybrid_fallback"):
+                result_data["hybrid_fallback"] = True
+                result_data["hybrid_note"] = search_result.get("hybrid_note", "")
+        return result_data
 
     except Exception as e:
         elapsed_ms = int((time.time() - start) * 1000)
@@ -629,6 +668,247 @@ async def llm_providers():
     return {"success": True, "providers": get_available_providers(), "default": settings.LLM_PROVIDER}
 
 
+# === Embedding Config Endpoints ===
+
+class EmbeddingConfigRequest(BaseModel):
+    source: str = ""  # "database" or "external"
+    model: str = ""
+    reset_model: bool = False  # True이면 소스에 맞는 기본 모델로 자동 설정
+
+
+@router.get("/vector/embedding-config")
+async def get_embedding_config():
+    """현재 임베딩 설정 반환"""
+    from app.config import settings
+    return {
+        "success": True,
+        "source": settings.EMBEDDING_SOURCE,
+        "model": settings.EMBEDDING_MODEL,
+        "external_api_url": settings.EMBEDDING_API_URL or "(미설정)",
+        "external_api_key_set": bool(settings.EMBEDDING_API_KEY),
+    }
+
+
+@router.post("/vector/embedding-config")
+async def update_embedding_config(req: EmbeddingConfigRequest):
+    """임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원)"""
+    from app.config import settings
+    changed = []
+    if req.source and req.source in ("database", "external"):
+        settings.EMBEDDING_SOURCE = req.source
+        changed.append(f"source → {req.source}")
+
+        # 소스 전환 시 기본 모델 자동 설정
+        if req.reset_model and not req.model:
+            if req.source == "external":
+                default_model = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+                settings.EMBEDDING_MODEL = default_model
+                changed.append(f"model → {default_model}")
+            # database의 경우 ONNX 모델 목록에서 첫 번째를 자동 선택 (프론트에서 처리)
+
+    if req.model:
+        settings.EMBEDDING_MODEL = req.model
+        changed.append(f"model → {req.model}")
+
+    if not changed:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "변경할 설정이 없습니다."},
+        )
+
+    return {
+        "success": True,
+        "message": f"임베딩 설정 변경: {', '.join(changed)}",
+        "source": settings.EMBEDDING_SOURCE,
+        "model": settings.EMBEDDING_MODEL,
+    }
+
+
+@router.get("/vector/onnx-models")
+async def vector_onnx_models():
+    """DB에 로드된 ONNX 임베딩 모델 목록 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        models = await get_onnx_models(pool)
+        return {"success": True, "models": models}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+MAX_ONNX_SIZE = 3 * 1024 * 1024 * 1024  # 3GB
+
+
+@router.post("/vector/onnx-models/upload")
+async def vector_onnx_upload(
+    file: UploadFile = File(...),
+    model_name: str = Form(...),
+):
+    """ONNX 파일 업로드 → DB 모델 적재"""
+    if not file.filename.lower().endswith(".onnx"):
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": ".onnx 파일만 업로드 가능합니다."},
+        )
+
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    # 모델명 정규화 (대문자, 특수문자 제거)
+    clean_name = model_name.strip().upper().replace("-", "_").replace(" ", "_")
+    if not clean_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "모델명을 입력해 주세요."},
+        )
+
+    start = time.time()
+    try:
+        onnx_data = await file.read()
+        if len(onnx_data) > MAX_ONNX_SIZE:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "파일 크기가 3GB를 초과합니다."},
+            )
+
+        result = await load_onnx_model(pool, clean_name, onnx_data)
+        elapsed_ms = int((time.time() - start) * 1000)
+        return {
+            "success": True,
+            "model_name": result["model_name"],
+            "size_mb": round(result["size_bytes"] / (1024 * 1024), 1),
+            "elapsed_ms": elapsed_ms,
+            "message": f"모델 '{clean_name}'이(가) DB에 적재되었습니다.",
+        }
+    except Exception as e:
+        elapsed_ms = int((time.time() - start) * 1000)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "elapsed_ms": elapsed_ms},
+        )
+
+
+@router.post("/vector/onnx-models/load-cloud")
+async def vector_onnx_load_cloud(req: Request):
+    """OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    body = await req.json()
+    location_uri = body.get("location_uri", "").strip()
+    onnx_file_name = body.get("onnx_file_name", "").strip()
+    model_name = body.get("model_name", "").strip()
+
+    if not location_uri or not onnx_file_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Location URI와 ONNX 파일명을 입력해 주세요."},
+        )
+
+    # 모델명이 없으면 파일명에서 추출
+    if not model_name:
+        model_name = onnx_file_name.replace(".onnx", "").replace(".", "_").upper()
+
+    try:
+        result = await load_onnx_model_cloud(pool, model_name, location_uri, onnx_file_name)
+        return {
+            "success": True,
+            **result,
+            "message": f"모델 '{result['model_name']}'이(가) Object Storage에서 DB에 적재되었습니다.",
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.delete("/vector/onnx-models/{model_name}")
+async def vector_onnx_delete(model_name: str):
+    """DB에서 ONNX 모델 삭제"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await drop_onnx_model(pool, model_name.upper())
+        return {"success": True, **result, "message": f"모델 '{model_name}'이(가) 삭제되었습니다."}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.post("/vector/onnx-models/test")
+async def vector_onnx_test(req: Request):
+    """ONNX 모델 테스트 (샘플 임베딩 생성)"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    body = await req.json()
+    model_name = body.get("model_name", "")
+    sample_text = body.get("sample_text", "한국어 임베딩 테스트 문장입니다.")
+
+    if not model_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "모델명을 지정해 주세요."},
+        )
+
+    try:
+        result = await test_onnx_model(pool, model_name.upper(), sample_text)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+@router.get("/vector/onnx-models/{model_name}/detail")
+async def vector_onnx_detail(model_name: str):
+    """ONNX 모델 상세 정보 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        detail = await get_onnx_model_detail(pool, model_name.upper())
+        return {"success": True, **detail}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
 @router.post("/awr/analyze")
 async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
     """AWR HTML 파일 업로드 → 파싱 → LLM 분석"""
@@ -667,6 +947,18 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
         prompt = build_analysis_prompt(parsed, max_input_chars=max_chars)
         llm_result = await analyze_awr_with_llm(prompt, provider=llm_provider)
         total_ms = int((time.time() - start) * 1000)
+
+        # JSON 파싱 실패 감지
+        if "parse_error" in llm_result:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "error": f"LLM 응답의 JSON 파싱에 실패했습니다. 다시 시도해 주세요.",
+                    "raw_response": llm_result.get("raw_response", "")[:500],
+                    "elapsed_ms": total_ms,
+                },
+            )
 
         # 캐싱 (후속 질문 + 원문 보기용)
         session_id = f"awr_{int(time.time())}"

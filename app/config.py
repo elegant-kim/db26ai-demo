@@ -17,10 +17,11 @@ class Settings:
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
 
     # Vector Embedding 설정
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "minilm_l12_v2")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "MULTI_MINILM_L12_V2")
     EMBEDDING_SOURCE: str = os.getenv("EMBEDDING_SOURCE", "database")  # "database" or "external"
     EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "")
     EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "")
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "768"))  # 벡터 차원 (외부 API: 768, ONNX 384 등)
 
     # LLM 채팅 설정 (AWR 분석, RAG 답변 생성용)
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "google")

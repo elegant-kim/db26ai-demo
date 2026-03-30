@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=26">
+    <link rel="stylesheet" href="/static/css/style.css?v=46">
 </head>
 <body>
     <div id="app">
@@ -358,11 +358,8 @@
                         </svg>
                         문서 관리
                     </h3>
-                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'load' }" @click="vectorSubMenu = 'load'">
-                        문서 로드 &amp; 스플릿 &amp; 저장
-                    </button>
-                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'table' }" @click="vectorSubMenu = 'table'">
-                        DB Table 확인
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'store' }" @click="vectorSubMenu = 'store'">
+                        Vector Store 관리
                     </button>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'upload' }" @click="vectorSubMenu = 'upload'">
                         PDF 업로드
@@ -381,14 +378,14 @@
                         RAG (검색증강생성)
                     </h3>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'search' }" @click="vectorSubMenu = 'search'">
-                        비정형 문서 검색
+                        비정형 문서 검색(유사도 검색)
                     </button>
                     <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'query' }" @click="vectorSubMenu = 'query'">
                         실행 쿼리 확인
                     </button>
                 </div>
 
-                <!-- 검색 모드 (Step 3 활성 시만 표시) -->
+                <!-- 검색 모드 (검색 활성 시만 표시) -->
                 <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
                     <h3 class="sidebar-title">
                         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -397,6 +394,7 @@
                         </svg>
                         검색 모드
                     </h3>
+                    <div style="margin-left: 16px;">
                     <label class="radio-label">
                         <input type="radio" value="vector" v-model="vectorSearchMode" name="vectorMode">
                         <span class="radio-text"><strong>의미 검색</strong><small>VECTOR_DISTANCE 사용</small></span>
@@ -405,10 +403,109 @@
                         <input type="radio" value="keyword" v-model="vectorSearchMode" name="vectorMode">
                         <span class="radio-text"><strong>키워드 검색</strong><small>CONTAINS / LIKE 사용</small></span>
                     </label>
+                    <label class="radio-label radio-label-highlight">
+                        <input type="radio" value="hybrid" v-model="vectorSearchMode" name="vectorMode">
+                        <span class="radio-text"><strong>하이브리드 검색</strong><small>CONTAINS + VECTOR_DISTANCE 결합</small>
+                        <span class="badge-new">26ai</span></span>
+                    </label>
                     <label class="radio-label">
                         <input type="radio" value="compare" v-model="vectorSearchMode" name="vectorMode">
                         <span class="radio-text"><strong>비교 모드</strong><small>양쪽 방식 동시 비교</small></span>
                     </label>
+                    </div>
+                </div>
+
+                <!-- 임베딩 설정 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="5" cy="8" r="1.5"></circle>
+                            <circle cx="12" cy="5" r="1.5"></circle>
+                            <circle cx="19" cy="9" r="1.5"></circle>
+                            <circle cx="8" cy="16" r="1.5"></circle>
+                            <circle cx="16" cy="17" r="1.5"></circle>
+                            <line x1="6.2" y1="9.2" x2="10.8" y2="14.8" stroke-dasharray="2 2"></line>
+                            <line x1="9.5" y1="15.5" x2="14.5" y2="16.5" stroke-dasharray="2 2"></line>
+                            <line x1="13" y1="6.2" x2="17.5" y2="15.5" stroke-dasharray="2 2"></line>
+                            <line x1="6.2" y1="7" x2="11" y2="5.5" stroke-dasharray="2 2"></line>
+                            <line x1="13.2" y1="5.5" x2="17.8" y2="8" stroke-dasharray="2 2"></line>
+                        </svg>
+                        임베딩 설정
+                    </h3>
+                    <div class="embedding-source-toggle">
+                        <button class="toggle-btn" :class="{ 'toggle-active': embeddingSource === 'database' }"
+                                @click="setEmbeddingSource('database')">
+                            <span class="toggle-icon">🗄️</span> DB 내장 (ONNX)
+                        </button>
+                        <button class="toggle-btn" :class="{ 'toggle-active': embeddingSource === 'external' }"
+                                @click="setEmbeddingSource('external')">
+                            <span class="toggle-icon">🌐</span> 외부 API
+                        </button>
+                    </div>
+                    <div class="embedding-info-box">
+                        <div class="embedding-info-row">
+                            <span class="embedding-info-label">모델</span>
+                            <span class="embedding-info-value">[[ embeddingModel ]]</span>
+                        </div>
+                        <div class="embedding-info-row" v-if="embeddingSource === 'database' && onnxModels.length > 0">
+                            <span class="embedding-info-label">DB 모델</span>
+                            <select v-model="embeddingModel" @change="onEmbeddingModelChange" class="select-input select-input-sm">
+                                <option v-for="m in onnxModels" :key="m.model_name" :value="m.model_name">[[ m.model_name ]]</option>
+                            </select>
+                        </div>
+                        <div class="embedding-info-row" v-if="embeddingSource === 'external'">
+                            <span class="embedding-info-label">API</span>
+                            <span class="embedding-info-value embedding-info-truncate">[[ embeddingApiUrl ]]</span>
+                        </div>
+                        <div class="embedding-info-row">
+                            <span class="embedding-info-label">소스</span>
+                            <span class="embedding-info-value">
+                                <span class="badge badge-sm" :class="embeddingSource === 'database' ? 'badge-ok' : 'badge-external'">
+                                    [[ embeddingSource === 'database' ? 'VECTOR_EMBEDDING()' : 'External API' ]]
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ONNX 모델 관리 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="6" cy="6" r="2"></circle>
+                            <circle cx="18" cy="6" r="2"></circle>
+                            <circle cx="6" cy="18" r="2"></circle>
+                            <circle cx="18" cy="18" r="2"></circle>
+                            <circle cx="12" cy="12" r="2"></circle>
+                            <line x1="7.8" y1="7.8" x2="10.2" y2="10.2"></line>
+                            <line x1="13.8" y1="13.8" x2="16.2" y2="16.2"></line>
+                            <line x1="16.2" y1="7.8" x2="13.8" y2="10.2"></line>
+                            <line x1="10.2" y1="13.8" x2="7.8" y2="16.2"></line>
+                        </svg>
+                        ONNX 모델 관리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': vectorSubMenu === 'onnx' }" @click="vectorSubMenu = 'onnx'">
+                        모델 적재 &amp; 테스트
+                    </button>
+                </div>
+
+                <!-- LLM 모델 (RAG 답변 생성용) -->
+                <div class="sidebar-section" v-show="vectorSubMenu === 'search'">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        LLM 모델
+                    </h3>
+                    <select v-model="llmProvider" class="select-input">
+                        <option v-for="p in llmProviders" :key="p.id" :value="p.id">
+                            [[ p.name ]]
+                        </option>
+                    </select>
+                    <div class="llm-model-info" v-if="selectedLlmProvider">
+                        <span class="awr-info-label">모델:</span>
+                        <span class="awr-info-value">[[ selectedLlmProvider.model ]]</span>
+                    </div>
                 </div>
 
                 <!-- 예시 질문 (Step 3 활성 시만 표시) -->
@@ -421,7 +518,10 @@
                         </svg>
                         예시 질문
                     </h3>
-                    <button v-for="q in vectorExampleQuestions" :key="q" class="example-btn" @click="vectorInput = q">[[ q ]]</button>
+                    <select class="example-select" @change="vectorInput = $event.target.value; $event.target.selectedIndex = 0">
+                        <option value="" disabled selected>질문을 선택하세요...</option>
+                        <option v-for="q in vectorExampleQuestions" :key="q" :value="q">[[ q ]]</option>
+                    </select>
                 </div>
             </aside>
 
@@ -430,59 +530,66 @@
                 <div class="step-content-scroll">
 
                 <!-- ========== Step 1: 문서 로드 & 스플릿 & 저장 ========== -->
-                <div v-show="vectorSubMenu === 'load'" class="step-content">
-                    <h2 class="step-title">Step 1. 문서 로드 &amp; 스플릿 &amp; 저장</h2>
-                    <div class="step-card">
-                        <p class="step-desc">클릭하면, 테이블을 삭제합니다. 새 테이블, 데이터로 다시 시작하려면 클릭합니다.</p>
-                        <button class="btn btn-danger btn-small" :disabled="tableActionLoading" @click="dropVectorTables">
-                            <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
-                            Vector Store 테이블 삭제
-                        </button>
-                    </div>
-                    <div class="step-card">
-                        <p class="step-desc">클릭하면, 테이블이 없는 경우 새로이 생성하고, 있는 경우 기존 테이블 데이터를 그대로 사용합니다.</p>
-                        <button class="btn btn-primary btn-small" :disabled="tableActionLoading" @click="createVectorTables">
-                            <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
-                            Vector Store 테이블 연결
-                        </button>
-                    </div>
-                    <!-- 결과 표시 -->
-                    <div v-if="tableActionResult" class="step-result">
-                        <div v-if="tableActionResult.error" class="error-box">[[ tableActionResult.error ]]</div>
-                        <template v-else>
-                            <div v-for="t in tableActionResult.tables" :key="t.table" class="step-result-item">
-                                <span class="badge" :class="t.status === 'created' ? 'badge-ok' : t.status === 'existing' ? 'badge-schema' : t.status === 'dropped' ? 'badge-error' : 'badge-ok'">
-                                    [[ t.table ]]: [[ t.status ]]
-                                </span>
-                                <span v-if="t.message" class="step-result-msg">[[ t.message ]]</span>
-                            </div>
-                            <div v-if="tableActionResult.sql_executed" class="sql-section" style="margin-top:12px;">
-                                <div class="sql-header"><span>실행된 SQL</span></div>
-                                <pre class="sql-code"><code v-html="highlightSQLWithLines(tableActionResult.sql_executed)"></code></pre>
-                            </div>
-                        </template>
-                    </div>
-                </div>
+                <div v-show="vectorSubMenu === 'store'" class="step-content">
+                    <h2 class="step-title">Vector Store 관리</h2>
 
-                <!-- ========== Step 2: DB Table 확인 ========== -->
-                <div v-show="vectorSubMenu === 'table'" class="step-content">
-                    <h2 class="step-title">Step 2. DB Table 확인</h2>
-                    <div class="step-toolbar">
-                        <label class="step-toolbar-label">대상 테이블:</label>
-                        <select v-model="tableInspectTarget" class="select-input select-small">
-                            <option value="DOC_CHUNKS">DOC_CHUNKS</option>
-                            <option value="DOCUMENTS">DOCUMENTS</option>
-                        </select>
-                    </div>
-
-                    <!-- 2-1: 테이블 정의 -->
+                    <!-- 테이블 생성 / 삭제 -->
                     <div class="step-card">
                         <div class="step-card-header">
-                            <span class="step-card-title">테이블 정의 조회</span>
-                            <button class="btn btn-primary btn-small" :disabled="tableDefLoading" @click="fetchTableDefinition">
-                                <span v-if="tableDefLoading" class="spinner spinner-sm"></span> 실행
+                            <span class="step-card-title">테이블 생성 / 초기화</span>
+                        </div>
+                        <p class="step-desc">테이블이 없으면 새로 생성하고, 있으면 기존 데이터를 그대로 사용합니다.</p>
+                        <div style="display:flex;gap:8px;margin-top:8px;">
+                            <button class="btn btn-primary btn-small" :disabled="tableActionLoading" @click="createVectorTables">
+                                <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
+                                테이블 연결 / 생성
+                            </button>
+                            <button class="btn btn-danger-outline btn-small" :disabled="tableActionLoading" @click="dropVectorTables">
+                                <span v-if="tableActionLoading" class="spinner spinner-sm"></span>
+                                전체 삭제 (초기화)
                             </button>
                         </div>
+                        <div v-if="tableActionResult" class="step-result" style="margin-top:10px;">
+                            <div v-if="tableActionResult.error" class="error-box">[[ tableActionResult.error ]]</div>
+                            <template v-else>
+                                <div v-for="t in tableActionResult.tables" :key="t.table" class="step-result-item">
+                                    <span class="badge" :class="t.status === 'created' ? 'badge-ok' : t.status === 'existing' ? 'badge-schema' : t.status === 'dropped' ? 'badge-error' : 'badge-ok'">
+                                        [[ t.table ]]: [[ t.status ]]
+                                    </span>
+                                    <span v-if="t.message" class="step-result-msg">[[ t.message ]]</span>
+                                </div>
+                                <div v-if="tableActionResult.sql_executed" class="sql-section" style="margin-top:12px;">
+                                    <div class="sql-header"><span>실행된 SQL</span></div>
+                                    <pre class="sql-code"><code v-html="highlightSQLWithLines(tableActionResult.sql_executed)"></code></pre>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- 테이블 조회 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">테이블 조회</span>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <select v-model="tableInspectTarget" class="select-input select-small">
+                                    <option value="DOC_CHUNKS">DOC_CHUNKS</option>
+                                    <option value="DOCUMENTS">DOCUMENTS</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                            <button class="btn btn-primary btn-small" :disabled="tableDefLoading" @click="fetchTableDefinition">
+                                <span v-if="tableDefLoading" class="spinner spinner-sm"></span> 컬럼 정의
+                            </button>
+                            <button class="btn btn-primary btn-small" :disabled="tableDataLoading" @click="fetchTableData">
+                                <span v-if="tableDataLoading" class="spinner spinner-sm"></span> 데이터 조회
+                            </button>
+                            <button class="btn btn-primary btn-small" :disabled="tableIdxLoading" @click="fetchTableIndexes">
+                                <span v-if="tableIdxLoading" class="spinner spinner-sm"></span> 인덱스 조회
+                            </button>
+                        </div>
+
+                        <!-- 컬럼 정의 결과 -->
                         <div v-if="tableDefResult" class="step-query-result">
                             <div v-if="tableDefResult.error" class="error-box">[[ tableDefResult.error ]]</div>
                             <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
@@ -499,16 +606,8 @@
                                 <p class="row-count">[[ tableDefResult.row_count ]]건</p>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- 2-2: 테이블 데이터 -->
-                    <div class="step-card">
-                        <div class="step-card-header">
-                            <span class="step-card-title">테이블 데이터 조회</span>
-                            <button class="btn btn-primary btn-small" :disabled="tableDataLoading" @click="fetchTableData">
-                                <span v-if="tableDataLoading" class="spinner spinner-sm"></span> 실행
-                            </button>
-                        </div>
+                        <!-- 데이터 조회 결과 -->
                         <div v-if="tableDataResult" class="step-query-result">
                             <div v-if="tableDataResult.error" class="error-box">[[ tableDataResult.error ]]</div>
                             <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
@@ -525,16 +624,8 @@
                                 <p class="row-count">[[ tableDataResult.row_count ]]건</p>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- 2-3: 인덱스 조회 -->
-                    <div class="step-card">
-                        <div class="step-card-header">
-                            <span class="step-card-title">인덱스 조회 (HNSW 벡터 인덱스 포함)</span>
-                            <button class="btn btn-primary btn-small" :disabled="tableIdxLoading" @click="fetchTableIndexes">
-                                <span v-if="tableIdxLoading" class="spinner spinner-sm"></span> 실행
-                            </button>
-                        </div>
+                        <!-- 인덱스 조회 결과 -->
                         <div v-if="tableIdxResult" class="step-query-result">
                             <div v-if="tableIdxResult.error" class="error-box">[[ tableIdxResult.error ]]</div>
                             <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
@@ -552,12 +643,47 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- ONNX 임베딩 모델 정보 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">ONNX 임베딩 모델 (USER_MINING_MODELS)</span>
+                            <button class="btn btn-primary btn-small" :disabled="onnxModelLoading" @click="refreshOnnxModels">
+                                <span v-if="onnxModelLoading" class="spinner spinner-sm"></span> 조회
+                            </button>
+                        </div>
+                        <div v-if="onnxModels.length > 0" class="step-query-result">
+                            <div class="sql-section"><div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines('SELECT model_name, mining_function, algorithm, creation_date\nFROM user_mining_models\nWHERE algorithm = \'ONNX\'\nORDER BY creation_date DESC')"></code></pre>
+                            </div>
+                            <div class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th>모델명</th><th>기능</th><th>알고리즘</th><th>생성일</th><th>사용 중</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="m in onnxModels" :key="m.model_name">
+                                        <td><strong>[[ m.model_name ]]</strong></td>
+                                        <td>[[ m.mining_function ]]</td>
+                                        <td>[[ m.algorithm ]]</td>
+                                        <td>[[ m.creation_date ]]</td>
+                                        <td>
+                                            <span v-if="m.model_name === embeddingModel" class="vec-badge vec-badge-high">현재 사용</span>
+                                            <button v-else class="btn btn-small btn-outline" @click="switchOnnxModel(m.model_name)">선택</button>
+                                        </td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ onnxModels.length ]]개 모델</p>
+                            </div>
+                        </div>
+                        <div v-else class="step-query-result">
+                            <p class="text-muted">DB에 로드된 ONNX 모델이 없습니다. ONNX 모델 관리 메뉴에서 업로드하세요.</p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ========== PDF 업로드 ========== -->
                 <div v-show="vectorSubMenu === 'upload'" class="step-content">
                     <h2 class="step-title">PDF 업로드</h2>
-                    <div class="step-card">
+                    <div class="step-card" v-show="!isUploading">
                         <div class="upload-area"
                              @click="$refs.fileInput.click()"
                              @dragover.prevent="dragOver = true"
@@ -571,7 +697,58 @@
                             <span class="upload-sub">클릭 또는 드래그 앤 드롭 (최대 10MB)</span>
                         </div>
                         <input type="file" ref="fileInput" accept=".pdf" @change="handleFileSelect($event)" style="display: none;">
-                        <div v-if="isUploading" class="upload-progress"><div class="spinner"></div><span>업로드 처리 중...</span></div>
+                    </div>
+
+                    <!-- 파이프라인 진행 UI -->
+                    <div v-if="isUploading" class="step-card pipeline-card">
+                        <div class="pipeline-header">
+                            <div class="pipeline-ring"
+                                 :style="'--pct: ' + (pipelineRingPercent * 3.6) + 'deg'">
+                                <div class="pipeline-ring-inner">
+                                    <span class="pipeline-ring-text">[[ pipelineRingPercent ]]%</span>
+                                </div>
+                            </div>
+                            <div class="pipeline-header-text">
+                                <strong>PDF 처리 파이프라인 실행 중</strong>
+                                <span class="pipeline-header-sub">문서 → 텍스트 → 청크 → 임베딩 → DB 저장</span>
+                            </div>
+                        </div>
+                        <div class="pipeline-steps">
+                            <div v-for="p in uploadPipeline" :key="p.step"
+                                 class="pipeline-step"
+                                 :class="{ 'pipeline-step-pending': p.status === 'pending',
+                                           'pipeline-step-running': p.status === 'running',
+                                           'pipeline-step-done': p.status === 'done' }">
+                                <div class="pipeline-step-indicator">
+                                    <div v-if="p.status === 'pending'" class="pipeline-dot"></div>
+                                    <div v-else-if="p.status === 'running'" class="pipeline-dot-running">
+                                        <div class="pipeline-dot-pulse"></div>
+                                    </div>
+                                    <div v-else class="pipeline-dot-done">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div v-if="p.step < 5" class="pipeline-line"
+                                         :class="{ 'pipeline-line-done': p.status === 'done' }"></div>
+                                </div>
+                                <div class="pipeline-step-content">
+                                    <div class="pipeline-step-label">
+                                        <span class="pipeline-step-num">[[ p.step ]]</span>
+                                        <span>[[ p.label ]]</span>
+                                        <span v-if="p.status === 'done'" class="pipeline-step-time">[[ p.duration_ms ]]ms</span>
+                                    </div>
+                                    <div v-if="p.detail" class="pipeline-step-detail">[[ p.detail ]]</div>
+                                    <!-- 임베딩 진행률 바 (step 4) -->
+                                    <div v-if="p.step === 4 && p.status === 'running' && uploadProgress" class="pipeline-progress-bar-wrap">
+                                        <div class="pipeline-progress-bar" style="height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden;">
+                                            <div class="pipeline-progress-fill" :style="{ width: uploadProgress.percent + '%', height: '100%', background: 'linear-gradient(90deg, #86efac, #22c55e, #16a34a)', borderRadius: '5px', transition: 'width 0.4s ease' }"></div>
+                                        </div>
+                                        <span class="pipeline-progress-text">[[ uploadProgress.current ]]/[[ uploadProgress.total ]] ([[ uploadProgress.percent ]]%)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div v-if="uploadedDocs.length > 0" class="step-card">
                         <h4 style="margin-bottom:8px;color:var(--text-secondary);font-size:13px;">업로드된 문서 목록</h4>
@@ -591,7 +768,70 @@
 
                 <!-- ========== Step 3: 비정형 문서 검색 (기존 채팅 UI) ========== -->
                 <div v-show="vectorSubMenu === 'search'" class="chat-messages" ref="vectorChatMessages">
-                    <h2 class="step-title" style="margin:0 0 16px 0;">Step 3. 비정형 문서 검색</h2>
+                    <h2 class="step-title" style="margin:0 0 16px 0;">비정형 문서 검색(유사도 검색)</h2>
+
+                    <!-- 검색 세션 탭 (AWR 결과 탭과 동일 스타일) -->
+                    <div class="awr-result-tabs" style="margin-bottom: 8px;">
+                        <div class="awr-result-tab"
+                             :class="{ active: vectorActiveSession === -1 }"
+                             @click="switchVectorSession(-1)">
+                            <span class="awr-tab-label">현재</span>
+                            <span class="awr-tab-provider">[[ embeddingSource === 'database' ? 'ONNX' : 'API' ]]</span>
+                            <span class="awr-tab-time">[[ embeddingModel ]]</span>
+                        </div>
+                        <div v-for="(sess, si) in vectorSessions" :key="si"
+                             class="awr-result-tab"
+                             :class="{ active: vectorActiveSession === si }"
+                             @click="switchVectorSession(si)">
+                            <span class="awr-tab-label">[[ sess.label ]]</span>
+                            <span class="awr-tab-provider">[[ sess.source === 'database' ? 'ONNX' : 'API' ]]</span>
+                            <span class="awr-tab-time">[[ sess.timestamp ]]</span>
+                            <button class="awr-tab-close" @click.stop="removeVectorSession(si)" title="세션 닫기">&times;</button>
+                        </div>
+                    </div>
+
+                    <!-- 이전 세션 보기 -->
+                    <template v-if="vectorActiveSession >= 0 && vectorSessions[vectorActiveSession]">
+                        <template v-for="(msg, idx) in vectorSessions[vectorActiveSession].messages" :key="'s'+idx">
+                            <div v-if="msg.role === 'user'" class="message message-user">
+                                <div class="message-bubble bubble-user">
+                                    <p>[[ msg.content ]]</p>
+                                    <span class="message-time">[[ msg.timestamp ]]</span>
+                                </div>
+                            </div>
+                            <div v-if="msg.role === 'assistant'" class="message message-assistant">
+                                <div class="message-bubble bubble-assistant vec-response">
+                                    <div v-if="msg.error" class="error-box">[[ msg.error ]]</div>
+                                    <div v-if="msg.answer" class="vec-answer">
+                                        <pre class="text-pre" v-html="msg.answer"></pre>
+                                    </div>
+                                    <div v-if="msg.chunks && msg.chunks.length" class="vec-chunks-section">
+                                        <div class="vec-chunks-header">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                            <span>참조 문서 청크 (유사도 순)</span>
+                                        </div>
+                                        <div v-for="(c, ci) in msg.chunks" :key="ci" class="vec-chunk-card">
+                                            <div class="vec-chunk-badges">
+                                                <span class="vec-badge vec-badge-source">[[ c.source_file ]] p.[[ c.page_num ]]</span>
+                                                <span v-if="c.similarity != null" class="vec-badge" :class="c.similarity >= 0.85 ? 'vec-badge-high' : 'vec-badge-low'">cosine: [[ c.similarity ]]</span>
+                                                <span v-else-if="c.distance != null" class="vec-badge vec-badge-low">cosine: [[ (1 - c.distance).toFixed(4) ]]</span>
+                                            </div>
+                                            <p class="vec-chunk-text">[[ c.chunk_text ]]</p>
+                                        </div>
+                                    </div>
+                                    <div v-if="msg.sql_executed" class="sql-section">
+                                        <div class="sql-header"><span>실행된 SQL</span></div>
+                                        <pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(msg.sql_executed)"></code></pre>
+                                    </div>
+                                    <div v-if="msg.elapsed_ms" class="elapsed">[[ msg.elapsed_ms ]]ms</div>
+                                    <span class="message-time">[[ msg.timestamp ]]</span>
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+
+                    <!-- 현재 세션 -->
+                    <template v-if="vectorActiveSession === -1">
                     <div v-if="vectorMessages.length === 0" class="empty-state">
                         <div class="empty-icon">
                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C74634" stroke-width="1.5" opacity="0.5">
@@ -632,23 +872,65 @@
                                             <pre class="text-pre">[[ msg.answer ]]</pre>
                                         </div>
 
-                                        <!-- 3-2. 참조 문서 청크 -->
+                                        <!-- 3-2. 하이브리드 검색 안내 -->
+                                        <div v-if="msg.mode === 'hybrid' && msg.hybridNote" class="vec-hybrid-notice">
+                                            ⚠️ [[ msg.hybridNote ]]
+                                        </div>
+
+                                        <!-- 3-3. 참조 문서 청크 -->
                                         <div v-if="msg.chunks && msg.chunks.length > 0" class="vec-chunks-section">
                                             <div class="vec-chunks-header">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                                     <polyline points="14 2 14 8 20 8"></polyline>
                                                 </svg>
-                                                <span>참조 문서 청크 (유사도 순)</span>
+                                                <span v-if="msg.mode === 'hybrid'">참조 문서 청크 (하이브리드 점수 순)</span>
+                                                <span v-else>참조 문서 청크 (유사도 순)</span>
                                             </div>
                                             <div v-for="(chunk, ci) in msg.chunks" :key="ci" class="vec-chunk-card">
                                                 <div class="vec-chunk-badges">
                                                     <span class="vec-badge vec-badge-source">[[ chunk.source_file ]] p.[[ chunk.page_num ]]</span>
-                                                    <span v-if="chunk.similarity !== null"
-                                                          class="vec-badge"
-                                                          :class="chunk.similarity >= 0.85 ? 'vec-badge-high' : 'vec-badge-low'">
-                                                        cosine: [[ chunk.similarity ]]
-                                                    </span>
+                                                    <!-- 하이브리드 모드: 3개 스코어 표시 -->
+                                                    <template v-if="msg.mode === 'hybrid'">
+                                                        <span class="vec-badge vec-badge-hybrid">
+                                                            hybrid: [[ chunk.hybrid_score ]]
+                                                        </span>
+                                                        <span class="vec-badge" :class="chunk.similarity >= 0.85 ? 'vec-badge-high' : 'vec-badge-low'">
+                                                            vector: [[ chunk.similarity ]]
+                                                        </span>
+                                                        <span class="vec-badge" :class="chunk.keyword_score > 0 ? 'vec-badge-keyword-hit' : 'vec-badge-low'">
+                                                            keyword: [[ chunk.keyword_score ]]
+                                                        </span>
+                                                    </template>
+                                                    <!-- 일반 모드: cosine similarity + 프로그레스 바 -->
+                                                    <template v-else>
+                                                        <span v-if="chunk.similarity !== null"
+                                                              class="vec-badge"
+                                                              :class="chunk.similarity >= 0.85 ? 'vec-badge-high' : chunk.similarity >= 0.7 ? 'vec-badge-mid' : 'vec-badge-low'">
+                                                            cosine: [[ chunk.similarity ]]
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                                <!-- 유사도 프로그레스 바 (벡터/하이브리드 모드) -->
+                                                <div v-if="chunk.similarity !== null || msg.mode === 'hybrid'" class="vec-similarity-bar-row">
+                                                    <template v-if="msg.mode === 'hybrid'">
+                                                        <div class="vec-sim-bar-group">
+                                                            <span class="vec-sim-bar-label">V</span>
+                                                            <div class="vec-sim-bar"><div class="vec-sim-bar-fill vec-sim-bar-vec" :style="{ width: (chunk.similarity * 100) + '%' }"></div></div>
+                                                            <span class="vec-sim-bar-pct">[[ Math.round(chunk.similarity * 100) ]]%</span>
+                                                        </div>
+                                                        <div class="vec-sim-bar-group">
+                                                            <span class="vec-sim-bar-label">K</span>
+                                                            <div class="vec-sim-bar"><div class="vec-sim-bar-fill vec-sim-bar-kw" :style="{ width: chunk.keyword_score + '%' }"></div></div>
+                                                            <span class="vec-sim-bar-pct">[[ Math.round(chunk.keyword_score) ]]</span>
+                                                        </div>
+                                                    </template>
+                                                    <template v-else-if="chunk.similarity !== null">
+                                                        <div class="vec-sim-bar-group vec-sim-bar-full">
+                                                            <div class="vec-sim-bar"><div class="vec-sim-bar-fill vec-sim-bar-vec" :style="{ width: (chunk.similarity * 100) + '%' }"></div></div>
+                                                            <span class="vec-sim-bar-pct">[[ Math.round(chunk.similarity * 100) ]]%</span>
+                                                        </div>
+                                                    </template>
                                                 </div>
                                                 <p class="vec-chunk-text">[[ chunk.chunk_text ]]</p>
                                             </div>
@@ -804,11 +1086,12 @@
                             </div>
                         </div>
                     </template>
+                    </template><!-- /현재 세션 -->
                 </div>
 
                 <!-- ========== Step 4: 실행 쿼리 확인 ========== -->
                 <div v-show="vectorSubMenu === 'query'" class="step-content">
-                    <h2 class="step-title">Step 4. 실행 쿼리 확인</h2>
+                    <h2 class="step-title">실행 쿼리 확인</h2>
 
                     <!-- V$SQL -->
                     <div class="step-card">
@@ -854,6 +1137,126 @@
                                 <div class="sql-header"><span>실행 계획 결과</span></div>
                                 <pre class="sql-code plan-code"><code>[[ explainPlanResult.plan_text ]]</code></pre>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== ONNX 모델 관리 ========== -->
+                <div v-show="vectorSubMenu === 'onnx'" class="step-content">
+                    <h2 class="step-title">ONNX 임베딩 모델 관리</h2>
+
+                    <!-- 현재 등록된 모델 목록 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">DB 등록 모델 목록 (USER_MINING_MODELS)</span>
+                            <button class="btn btn-primary btn-small" :disabled="onnxModelLoading" @click="refreshOnnxModels">
+                                <span v-if="onnxModelLoading" class="spinner spinner-sm"></span> 새로고침
+                            </button>
+                        </div>
+                        <div class="step-query-result">
+                            <div v-if="onnxModels.length > 0">
+                                <div class="table-section">
+                                    <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                        <th>모델명</th><th>기능</th><th>알고리즘</th><th>생성일</th><th>상태</th><th>액션</th>
+                                    </tr></thead><tbody>
+                                        <tr v-for="m in onnxModels" :key="m.model_name">
+                                            <td><strong>[[ m.model_name ]]</strong></td>
+                                            <td>[[ m.mining_function ]]</td>
+                                            <td>[[ m.algorithm ]]</td>
+                                            <td style="font-size:11px;">[[ m.creation_date ]]</td>
+                                            <td>
+                                                <span v-if="m.model_name === embeddingModel" class="vec-badge vec-badge-high">사용 중</span>
+                                                <span v-else class="vec-badge vec-badge-low">미사용</span>
+                                            </td>
+                                            <td class="onnx-action-cell">
+                                                <button v-if="m.model_name !== embeddingModel" class="btn btn-small btn-outline" @click="switchOnnxModel(m.model_name)">선택</button>
+                                                <button class="btn btn-small btn-outline" @click="testOnnxModel(m.model_name)">테스트</button>
+                                                <button class="btn btn-small btn-danger-outline" @click="deleteOnnxModel(m.model_name)">삭제</button>
+                                            </td>
+                                        </tr>
+                                    </tbody></table></div>
+                                    <p class="row-count">[[ onnxModels.length ]]개 모델</p>
+                                </div>
+                            </div>
+                            <div v-else class="step-empty-msg">
+                                DB에 등록된 ONNX 모델이 없습니다. 아래에서 ONNX 파일을 업로드하여 적재하세요.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 모델 테스트 결과 -->
+                    <div v-if="onnxTestResult" class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">모델 테스트 결과: [[ onnxTestResult.model_name ]]</span>
+                            <button class="btn btn-small btn-outline" @click="onnxTestResult = null">닫기</button>
+                        </div>
+                        <div class="step-query-result">
+                            <div v-if="onnxTestResult.error" class="error-box">[[ onnxTestResult.error ]]</div>
+                            <div v-else class="vec-info-box" style="margin:0;">
+                                <div class="vec-info-grid">
+                                    <span class="vec-info-label">모델:</span><span>[[ onnxTestResult.model_name ]]</span>
+                                    <span class="vec-info-label">차원 수:</span><span><strong>[[ onnxTestResult.dimensions ]]</strong></span>
+                                    <span class="vec-info-label">처리 시간:</span><span>[[ onnxTestResult.processing_ms ]]ms</span>
+                                    <span class="vec-info-label">입력 텍스트:</span><span class="vec-info-mono">[[ onnxTestResult.sample_text ]]</span>
+                                    <span class="vec-info-label">벡터 미리보기:</span><span class="vec-info-mono">[[ onnxTestResult.vector_preview ]]</span>
+                                </div>
+                                <div class="sql-section" style="margin-top: 8px;">
+                                    <div class="sql-header"><span>SQL</span></div>
+                                    <pre class="sql-code"><code v-html="highlightOracleSQL(onnxTestResult.sql_executed)"></code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OCI Object Storage에서 ONNX 모델 적재 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">OCI Object Storage에서 ONNX 모델 적재</span>
+                        </div>
+                        <div class="onnx-upload-form">
+                            <div class="onnx-form-row">
+                                <label class="onnx-form-label">Location URI (Pre-Authenticated Request URL)</label>
+                                <input type="text" v-model="onnxLocationUri" class="chat-input"
+                                       placeholder="https://objectstorage.us-ashburn-1.oci.customer-oci.com/p/.../n/.../b/.../o/">
+                                <small class="onnx-form-hint">OCI Object Storage의 PAR URL 또는 공개 URL (끝에 /o/ 까지)</small>
+                            </div>
+                            <div class="onnx-form-row">
+                                <label class="onnx-form-label">ONNX 파일명</label>
+                                <input type="text" v-model="onnxFileName" class="chat-input onnx-name-input"
+                                       placeholder="예: multilingual_e5_small.onnx">
+                                <small class="onnx-form-hint">Object Storage에 업로드된 .onnx 파일 이름</small>
+                            </div>
+                            <div class="onnx-form-row">
+                                <label class="onnx-form-label">모델명 (DB 등록용, 선택)</label>
+                                <input type="text" v-model="onnxUploadName" class="chat-input onnx-name-input"
+                                       placeholder="미입력 시 파일명에서 자동 생성">
+                                <small class="onnx-form-hint">영문, 숫자, 밑줄(_)만 사용. 비워두면 파일명 기반으로 자동 생성됩니다.</small>
+                            </div>
+                            <div class="onnx-form-row">
+                                <button class="btn btn-primary" :disabled="onnxUploading || !onnxLocationUri.trim() || !onnxFileName.trim()" @click="loadOnnxFromCloud">
+                                    <span v-if="onnxUploading" class="spinner spinner-sm"></span>
+                                    [[ onnxUploading ? 'DB에 적재 중...' : 'Object Storage에서 DB 적재' ]]
+                                </button>
+                            </div>
+                            <div v-if="onnxUploadResult" class="onnx-upload-result" :class="onnxUploadResult.success ? 'onnx-result-ok' : 'onnx-result-err'">
+                                <template v-if="onnxUploadResult.success">
+                                    [[ onnxUploadResult.message ]] (소요: [[ onnxUploadResult.elapsed_ms ]]ms)
+                                </template>
+                                <template v-else>
+                                    [[ onnxUploadResult.error ]]
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 실행 PL/SQL 참고 -->
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">실행 PL/SQL 참고</span>
+                        </div>
+                        <div class="sql-section" style="margin:12px;">
+                            <div class="sql-header"><span>PL/SQL</span></div>
+                            <pre class="sql-code"><code v-html="highlightOracleSQL(`DECLARE\n  v_model VARCHAR2(200) := 'MODEL_NAME';\n  v_file  VARCHAR2(200) := 'model_file.onnx';\n  v_uri   VARCHAR2(500) := 'https://...PAR_URL.../o/';\nBEGIN\n  -- 기존 모델 삭제 (없으면 무시)\n  BEGIN DBMS_DATA_MINING.DROP_MODEL(v_model);\n  EXCEPTION WHEN OTHERS THEN NULL; END;\n\n  -- Object Storage → DATA_PUMP_DIR\n  DBMS_CLOUD.GET_OBJECT(\n    credential_name => NULL,\n    directory_name  => 'DATA_PUMP_DIR',\n    object_uri      => v_uri || v_file\n  );\n\n  -- ONNX 모델 DB 적재\n  DBMS_VECTOR.LOAD_ONNX_MODEL(\n    directory  => 'DATA_PUMP_DIR',\n    file_name  => v_file,\n    model_name => v_model\n  );\nEND;`)"></code></pre>
                         </div>
                     </div>
                 </div>
@@ -972,42 +1375,89 @@
                         <input type="file" ref="awrFileInput" accept=".html,.htm" @change="handleAwrFileSelect($event)" style="display: none;">
                     </div>
 
-                    <!-- 업로드/분석 중 -->
-                    <div v-if="awrLoading" class="step-card">
-                        <div class="awr-analyzing">
-                            <div class="awr-progress-container">
-                                <div class="awr-progress-spinner">
-                                    <svg viewBox="0 0 50 50" class="awr-circular-progress">
-                                        <circle cx="25" cy="25" r="20" fill="none" stroke="#e9ecef" stroke-width="4"/>
-                                        <circle cx="25" cy="25" r="20" fill="none" stroke="var(--primary)" stroke-width="4" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="31.4" class="awr-progress-circle"/>
-                                    </svg>
-                                    <span class="awr-progress-icon">🔍</span>
+                    <!-- 업로드/분석 중 — 파이프라인 UI -->
+                    <div v-if="awrLoading" class="step-card pipeline-card">
+                        <div class="pipeline-header">
+                            <div class="pipeline-ring"
+                                 :style="'--pct: ' + (awrRingPercent * 3.6) + 'deg'">
+                                <div class="pipeline-ring-inner">
+                                    <span class="pipeline-ring-text">[[ awrRingPercent ]]%</span>
                                 </div>
-                                <div class="awr-analyzing-text">
-                                    <strong style="font-size:16px;">AWR 리포트 AI 분석 중...</strong>
-                                    <div class="awr-progress-steps">
-                                        <div class="awr-step" :class="{ active: awrStep >= 1, done: awrStep > 1 }">
-                                            <span class="awr-step-icon">[[ awrStep > 1 ? '✅' : '📄' ]]</span>
-                                            <span>HTML 파싱 및 핵심 섹션 추출</span>
-                                        </div>
-                                        <div class="awr-step" :class="{ active: awrStep >= 2, done: awrStep > 2 }">
-                                            <span class="awr-step-icon">[[ awrStep > 2 ? '✅' : '🤖' ]]</span>
-                                            <span>AI가 성능 지표를 분석하고 있습니다</span>
-                                        </div>
-                                        <div class="awr-step" :class="{ active: awrStep >= 3 }">
-                                            <span class="awr-step-icon">📊</span>
-                                            <span>분석 결과 생성 중</span>
-                                        </div>
+                            </div>
+                            <div class="pipeline-header-text">
+                                <strong>AWR 리포트 AI 분석 중</strong>
+                                <span class="pipeline-header-sub">파싱 → AI 분석 → 결과 생성</span>
+                            </div>
+                        </div>
+                        <div class="pipeline-steps">
+                            <!-- Step 1: HTML 파싱 -->
+                            <div class="pipeline-step"
+                                 :class="{ 'pipeline-step-done': awrStep > 1, 'pipeline-step-running': awrStep === 1, 'pipeline-step-pending': awrStep < 1 }">
+                                <div class="pipeline-step-indicator">
+                                    <div v-if="awrStep < 1" class="pipeline-dot"></div>
+                                    <div v-else-if="awrStep === 1" class="pipeline-dot-running"><div class="pipeline-dot-pulse"></div></div>
+                                    <div v-else class="pipeline-dot-done">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                     </div>
-                                    <p class="awr-wait-notice">
-                                        ⏱️ AI 분석에는 약 <strong>30초 ~ 2분</strong> 정도 소요됩니다.
-                                        <br><span style="color:var(--text-secondary);font-size:12px;">데이터 양과 LLM 제공자에 따라 시간이 달라질 수 있습니다.</span>
-                                    </p>
-                                    <div class="awr-elapsed-time" v-if="awrElapsed > 0">
-                                        경과 시간: <strong>[[ awrElapsed ]]초</strong>
+                                    <div class="pipeline-line" :class="{ 'pipeline-line-done': awrStep > 1 }"></div>
+                                </div>
+                                <div class="pipeline-step-content">
+                                    <div class="pipeline-step-label">
+                                        <span class="pipeline-step-num">1</span>
+                                        <span>HTML 파싱 및 핵심 섹션 추출</span>
+                                    </div>
+                                    <div class="pipeline-step-detail" v-if="awrStep === 1">AWR 리포트에서 성능 지표 테이블을 추출하고 있습니다...</div>
+                                </div>
+                            </div>
+                            <!-- Step 2: AI 분석 -->
+                            <div class="pipeline-step"
+                                 :class="{ 'pipeline-step-done': awrStep > 2, 'pipeline-step-running': awrStep === 2, 'pipeline-step-pending': awrStep < 2 }">
+                                <div class="pipeline-step-indicator">
+                                    <div v-if="awrStep < 2" class="pipeline-dot"></div>
+                                    <div v-else-if="awrStep === 2" class="pipeline-dot-running"><div class="pipeline-dot-pulse"></div></div>
+                                    <div v-else class="pipeline-dot-done">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </div>
+                                    <div class="pipeline-line" :class="{ 'pipeline-line-done': awrStep > 2 }"></div>
+                                </div>
+                                <div class="pipeline-step-content">
+                                    <div class="pipeline-step-label">
+                                        <span class="pipeline-step-num">2</span>
+                                        <span>AI 성능 지표 분석</span>
+                                    </div>
+                                    <div class="pipeline-step-detail" v-if="awrStep === 2">AI가 추출된 데이터를 분석하고 있습니다... (가장 오래 걸리는 단계)</div>
+                                    <!-- 추정 기반 프로그레스바 (step 2에서만) -->
+                                    <div v-if="awrStep === 2" class="pipeline-progress-bar-wrap">
+                                        <div class="pipeline-progress-bar" style="height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden;">
+                                            <div class="pipeline-progress-fill" :style="{ width: Math.min(awrProgress, 100) + '%', height: '100%', background: 'linear-gradient(90deg, #86efac, #22c55e, #16a34a)', borderRadius: '5px', transition: 'width 1s ease' }"></div>
+                                        </div>
+                                        <span class="pipeline-progress-text">~[[ Math.min(awrProgress, 100) ]]%</span>
                                     </div>
                                 </div>
                             </div>
+                            <!-- Step 3: 결과 생성 -->
+                            <div class="pipeline-step"
+                                 :class="{ 'pipeline-step-done': awrStep > 3, 'pipeline-step-running': awrStep === 3, 'pipeline-step-pending': awrStep < 3 }">
+                                <div class="pipeline-step-indicator">
+                                    <div v-if="awrStep < 3" class="pipeline-dot"></div>
+                                    <div v-else-if="awrStep === 3" class="pipeline-dot-running"><div class="pipeline-dot-pulse"></div></div>
+                                    <div v-else class="pipeline-dot-done">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </div>
+                                </div>
+                                <div class="pipeline-step-content">
+                                    <div class="pipeline-step-label">
+                                        <span class="pipeline-step-num">3</span>
+                                        <span>분석 결과 생성</span>
+                                    </div>
+                                    <div class="pipeline-step-detail" v-if="awrStep === 3">카테고리별 점수 및 종합 소견을 생성하고 있습니다...</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 하단 안내 -->
+                        <div style="padding: 0 24px 20px; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:12px; color:var(--text-secondary);">AI 분석에는 약 30초 ~ 2분 소요됩니다.</span>
+                            <span v-if="awrElapsed > 0" style="font-size:13px; font-weight:600; color:var(--primary);">⏱️ [[ awrElapsed ]]초</span>
                         </div>
                     </div>
 
@@ -1362,6 +1812,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=26"></script>
+    <script src="/static/js/app.js?v=46"></script>
 </body>
 </html>

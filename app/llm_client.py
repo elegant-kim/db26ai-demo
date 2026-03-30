@@ -118,13 +118,48 @@ def extract_json_from_response(raw: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # 2) { ... } 전체
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    # 2) ``` ... ``` 블록 (json 태그 없는 코드블록)
+    match = re.search(r"```\s*(.*?)\s*```", raw, re.DOTALL)
     if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
+        text = match.group(1).strip()
+        if text.startswith("{"):
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
 
-    # 3) 파싱 실패
+    # 3) 가장 바깥쪽 { ... } 쌍 찾기 (중첩 브레이스 대응)
+    start_idx = raw.find("{")
+    if start_idx != -1:
+        depth = 0
+        end_idx = start_idx
+        in_string = False
+        escape_next = False
+        for i in range(start_idx, len(raw)):
+            c = raw[i]
+            if escape_next:
+                escape_next = False
+                continue
+            if c == '\\' and in_string:
+                escape_next = True
+                continue
+            if c == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    end_idx = i
+                    break
+        if depth == 0:
+            try:
+                return json.loads(raw[start_idx:end_idx + 1])
+            except json.JSONDecodeError:
+                pass
+
+    # 4) 파싱 실패
     return {"raw_response": raw, "parse_error": "JSON 파싱에 실패했습니다."}
