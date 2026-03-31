@@ -389,7 +389,7 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
     if settings.EMBEDDING_SOURCE == "database":
         # DB 내 임베딩 모델 사용
         sql = f"""
-            SELECT chunk_text, source_file, page_num,
+            SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding,
                        VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data),
                        COSINE) AS distance
@@ -398,7 +398,14 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
             ORDER BY distance
             FETCH FIRST :top_k ROWS ONLY
         """
-        sql_executed = sql.replace(":query", f"'{query}'").replace(":top_k", str(top_k))
+        sql_executed = f"""SELECT chunk_id, chunk_text, source_file, page_num,
+       VECTOR_DISTANCE(embedding,
+           VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data),
+           COSINE) AS distance
+FROM doc_chunks
+WHERE embedding IS NOT NULL
+ORDER BY distance
+FETCH FIRST {top_k} ROWS ONLY"""
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
@@ -410,7 +417,7 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
         query_vector = await get_embedding_external(query)
         query_vec_str = _vec_to_str(query_vector)
         sql = """
-            SELECT chunk_text, source_file, page_num,
+            SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector), COSINE) AS distance
             FROM doc_chunks
             WHERE embedding IS NOT NULL
@@ -418,7 +425,7 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
             FETCH FIRST :top_k ROWS ONLY
         """
         sql_executed = f"""-- 외부 임베딩 API ({settings.EMBEDDING_MODEL}) 사용
-SELECT chunk_text, source_file, page_num,
+SELECT chunk_id, chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding, TO_VECTOR('<{len(query_vector)}차원 벡터>'), COSINE) AS distance
 FROM doc_chunks
 WHERE embedding IS NOT NULL
@@ -433,12 +440,13 @@ FETCH FIRST {top_k} ROWS ONLY"""
 
     chunks = []
     for row in rows:
-        chunk_text = await _lob_to_str(row[0]) if hasattr(row[0], 'read') else row[0]
-        similarity = 1 - (row[3] if row[3] else 0)  # cosine distance -> similarity
+        chunk_text = await _lob_to_str(row[1]) if hasattr(row[1], 'read') else row[1]
+        similarity = 1 - (row[4] if row[4] else 0)  # cosine distance -> similarity
         chunks.append({
+            "chunk_id": row[0],
             "chunk_text": chunk_text,
-            "source_file": row[1],
-            "page_num": row[2],
+            "source_file": row[2],
+            "page_num": row[3],
             "similarity": round(similarity, 4),
         })
 
@@ -529,115 +537,104 @@ async def compare_search(pool, query: str, top_k: int = 5) -> dict:
 
 
 async def hybrid_search(pool, query: str, top_k: int = 5, vector_weight: float = 0.7) -> dict:
-    """하이브리드 검색: CONTAINS (키워드) + VECTOR_DISTANCE (의미) 결합.
+    """하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합.
 
-    Oracle 26ai의 핵심 기능으로, 단일 SQL에서 키워드 점수와 벡터 유사도를 결합하여
-    두 방식의 장점을 모두 활용한다.
+    Oracle 26ai의 핵심 기능으로, 단일 SQL에서 키워드 매칭과 벡터 유사도를 결합하여
+    두 방식의 장점을 모두 활용한다. Oracle Text 인덱스 불필요.
 
-    hybrid_score = vector_weight × vector_similarity + (1 - vector_weight) × keyword_score_normalized
+    hybrid_score = vector_weight × vector_similarity + (1 - vector_weight) × keyword_match(0 or 1)
     """
     start = time.time()
     keyword_weight = round(1 - vector_weight, 2)
 
     if settings.EMBEDDING_SOURCE == "database":
-        # DB 내 임베딩 모델 사용 — 단일 SQL 하이브리드 쿼리
-        # CONTAINS는 WHERE에 한 번만, SCORE(1)은 SELECT/ORDER BY에서 참조
         sql = f"""
-            SELECT chunk_text, source_file, page_num,
+            SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding,
                        VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data),
                        COSINE) AS vec_distance,
-                   SCORE(1) AS keyword_score
+                   CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword) THEN 100 ELSE 0 END AS keyword_score
             FROM doc_chunks
             WHERE embedding IS NOT NULL
-              AND (CONTAINS(chunk_text, :query_kw, 1) > 0 OR 1=1)
             ORDER BY (
                 {vector_weight} * (1 - VECTOR_DISTANCE(embedding,
                     VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query2 AS data),
                     COSINE))
-                + {keyword_weight} * SCORE(1) / 100
+                + {keyword_weight} * CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword2) THEN 1 ELSE 0 END
             ) DESC
             FETCH FIRST :top_k ROWS ONLY
         """
+        keyword_pattern = f"%{query}%"
         bind_params = {
             "query": query, "query2": query,
-            "query_kw": query,
+            "keyword": keyword_pattern, "keyword2": keyword_pattern,
             "top_k": top_k,
         }
 
-        sql_display = f"""-- 하이브리드 검색: CONTAINS + VECTOR_DISTANCE 결합
--- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_score/100
-SELECT chunk_text, source_file, page_num,
+        sql_display = f"""-- 하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합
+-- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_match
+SELECT chunk_id, chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding,
            VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data),
            COSINE) AS vec_distance,
-       SCORE(1) AS keyword_score
+       CASE WHEN LOWER(chunk_text) LIKE LOWER('%{query}%') THEN 100 ELSE 0 END AS keyword_score
 FROM doc_chunks
 WHERE embedding IS NOT NULL
-  AND (CONTAINS(chunk_text, '{query}', 1) > 0 OR 1=1)
 ORDER BY ({vector_weight} * (1 - vec_distance)
-        + {keyword_weight} * keyword_score/100) DESC
+        + {keyword_weight} * CASE WHEN keyword_match THEN 1 ELSE 0 END) DESC
 FETCH FIRST {top_k} ROWS ONLY"""
 
     else:
-        # 외부 임베딩 — 벡터를 먼저 구한 뒤 바인드
         query_vector = await get_embedding_external(query)
         query_vec_str = _vec_to_str(query_vector)
         sql = f"""
-            SELECT chunk_text, source_file, page_num,
+            SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector), COSINE) AS vec_distance,
-                   SCORE(1) AS keyword_score
+                   CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword) THEN 100 ELSE 0 END AS keyword_score
             FROM doc_chunks
             WHERE embedding IS NOT NULL
-              AND (CONTAINS(chunk_text, :query_kw, 1) > 0 OR 1=1)
             ORDER BY (
                 {vector_weight} * (1 - VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector2), COSINE))
-                + {keyword_weight} * SCORE(1) / 100
+                + {keyword_weight} * CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword2) THEN 1 ELSE 0 END
             ) DESC
             FETCH FIRST :top_k ROWS ONLY
         """
+        keyword_pattern = f"%{query}%"
         bind_params = {
             "query_vector": query_vec_str, "query_vector2": query_vec_str,
-            "query_kw": query,
+            "keyword": keyword_pattern, "keyword2": keyword_pattern,
             "top_k": top_k,
         }
 
-        sql_display = f"""-- 하이브리드 검색: CONTAINS + VECTOR_DISTANCE 결합
--- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_score/100
-SELECT chunk_text, source_file, page_num,
-       VECTOR_DISTANCE(embedding, <query_vector>, COSINE) AS vec_distance,
-       SCORE(1) AS keyword_score
+        sql_display = f"""-- 하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합
+-- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_match
+SELECT chunk_id, chunk_text, source_file, page_num,
+       VECTOR_DISTANCE(embedding, TO_VECTOR(<query_vector>), COSINE) AS vec_distance,
+       CASE WHEN LOWER(chunk_text) LIKE LOWER('%{query}%') THEN 100 ELSE 0 END AS keyword_score
 FROM doc_chunks
 WHERE embedding IS NOT NULL
-  AND (CONTAINS(chunk_text, '{query}', 1) > 0 OR 1=1)
 ORDER BY ({vector_weight} * (1 - vec_distance)
-        + {keyword_weight} * keyword_score/100) DESC
+        + {keyword_weight} * CASE WHEN keyword_match THEN 1 ELSE 0 END) DESC
 FETCH FIRST {top_k} ROWS ONLY"""
 
-    try:
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(sql, bind_params)
-                rows = await cursor.fetchall()
-    except Exception:
-        # CONTAINS 실패 시 (Oracle Text 미설정) — 벡터 검색만으로 폴백
-        fallback = await vector_search(pool, query, top_k)
-        fallback["hybrid_fallback"] = True
-        fallback["hybrid_note"] = "Oracle Text (CONTAINS)를 사용할 수 없어 벡터 검색으로 대체되었습니다."
-        return fallback
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(sql, bind_params)
+            rows = await cursor.fetchall()
 
     chunks = []
     for row in rows:
-        chunk_text = await _lob_to_str(row[0]) if hasattr(row[0], 'read') else row[0]
-        vec_distance = row[3] if row[3] else 0
-        keyword_score_raw = row[4] if row[4] else 0
+        chunk_text = await _lob_to_str(row[1]) if hasattr(row[1], 'read') else row[1]
+        vec_distance = row[4] if row[4] else 0
+        keyword_score_raw = row[5] if row[5] else 0
         vec_similarity = 1 - vec_distance
-        kw_normalized = keyword_score_raw / 100  # SCORE(1) 범위: 0~100
+        kw_normalized = keyword_score_raw / 100
         hybrid_score = vector_weight * vec_similarity + keyword_weight * kw_normalized
         chunks.append({
+            "chunk_id": row[0],
             "chunk_text": chunk_text,
-            "source_file": row[1],
-            "page_num": row[2],
+            "source_file": row[2],
+            "page_num": row[3],
             "similarity": round(vec_similarity, 4),
             "keyword_score": round(keyword_score_raw, 1),
             "hybrid_score": round(hybrid_score, 4),
@@ -688,13 +685,17 @@ async def generate_rag_answer(query: str, chunks: list, provider: str = None) ->
 # === Document Management ===
 
 async def list_documents(pool) -> list:
-    """업로드된 문서 목록을 조회한다."""
+    """업로드된 문서 목록을 조회한다. 각 문서의 임베딩 차원 수도 포함."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("""
-                SELECT doc_id, filename, upload_date, status, chunks_count
-                FROM documents
-                ORDER BY upload_date DESC
+                SELECT d.doc_id, d.filename, d.upload_date, d.status, d.chunks_count,
+                       (SELECT VECTOR_DIMENSION_COUNT(c.embedding)
+                        FROM doc_chunks c
+                        WHERE c.doc_id = d.doc_id AND c.embedding IS NOT NULL
+                        AND ROWNUM = 1) AS embed_dim
+                FROM documents d
+                ORDER BY d.upload_date DESC
             """)
             rows = await cursor.fetchall()
             return [
@@ -704,6 +705,7 @@ async def list_documents(pool) -> list:
                     "upload_date": row[2].isoformat() if row[2] else None,
                     "status": row[3],
                     "chunks_count": row[4],
+                    "embed_dim": row[5],
                 }
                 for row in rows
             ]
@@ -1305,3 +1307,149 @@ FETCH FIRST 5 ROWS ONLY"""
             "plan_lines": [],
             "error": str(e),
         }
+
+
+# === Vector 2D Visualization (Simple PCA) ===
+
+def _query_centric_2d(vectors, query_idx):
+    """쿼리 벡터를 중심으로 한 2D 투영.
+    X축 = 쿼리와의 코사인 유사도 (가까울수록 오른쪽)
+    Y축 = 잔차 벡터의 1차 주성분 (의미적 다양성)
+    """
+    import math
+
+    n = len(vectors)
+    if n == 0 or query_idx is None or query_idx >= n:
+        return []
+
+    dim = len(vectors[0])
+    qvec = vectors[query_idx]
+    q_norm = math.sqrt(sum(x * x for x in qvec)) or 1e-10
+
+    # 1단계: 코사인 유사도(X축) + 잔차 벡터 계산
+    cos_sims = []
+    residuals = []
+    for i in range(n):
+        v = vectors[i]
+        v_norm = math.sqrt(sum(x * x for x in v)) or 1e-10
+        dot = sum(qvec[j] * v[j] for j in range(dim))
+        cos_sim = dot / (q_norm * v_norm)
+        cos_sims.append(cos_sim)
+
+        # 쿼리 방향 성분 제거 → 잔차
+        proj_scale = dot / (q_norm * q_norm)
+        residual = [v[j] - proj_scale * qvec[j] for j in range(dim)]
+        residuals.append(residual)
+
+    # 2단계: 잔차 벡터들의 1차 주성분 (power iteration)
+    import random
+    random.seed(42)
+    pc = [random.gauss(0, 1) for _ in range(dim)]
+    norm = math.sqrt(sum(x * x for x in pc)) or 1e-10
+    pc = [x / norm for x in pc]
+
+    for _ in range(20):
+        new_pc = [0.0] * dim
+        for res in residuals:
+            dot = sum(res[j] * pc[j] for j in range(dim))
+            for j in range(dim):
+                new_pc[j] += dot * res[j]
+        norm = math.sqrt(sum(x * x for x in new_pc)) or 1e-10
+        pc = [x / norm for x in new_pc]
+
+    # 3단계: 잔차를 주성분에 투영 → Y값
+    y_vals = []
+    for res in residuals:
+        y = sum(res[j] * pc[j] for j in range(dim))
+        y_vals.append(y)
+
+    # 4단계: 결과 조립
+    result = []
+    for i in range(n):
+        result.append([round(cos_sims[i], 4), round(y_vals[i], 4)])
+
+    return result
+
+
+async def get_vector_visualization(pool, query: str, matched_chunk_ids: list = None, max_points: int = 200) -> dict:
+    """청크 임베딩을 2D로 축소하여 시각화 데이터를 반환한다."""
+    # 1. 모든 청크의 임베딩을 조회 (최대 max_points개)
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"""
+                SELECT chunk_id, source_file, page_num, embedding
+                FROM doc_chunks
+                WHERE embedding IS NOT NULL
+                FETCH FIRST :max_points ROWS ONLY
+            """, {"max_points": max_points})
+            rows = await cursor.fetchall()
+
+    if not rows:
+        return {"error": "임베딩된 청크가 없습니다.", "points": []}
+
+    chunk_ids = []
+    source_files = []
+    page_nums = []
+    vectors = []
+
+    for row in rows:
+        chunk_ids.append(row[0])
+        source_files.append(row[1])
+        page_nums.append(row[2])
+        # oracledb VECTOR → list
+        vec = row[3]
+        if isinstance(vec, (list, tuple)):
+            vectors.append(list(vec))
+        elif hasattr(vec, '__iter__'):
+            vectors.append([float(x) for x in vec])
+        else:
+            continue
+
+    # 2. 쿼리 임베딩 생성
+    query_vec = await get_embedding(pool, query)
+    if query_vec is not None:
+        if isinstance(query_vec, (list, tuple)):
+            query_vec_list = list(query_vec)
+        elif hasattr(query_vec, '__iter__'):
+            query_vec_list = [float(x) for x in query_vec]
+        else:
+            query_vec_list = None
+    else:
+        query_vec_list = None
+
+    # 3. 쿼리 벡터를 포함하여 PCA
+    all_vectors = vectors[:]
+    query_idx = None
+    if query_vec_list and len(query_vec_list) == len(vectors[0]):
+        query_idx = len(all_vectors)
+        all_vectors.append(query_vec_list)
+
+    if query_idx is None:
+        return {"error": "쿼리 임베딩을 생성할 수 없습니다.", "points": []}
+
+    coords_2d = _query_centric_2d(all_vectors, query_idx)
+
+    # 4. 결과 조립
+    points = []
+    for i in range(len(vectors)):
+        is_matched = bool(matched_chunk_ids) and chunk_ids[i] in matched_chunk_ids
+        points.append({
+            "chunk_id": chunk_ids[i],
+            "source_file": source_files[i],
+            "page_num": page_nums[i],
+            "x": coords_2d[i][0],
+            "y": coords_2d[i][1],
+            "matched": is_matched,
+        })
+
+    query_point = {
+        "x": coords_2d[query_idx][0],  # 코사인 유사도 1.0 (자기 자신)
+        "y": coords_2d[query_idx][1],   # 잔차 0
+        "label": query,
+    }
+
+    return {
+        "points": points,
+        "query_point": query_point,
+        "total_chunks": len(points),
+    }

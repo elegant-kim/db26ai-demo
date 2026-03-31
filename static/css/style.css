@@ -2670,3 +2670,49 @@ html, body {
     white-space: nowrap;
     min-width: 80px;
 }
+
+/* === 사이드바 시스템 상태 === */
+.status-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+}
+
+.status-row:last-child {
+    border-bottom: none;
+}
+
+.status-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.status-value {
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.status-mono {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 11px;
+}
+
+.status-ok {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.status-err {
+    color: #dc2626;
+    font-weight: 600;
+}
+

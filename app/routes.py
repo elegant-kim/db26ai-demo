@@ -46,6 +46,7 @@ from app.vector_search import (
     query_table_indexes,
     query_recent_sql,
     query_explain_plan,
+    get_vector_visualization,
 )
 
 router = APIRouter(prefix="/api")
@@ -276,6 +277,14 @@ async def execute_sql_endpoint(req: ExecuteSqlRequest):
 async def health():
     connected = await check_connection()
     schema = None
+    db_version = None
+    profile_count = 0
+    doc_count = 0
+    chunk_count = 0
+    embedded_count = 0
+    onnx_models = []
+    vector_index_status = None
+
     if connected:
         pool = await get_pool()
         try:
@@ -283,10 +292,76 @@ async def health():
         except Exception:
             pass
 
+        # DB 버전
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT banner_full FROM v$version WHERE ROWNUM = 1")
+                    row = await cur.fetchone()
+                    if row:
+                        db_version = row[0]
+        except Exception:
+            pass
+
+        # 프로필 수
+        try:
+            result = await list_profiles(pool)
+            profile_count = len(result)
+        except Exception:
+            pass
+
+        # 문서/청크/임베딩 수
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT COUNT(*) FROM documents WHERE status = 'indexed'")
+                    row = await cur.fetchone()
+                    doc_count = row[0] if row else 0
+
+                    await cur.execute("SELECT COUNT(*), SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) FROM doc_chunks")
+                    row = await cur.fetchone()
+                    chunk_count = row[0] if row else 0
+                    embedded_count = row[1] if row and row[1] else 0
+        except Exception:
+            pass
+
+        # ONNX 모델 목록
+        try:
+            from app.vector_search import get_onnx_models
+            onnx_result = await get_onnx_models(pool)
+            onnx_models = onnx_result.get("models", [])
+        except Exception:
+            pass
+
+        # 벡터 인덱스 상태
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("""
+                        SELECT index_name, status FROM user_indexes
+                        WHERE index_name LIKE '%HNSW%' OR index_name LIKE '%VECTOR%'
+                    """)
+                    rows = await cur.fetchall()
+                    if rows:
+                        vector_index_status = [{"name": r[0], "status": r[1]} for r in rows]
+        except Exception:
+            pass
+
+    from app.config import settings
     return {
         "status": "ok" if connected else "error",
         "database_connected": connected,
         "schema": schema,
+        "db_version": db_version,
+        "profile_count": profile_count,
+        "doc_count": doc_count,
+        "chunk_count": chunk_count,
+        "embedded_count": embedded_count,
+        "onnx_models": onnx_models,
+        "vector_index_status": vector_index_status,
+        "embedding_source": settings.EMBEDDING_SOURCE,
+        "embedding_model": settings.EMBEDDING_MODEL,
+        "llm_provider": settings.LLM_PROVIDER,
     }
 
 
@@ -639,6 +714,31 @@ async def vector_explain_plan():
 
     try:
         result = await query_explain_plan(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+        )
+
+
+class VectorVisRequest(BaseModel):
+    query: str
+    matched_chunk_ids: list = []
+
+
+@router.post("/vector/visualize")
+async def vector_visualize(req: VectorVisRequest):
+    """청크 임베딩을 2D PCA로 축소하여 시각화 데이터 반환"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."},
+        )
+
+    try:
+        result = await get_vector_visualization(pool, req.query, req.matched_chunk_ids)
         return {"success": True, **result}
     except Exception as e:
         return JSONResponse(

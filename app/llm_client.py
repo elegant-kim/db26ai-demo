@@ -1,6 +1,6 @@
 """
 공통 LLM 클라이언트 (AWR 분석, RAG 답변 생성 등)
-- Groq, Google Gemini 지원 (OpenAI 호환 API)
+- Groq, Google Gemini, OpenAI, Anthropic, xAI(Grok) 지원 (OpenAI 호환 API)
 - DBMS_CLOUD_AI.GENERATE와 무관 (Select AI 전용은 별도)
 """
 
@@ -10,7 +10,7 @@ import httpx
 
 from app.config import settings
 
-# 제공자별 API 설정
+# 제공자별 API 설정 (모두 OpenAI 호환 chat/completions 엔드포인트)
 LLM_CONFIGS = {
     "groq": {
         "url": "https://api.groq.com/openai/v1/chat/completions",
@@ -18,7 +18,7 @@ LLM_CONFIGS = {
         "model_attr": "GROQ_MODEL",
         "display_name": "Groq (Llama 3.3 70B)",
         "max_tokens": 16000,
-        "max_input_chars": 12000,   # 요청 크기 제한 대응
+        "max_input_chars": 12000,
     },
     "google": {
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/v1/chat/completions",
@@ -26,7 +26,32 @@ LLM_CONFIGS = {
         "model_attr": "GOOGLE_MODEL",
         "display_name": "Google Gemini 2.5 Flash",
         "max_tokens": 32000,
-        "max_input_chars": 80000,   # 1M 토큰 컨텍스트 활용 → 상세 분석 가능
+        "max_input_chars": 80000,
+    },
+    "openai": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "api_key_attr": "OPENAI_API_KEY",
+        "model_attr": "OPENAI_MODEL",
+        "display_name": "OpenAI (GPT-4o)",
+        "max_tokens": 16000,
+        "max_input_chars": 50000,
+    },
+    "anthropic": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "api_key_attr": "ANTHROPIC_API_KEY",
+        "model_attr": "ANTHROPIC_MODEL",
+        "display_name": "Anthropic (Claude Sonnet 4)",
+        "max_tokens": 16000,
+        "max_input_chars": 80000,
+        "custom_format": True,  # Anthropic은 OpenAI 호환이 아닌 자체 포맷
+    },
+    "xai": {
+        "url": "https://api.x.ai/v1/chat/completions",
+        "api_key_attr": "XAI_API_KEY",
+        "model_attr": "XAI_MODEL",
+        "display_name": "xAI (Grok-3)",
+        "max_tokens": 16000,
+        "max_input_chars": 50000,
     },
 }
 
@@ -54,10 +79,10 @@ def get_max_input_chars(provider: str = None) -> int:
 
 async def call_llm(prompt: str, provider: str = None, system_prompt: str = None) -> str:
     """
-    LLM 채팅 API 호출 (OpenAI 호환)
+    LLM 채팅 API 호출
     Args:
         prompt: 사용자 프롬프트
-        provider: "groq" 또는 "google" (None이면 기본값 사용)
+        provider: "groq", "google", "openai", "anthropic", "xai" (None이면 기본값)
         system_prompt: 시스템 프롬프트 (선택)
     Returns:
         LLM 응답 텍스트
@@ -73,6 +98,28 @@ async def call_llm(prompt: str, provider: str = None, system_prompt: str = None)
     if not api_key:
         raise ValueError(f"{provider} API 키가 설정되지 않았습니다. .env 파일을 확인하세요.")
 
+    # Anthropic은 자체 Messages API 포맷 사용
+    if config.get("custom_format") and provider == "anthropic":
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "max_tokens": config.get("max_tokens", 8000),
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(config["url"], json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+        return data["content"][0]["text"]
+
+    # OpenAI 호환 포맷 (groq, google, openai, xai)
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})

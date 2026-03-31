@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=46">
+    <link rel="stylesheet" href="/static/css/style.css?v=57">
 </head>
 <body>
     <div id="app">
@@ -79,7 +79,7 @@
                         </svg>
                         실행 모드
                     </h3>
-                    <div class="action-mode-grid">
+                    <div class="action-mode-grid" style="margin-left: 16px;">
                         <div class="action-mode-col">
                             <label v-for="mode in actionModesLeft" :key="mode.value" class="radio-label">
                                 <input type="radio" :value="mode.value" v-model="selectedAction" name="action">
@@ -162,6 +162,33 @@
                         </div>
                     </div>
                     <div v-else class="schema-empty">프로필을 선택하면 참조 테이블이 표시됩니다.</div>
+                </div>
+
+                <!-- 시스템 상태 -->
+                <div class="sidebar-section" v-if="systemStatus">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        시스템 상태
+                    </h3>
+                    <div class="status-list">
+                        <div class="status-row">
+                            <span class="status-label">DB</span>
+                            <span class="status-value" :class="dbConnected ? 'status-ok' : 'status-err'">[[ dbConnected ? '연결됨' : '연결 안됨' ]]</span>
+                        </div>
+                        <template v-if="systemStatus.db_version">
+                            <div class="status-row">
+                                <span class="status-label">버전</span>
+                                <span class="status-value status-mono">[[ systemStatus.db_version.split(' ').slice(0,4).join(' ') ]]</span>
+                            </div>
+                        </template>
+                        <div class="status-row">
+                            <span class="status-label">프로필</span>
+                            <span class="status-value status-mono">[[ selectedProfile || '-' ]]</span>
+                        </div>
+                    </div>
                 </div>
             </aside>
 
@@ -523,6 +550,41 @@
                         <option v-for="q in vectorExampleQuestions" :key="q" :value="q">[[ q ]]</option>
                     </select>
                 </div>
+
+                <!-- Vector 시스템 상태 -->
+                <div class="sidebar-section" v-if="systemStatus">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        시스템 상태
+                    </h3>
+                    <div class="status-list">
+                        <div class="status-row">
+                            <span class="status-label">DB</span>
+                            <span class="status-value" :class="dbConnected ? 'status-ok' : 'status-err'">[[ dbConnected ? '연결됨' : '연결 안됨' ]]</span>
+                        </div>
+                        <template v-if="systemStatus.db_version">
+                            <div class="status-row">
+                                <span class="status-label">버전</span>
+                                <span class="status-value status-mono">[[ systemStatus.db_version.split(' ').slice(0,4).join(' ') ]]</span>
+                            </div>
+                        </template>
+                        <div class="status-row">
+                            <span class="status-label">문서</span>
+                            <span class="status-value">[[ systemStatus.doc_count ]]개</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-label">임베딩 모델</span>
+                            <span class="status-value status-mono">[[ embeddingSource === 'database' ? 'ONNX/' : 'API/' ]][[ embeddingModel ]]</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-label">LLM 모델</span>
+                            <span class="status-value status-mono">[[ selectedLlmProvider ? selectedLlmProvider.model : '-' ]]</span>
+                        </div>
+                    </div>
+                </div>
             </aside>
 
             <!-- Vector 메인 영역 -->
@@ -756,7 +818,7 @@
                             <div v-for="doc in uploadedDocs" :key="doc.doc_id" class="doc-item">
                                 <div class="doc-info">
                                     <span class="doc-name">[[ doc.filename ]]</span>
-                                    <span class="doc-badge" :class="{'doc-badge-indexed':doc.status==='indexed','doc-badge-processing':doc.status==='processing','doc-badge-error':doc.status==='error'}">[[ doc.status ]] / [[ doc.chunks_count ]]청크</span>
+                                    <span class="doc-badge" :class="{'doc-badge-indexed':doc.status==='indexed','doc-badge-processing':doc.status==='processing','doc-badge-error':doc.status==='error'}">[[ doc.status ]] / [[ doc.chunks_count ]]청크<template v-if="doc.embed_dim"> / [[ doc.embed_dim ]]차원</template></span>
                                 </div>
                                 <button class="doc-delete" @click="deleteDoc(doc.doc_id)" title="삭제">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -955,6 +1017,18 @@
                                             <button class="action-btn" @click="showEmbeddingInfo(idx)">임베딩 과정</button>
                                             <button v-if="msg.mode === 'vector'" class="action-btn" @click="doKeywordCompare(idx)">키워드 비교</button>
                                             <button class="action-btn" @click="showIndexInfo(idx)">벡터 인덱스 정보</button>
+                                            <button v-if="msg.mode !== 'keyword'" class="action-btn" @click="showVectorVisualization(idx)">
+                                                [[ msg.vectorViz ? '시각화 닫기' : '벡터 시각화' ]]
+                                            </button>
+                                        </div>
+
+                                        <!-- 벡터 2D 시각화 -->
+                                        <div v-if="msg.vectorViz" class="vec-info-box">
+                                            <h4>임베딩 벡터 2D 시각화 (쿼리 중심 투영)</h4>
+                                            <p style="font-size:11px;color:#888;margin-bottom:8px;">
+                                                X축: 쿼리와의 코사인 유사도 (오른쪽 = 관련 높음) | 총 [[ msg.vectorViz.total_chunks ]]개 청크
+                                            </p>
+                                            <canvas :data-vec-viz="idx" width="600" height="350" style="max-width:100%;"></canvas>
                                         </div>
 
                                         <!-- 임베딩 정보 표시 -->
@@ -1345,6 +1419,33 @@
                         <div class="awr-info-item">
                             <span class="awr-info-label">분석 소요</span>
                             <span class="awr-info-value">[[ awrElapsedMs ]]ms</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 시스템 상태 -->
+                <div class="sidebar-section" v-if="systemStatus">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        시스템 상태
+                    </h3>
+                    <div class="status-list">
+                        <div class="status-row">
+                            <span class="status-label">DB</span>
+                            <span class="status-value" :class="dbConnected ? 'status-ok' : 'status-err'">[[ dbConnected ? '연결됨' : '연결 안됨' ]]</span>
+                        </div>
+                        <template v-if="systemStatus.db_version">
+                            <div class="status-row">
+                                <span class="status-label">버전</span>
+                                <span class="status-value status-mono">[[ systemStatus.db_version.split(' ').slice(0,4).join(' ') ]]</span>
+                            </div>
+                        </template>
+                        <div class="status-row">
+                            <span class="status-label">LLM 모델</span>
+                            <span class="status-value status-mono">[[ selectedLlmProvider ? selectedLlmProvider.model : '-' ]]</span>
                         </div>
                     </div>
                 </div>
@@ -1812,6 +1913,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=46"></script>
+    <script src="/static/js/app.js?v=57"></script>
 </body>
 </html>

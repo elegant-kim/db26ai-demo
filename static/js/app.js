@@ -8,6 +8,7 @@ const app = createApp({
         const activeTab = ref('nl2sql');
         const dbConnected = ref(false);
         const schema = ref('');
+        const systemStatus = ref(null);  // health API 상세 정보
         const profiles = ref([]);
         const selectedProfile = ref('');
 
@@ -1289,6 +1290,122 @@ const app = createApp({
             scrollVectorToBottom();
         }
 
+        // 벡터 2D 시각화
+        const vectorChartInstances = {};
+        async function showVectorVisualization(msgIdx) {
+            const msg = vectorMessages.value[msgIdx];
+            if (!msg || !msg.query) return;
+
+            if (msg.vectorViz) {
+                msg.vectorViz = null;
+                return;
+            }
+
+            const matchedIds = (msg.chunks || [])
+                .filter(c => c.chunk_id)
+                .map(c => c.chunk_id);
+
+            try {
+                const response = await fetch('/api/vector/visualize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: msg.query, matched_chunk_ids: matchedIds }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    msg.vectorViz = data;
+                    nextTick(() => renderVectorChart(msgIdx));
+                } else {
+                    showToast(data.error || '시각화 데이터 로드 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결에 실패했습니다.', 'error');
+            }
+            scrollVectorToBottom();
+        }
+
+        function renderVectorChart(msgIdx) {
+            nextTick(() => {
+                const canvas = document.querySelector(`canvas[data-vec-viz="${msgIdx}"]`);
+                if (!canvas) return;
+
+                if (vectorChartInstances[msgIdx]) {
+                    vectorChartInstances[msgIdx].destroy();
+                }
+
+                const viz = vectorMessages.value[msgIdx]?.vectorViz;
+                if (!viz) return;
+
+                const otherPts = viz.points.filter(p => !p.matched);
+                const matchedPts = viz.points.filter(p => p.matched);
+
+                const datasets = [
+                    {
+                        label: '기타 청크',
+                        data: otherPts.map(p => ({ x: p.x, y: p.y })),
+                        backgroundColor: '#cbd5e1',
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    },
+                    {
+                        label: '매칭 청크 (Top-K)',
+                        data: matchedPts.map(p => ({ x: p.x, y: p.y })),
+                        backgroundColor: '#16a34a',
+                        pointRadius: 7,
+                        pointHoverRadius: 9,
+                    },
+                ];
+
+                if (viz.query_point) {
+                    datasets.push({
+                        label: '검색 쿼리',
+                        data: [{ x: viz.query_point.x, y: viz.query_point.y }],
+                        backgroundColor: '#C74634',
+                        borderColor: '#C74634',
+                        borderWidth: 2,
+                        pointRadius: 7,
+                        pointStyle: 'rectRot',
+                        pointHoverRadius: 9,
+                    });
+                }
+
+                vectorChartInstances[msgIdx] = new Chart(canvas, {
+                    type: 'scatter',
+                    data: { datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        if (ctx.datasetIndex === 2) return `쿼리: ${viz.query_point.label}`;
+                                        const pts = ctx.datasetIndex === 1 ? matchedPts : otherPts;
+                                        const pt = pts[ctx.dataIndex];
+                                        if (!pt) return '';
+                                        const sim = pt.x.toFixed(3);
+                                        return `${pt.source_file} p.${pt.page_num} (유사도: ${sim})`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: '← 관련 낮음          코사인 유사도          관련 높음 →', font: { size: 11 } },
+                                grid: { color: '#f0f0f0' },
+                                reverse: false,
+                            },
+                            y: {
+                                title: { display: true, text: '의미적 분포', font: { size: 11 } },
+                                grid: { color: '#f0f0f0' },
+                            },
+                        },
+                    }
+                });
+            });
+        }
+
         // === Init ===
         async function checkHealth() {
             try {
@@ -1296,8 +1413,10 @@ const app = createApp({
                 const data = await response.json();
                 dbConnected.value = data.database_connected;
                 schema.value = data.schema || '';
+                systemStatus.value = data;
             } catch {
                 dbConnected.value = false;
+                systemStatus.value = null;
             }
         }
 
@@ -2017,6 +2136,7 @@ const app = createApp({
             activeTab,
             dbConnected,
             schema,
+            systemStatus,
             profiles,
             selectedProfile,
             onProfileChange,
@@ -2076,6 +2196,7 @@ const app = createApp({
             showEmbeddingInfo,
             showIndexInfo,
             doKeywordCompare,
+            showVectorVisualization,
 
             // Step 1: Table Management
             tableActionLoading,
