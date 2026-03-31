@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=57">
+    <link rel="stylesheet" href="/static/css/style.css?v=67">
 </head>
 <body>
     <div id="app">
@@ -39,6 +39,21 @@
                     class="tab-btn"
                     :class="{ 'tab-btn-active': activeTab === 'vector' }">
                 AI Vector Search
+            </button>
+            <button @click="activeTab = 'duality'"
+                    class="tab-btn"
+                    :class="{ 'tab-btn-active': activeTab === 'duality' }">
+                JSON Relational Duality
+            </button>
+            <button @click="activeTab = 'graph'"
+                    class="tab-btn"
+                    :class="{ 'tab-btn-active': activeTab === 'graph' }">
+                Property Graph
+            </button>
+            <button @click="activeTab = 'productivity'"
+                    class="tab-btn"
+                    :class="{ 'tab-btn-active': activeTab === 'productivity' }">
+                개발생산성 향상
             </button>
             <div style="flex:1"></div>
             <button @click="activeTab = 'extra'"
@@ -1347,6 +1362,790 @@
             </main>
         </div>
 
+        <!-- JSON Relational Duality 탭 -->
+        <div class="main-layout" v-show="activeTab === 'duality'">
+            <!-- 사이드바 -->
+            <aside class="sidebar">
+                <!-- Duality View 관리 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                        </svg>
+                        Duality View 관리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': dualitySubMenu === 'create' }" @click="dualitySubMenu = 'create'">
+                        Duality View 생성
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': dualitySubMenu === 'compare' }" @click="dualitySubMenu = 'compare'">
+                        관계형 vs JSON 비교
+                    </button>
+                </div>
+
+                <!-- JSON 문서 CRUD -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        JSON 문서 CRUD
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': dualitySubMenu === 'crud' }" @click="dualitySubMenu = 'crud'">
+                        문서 조회 / 수정
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': dualitySubMenu === 'etag' }" @click="dualitySubMenu = 'etag'">
+                        ETag 동시성 제어
+                    </button>
+                </div>
+
+                <!-- 실행 쿼리 -->
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 18 22 12 16 6"></polyline>
+                            <polyline points="8 6 2 12 8 18"></polyline>
+                        </svg>
+                        쿼리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': dualitySubMenu === 'query' }" @click="dualitySubMenu = 'query'">
+                        실행 쿼리 확인
+                    </button>
+                </div>
+
+                <!-- 시스템 상태 -->
+                <div class="sidebar-section" v-if="systemStatus">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        시스템 상태
+                    </h3>
+                    <div class="status-list">
+                        <div class="status-row">
+                            <span class="status-label">DB</span>
+                            <span class="status-value" :class="dbConnected ? 'status-ok' : 'status-err'">[[ dbConnected ? '연결됨' : '연결 안됨' ]]</span>
+                        </div>
+                        <template v-if="systemStatus.db_version">
+                            <div class="status-row">
+                                <span class="status-label">버전</span>
+                                <span class="status-value status-mono">[[ systemStatus.db_version.split(' ').slice(0,4).join(' ') ]]</span>
+                            </div>
+                        </template>
+                        <div class="status-row">
+                            <span class="status-label">Duality View</span>
+                            <span class="status-value">[[ dualityViews.length ]]개</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 메인 영역 -->
+            <main class="chat-area">
+                <div class="step-content-scroll">
+
+                <!-- ========== Duality View 생성 ========== -->
+                <div v-show="dualitySubMenu === 'create'" class="step-content">
+                    <h2 class="step-title">Duality View 생성</h2>
+                    <div class="step-card">
+                        <p class="step-desc">
+                            JSON Relational Duality View는 관계형 테이블의 데이터를 JSON 문서 형태로 접근할 수 있게 합니다.
+                            아래 버튼으로 SH 스키마의 테이블을 기반으로 Duality View를 생성합니다.
+                        </p>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                            <button class="btn btn-primary btn-small" :disabled="dualityLoading" @click="createDualityViews">
+                                <span v-if="dualityLoading" class="spinner spinner-sm"></span>
+                                Duality View 생성
+                            </button>
+                            <button class="btn btn-danger btn-small" :disabled="dualityLoading" @click="dropDualityViews">
+                                Duality View 삭제
+                            </button>
+                            <button class="btn btn-secondary btn-small" :disabled="dualityLoading" @click="listDualityViews(true)">
+                                목록 조회
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 결과 표시 -->
+                    <div v-if="dualityResult" class="step-card" style="margin-top:12px;">
+                        <div v-if="dualityResult.error" class="error-box">[[ dualityResult.error ]]</div>
+                        <div v-if="dualityResult.message" class="info-box" style="padding:10px 14px; background:#f0fdf4; border-radius:6px; color:#166534; font-size:13px;">[[ dualityResult.message ]]</div>
+                        <div v-if="dualityResult.views && dualityResult.views.length > 0" style="margin-top:10px;">
+                            <div class="table-wrapper">
+                                <table class="result-table">
+                                    <thead><tr><th>View 이름</th><th>상태</th></tr></thead>
+                                    <tbody>
+                                        <tr v-for="v in dualityResult.views" :key="v.name">
+                                            <td class="status-mono">[[ v.name ]]</td>
+                                            <td>[[ v.status ]]</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div v-if="dualityResult.sql_executed" class="sql-section" style="margin-top:10px;">
+                            <div class="sql-header"><span>실행된 SQL</span></div>
+                            <pre class="sql-code"><code v-html="highlightSQLWithLines(dualityResult.sql_executed)"></code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== 관계형 vs JSON 비교 ========== -->
+                <div v-show="dualitySubMenu === 'compare'" class="step-content">
+                    <h2 class="step-title">관계형 vs JSON 비교</h2>
+
+                    <!-- 설명 블록 -->
+                    <div class="step-card" style="margin-bottom:16px; background:linear-gradient(135deg, #fefce8 0%, #fff7ed 100%); border:1px solid #fde68a;">
+                        <h4 style="margin:0 0 10px; color:#92400e; font-size:15px;">JSON Relational Duality View의 가치</h4>
+                        <div style="font-size:13px; color:#78350f; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                <strong>기존 방식:</strong> DB 테이블 → 백엔드(JOIN SQL 작성) → API 엔드포인트 → JSON 변환 → 프론트엔드<br>
+                                <strong>Duality View:</strong> DB 테이블 → <span style="color:#C74634; font-weight:600;">Duality View → JSON 문서 → 프론트엔드 (백엔드 코드 최소화)</span>
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:8px;">
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">1. ORM(Object-Relational Mapping) 불필요</div>
+                                    <div style="font-size:12px; color:#666;">Hibernate 등 ORM 없이 DB가 직접 JSON ↔ 관계형 매핑하므로, 복잡한 JOIN으로 인한 성능 이슈 제거 및 테이블 구조 변경 시 매핑 코드 수정 최소화</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">2. 즉시 앱 활용</div>
+                                    <div style="font-size:12px; color:#666;">JSON 문서를 받아 프론트엔드에서 바로 카드/리스트 UI로 렌더링</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">3. 자동 동기화</div>
+                                    <div style="font-size:12px; color:#666;">JSON 수정 시 원본 관계형 테이블이 자동 업데이트 (ETag 동시성 제어)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 비교 실행 컨트롤 -->
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                        <select v-model="dualityCompareView" class="select-input select-small">
+                            <option v-for="v in dualityViews" :key="v.name" :value="v.name">[[ v.name ]]</option>
+                        </select>
+                        <input type="number" v-model.number="dualityCompareLimit" class="chat-input" style="width:80px;" min="1" max="50" placeholder="건수">
+                        <button class="btn btn-primary btn-small" :disabled="dualityLoading" @click="compareDuality">
+                            <span v-if="dualityLoading" class="spinner spinner-sm"></span>
+                            비교 실행
+                        </button>
+                        <label v-if="dualityCompareResult && dualityCompareResult.json_data" style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-secondary); margin-left:auto; cursor:pointer;">
+                            <input type="checkbox" v-model="dualityAppPreview"> 앱 미리보기
+                        </label>
+                    </div>
+
+                    <!-- 비교 결과 3컬럼 -->
+                    <div v-if="dualityCompareResult" class="duality-compare-grid">
+                        <!-- 1. 관계형 SQL -->
+                        <div class="duality-compare-col">
+                            <div class="duality-compare-header" style="border-top:3px solid #7c3aed;">
+                                <span style="font-weight:600;">1. 관계형 SQL</span>
+                                <span style="font-size:11px; color:#888;">테이블 JOIN</span>
+                            </div>
+                            <div class="duality-compare-body">
+                                <div v-if="dualityCompareResult.relational_sql" class="sql-section">
+                                    <pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(dualityCompareResult.relational_sql)"></code></pre>
+                                </div>
+                                <div v-if="dualityCompareResult.relational_data" class="table-section" style="margin-top:8px;">
+                                    <div class="table-wrapper">
+                                        <table class="result-table">
+                                            <thead><tr><th v-for="col in dualityCompareResult.relational_columns" :key="col">[[ col ]]</th></tr></thead>
+                                            <tbody>
+                                                <tr v-for="(row, ri) in dualityCompareResult.relational_data" :key="ri">
+                                                    <td v-for="col in dualityCompareResult.relational_columns" :key="col">[[ row[col] ]]</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p class="row-count">[[ dualityCompareResult.relational_data.length ]]건 · [[ dualityCompareResult.relational_elapsed ]]ms</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. JSON Duality View -->
+                        <div class="duality-compare-col">
+                            <div class="duality-compare-header" style="border-top:3px solid #C74634;">
+                                <span style="font-weight:600;">2. JSON Duality View</span>
+                                <span style="font-size:11px; color:#888;">1줄 쿼리</span>
+                            </div>
+                            <div class="duality-compare-body">
+                                <div v-if="dualityCompareResult.json_sql" class="sql-section">
+                                    <pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(dualityCompareResult.json_sql)"></code></pre>
+                                </div>
+                                <div v-if="dualityCompareResult.json_data" style="margin-top:8px;">
+                                    <pre class="sql-code" style="max-height:350px; overflow:auto; font-size:11px; line-height:1.4;">[[ JSON.stringify(dualityCompareResult.json_data, null, 2) ]]</pre>
+                                </div>
+                                <p v-if="dualityCompareResult.json_elapsed" class="row-count">[[ dualityCompareResult.json_data.length ]]건 · [[ dualityCompareResult.json_elapsed ]]ms</p>
+                            </div>
+                        </div>
+
+                        <!-- 3. 앱 미리보기 -->
+                        <div class="duality-compare-col" v-if="dualityAppPreview">
+                            <div class="duality-compare-header" style="border-top:3px solid #16a34a;">
+                                <span style="font-weight:600;">3. 앱 화면 (JSON → UI)</span>
+                                <span style="font-size:11px; color:#888;">바로 렌더링</span>
+                            </div>
+                            <div class="duality-compare-body" style="background:#f9fafb;">
+                                <template v-if="dualityCompareView.includes('CUSTOMER')">
+                                    <div v-for="(doc, di) in dualityCompareResult.json_data" :key="di" class="duality-card">
+                                        <div class="duality-card-avatar">[[ (doc.firstName || '?')[0] ]][[ (doc.lastName || '?')[0] ]]</div>
+                                        <div class="duality-card-info">
+                                            <div class="duality-card-name">[[ doc.firstName ]] [[ doc.lastName ]]</div>
+                                            <div class="duality-card-detail">[[ doc.city || '' ]] · [[ doc.incomeLevel || '' ]]</div>
+                                            <div class="duality-card-detail">Credit: [[ doc.creditLimit ? doc.creditLimit.toLocaleString() : '-' ]]</div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template v-else-if="dualityCompareView.includes('PRODUCT')">
+                                    <div v-for="(doc, di) in dualityCompareResult.json_data" :key="di" class="duality-card">
+                                        <div class="duality-card-avatar" style="background:#7c3aed;">P</div>
+                                        <div class="duality-card-info">
+                                            <div class="duality-card-name">[[ doc.prodName ]]</div>
+                                            <div class="duality-card-detail">[[ doc.prodCategory || '' ]]</div>
+                                            <div class="duality-card-detail" style="color:#C74634; font-weight:600;">$ [[ doc.prodListPrice || '-' ]]</div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template v-else>
+                                    <div v-for="(doc, di) in dualityCompareResult.json_data" :key="di" class="duality-card">
+                                        <pre style="font-size:11px; margin:0;">[[ JSON.stringify(doc, null, 2) ]]</pre>
+                                    </div>
+                                </template>
+                                <p style="margin-top:8px; font-size:11px; color:#888; text-align:center;">
+                                    JSON 문서를 프론트엔드에서 바로 렌더링 — 별도 백엔드 가공 불필요
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== JSON 문서 CRUD ========== -->
+                <div v-show="dualitySubMenu === 'crud'" class="step-content">
+                    <h2 class="step-title">JSON 문서 CRUD</h2>
+                    <p class="step-desc" style="margin-bottom:12px;">Duality View를 통해 JSON 문서를 조회하고, 수정하면 원본 관계형 테이블이 자동 업데이트됩니다.</p>
+
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                        <select v-model="dualityCrudView" class="select-input select-small">
+                            <option v-for="v in dualityViews" :key="v.name" :value="v.name">[[ v.name ]]</option>
+                        </select>
+                        <input type="text" v-model="dualityCrudId" class="chat-input" style="width:120px;" placeholder="문서 ID">
+                        <button class="btn btn-primary btn-small" :disabled="dualityLoading" @click="fetchDualityDoc">
+                            조회
+                        </button>
+                        <button class="btn btn-secondary btn-small" :disabled="dualityLoading" @click="fetchDualityDocList">
+                            문서 목록
+                        </button>
+                    </div>
+
+                    <!-- 문서 목록 -->
+                    <div v-if="dualityDocList && dualityDocList.length > 0" class="step-card" style="margin-bottom:12px;">
+                        <h4 style="font-size:13px; color:var(--text-secondary); margin-bottom:6px;">문서 목록 (클릭하여 조회)</h4>
+                        <div class="table-wrapper">
+                            <table class="result-table">
+                                <thead><tr><th>ID</th><th>요약</th><th></th></tr></thead>
+                                <tbody>
+                                    <tr v-for="d in dualityDocList" :key="d.id" style="cursor:pointer;" @click="dualityCrudId = d.id; fetchDualityDoc()">
+                                        <td class="status-mono">[[ d.id ]]</td>
+                                        <td>[[ d.summary ]]</td>
+                                        <td style="color:var(--oracle-red); font-size:12px;">조회</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 문서 편집기 -->
+                    <div v-if="dualityCrudDoc" class="step-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-weight:600; font-size:14px;">JSON 문서</span>
+                            <div style="display:flex; gap:6px;">
+                                <span v-if="dualityCrudDoc._etag" class="vec-badge vec-badge-source" style="font-size:11px;">ETag: [[ dualityCrudDoc._etag ]]</span>
+                                <button class="btn btn-primary btn-small" :disabled="dualityLoading" @click="updateDualityDoc">저장 (UPDATE)</button>
+                            </div>
+                        </div>
+                        <textarea v-model="dualityCrudDocText" class="sql-code" style="width:100%; min-height:300px; font-family:'SF Mono',Monaco,Consolas,monospace; font-size:12px; border:1px solid var(--border-color); border-radius:6px; padding:10px; resize:vertical;"></textarea>
+                        <div v-if="dualityCrudMessage" style="margin-top:8px; padding:8px 12px; border-radius:6px; font-size:13px;"
+                             :style="{ background: dualityCrudMessage.type === 'success' ? '#f0fdf4' : '#fef2f2', color: dualityCrudMessage.type === 'success' ? '#166534' : '#991b1b' }">
+                            [[ dualityCrudMessage.text ]]
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== ETag 동시성 제어 ========== -->
+                <div v-show="dualitySubMenu === 'etag'" class="step-content">
+                    <h2 class="step-title">ETag 기반 동시성 제어 (Lock-Free)</h2>
+
+                    <!-- 설명 블록 -->
+                    <div class="step-card" style="margin-bottom:16px; background:linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border:1px solid #bfdbfe;">
+                        <h4 style="margin:0 0 10px; color:#1e3a5f; font-size:15px;">Oracle Duality View의 동시성 제어 — 왜 다른가?</h4>
+                        <div style="font-size:13px; color:#1e3a5f; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                Duality View의 모든 JSON 문서에는 <code>_metadata.etag</code>가 자동 포함됩니다.<br>
+                                ETag(Entity Tag)는 문서의 <strong>"버전 해시"</strong>로, 문서가 수정될 때마다 새로 발급됩니다.<br>
+                                이를 통해 <strong>락(Lock) 없이</strong> 동시 수정 충돌을 감지합니다 (낙관적 동시성 제어).
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;">
+                                <div style="background:#fff; border-radius:6px; padding:10px 12px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:5px;">MongoDB (앱에서 직접 구현)</div>
+                                    <div style="font-size:12px; color:#666; line-height:1.6;">
+                                        ETag를 DB가 제공하지 않음.<br>
+                                        개발자가 version 필드를 만들고,<br>
+                                        앱 코드에서 조건부 업데이트를 직접 구현해야 함.
+                                    </div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:10px 12px; border:1px solid #C74634;">
+                                    <div style="font-weight:600; color:#C74634; margin-bottom:5px;">Oracle Duality View (DB가 자동 관리)</div>
+                                    <div style="font-size:12px; color:#666; line-height:1.6;">
+                                        DB가 ETag를 자동 생성·비교·갱신.<br>
+                                        REST PUT만 하면 충돌 자동 감지.<br>
+                                        <code>@nocheck</code>로 특정 필드 제외 가능.
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top:10px; padding:8px 10px; background:#fff; border-radius:6px; border:1px solid #e5e7eb; font-size:12px; color:#555; line-height:1.6;">
+                                <strong>동작 원리:</strong>
+                                User A가 문서 조회(ETag: abc) → User B도 조회(ETag: abc) →
+                                User A 수정 성공(새 ETag: def 발급) →
+                                <span style="color:#991b1b; font-weight:600;">User B 수정 시도 → ETag 불일치 → 실패 (Lost Update 방지)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 시뮬레이션 -->
+                    <div class="step-card">
+                        <h4 style="margin:0 0 8px; font-size:14px;">ETag 충돌 시뮬레이션</h4>
+                        <p class="step-desc" style="margin-bottom:10px;">아래 버튼을 클릭하면 두 사용자가 동시에 같은 문서를 수정하는 시나리오를 시뮬레이션합니다.</p>
+                        <button class="btn btn-primary btn-small" :disabled="dualityLoading" @click="simulateEtagConflict">
+                            <span v-if="dualityLoading" class="spinner spinner-sm"></span>
+                            시뮬레이션 실행
+                        </button>
+                        <div v-if="dualityEtagResult && dualityEtagResult.steps.length > 0" style="margin-top:12px;">
+                            <div v-for="(step, si) in dualityEtagResult.steps" :key="si" style="margin-bottom:10px; padding:10px 14px; border-radius:6px; font-size:13px; border-left:4px solid;"
+                                 :style="{ background: step.success ? '#f0fdf4' : '#fef2f2', color: step.success ? '#166534' : '#991b1b', borderColor: step.success ? '#16a34a' : '#dc2626' }">
+                                <div><strong>Step [[ si + 1 ]]:</strong> [[ step.description ]]</div>
+                                <span v-if="step.etag" class="status-mono" style="font-size:11px; padding:2px 6px; background:rgba(0,0,0,0.06); border-radius:3px; display:inline-block; margin-top:4px;">ETag: [[ step.etag ]]</span>
+                                <pre v-if="step.sql" class="sql-code vec-sql-code" style="margin-top:6px; font-size:11px; padding:6px 8px;"><code v-html="highlightOracleSQL(step.sql)"></code></pre>
+                            </div>
+                        </div>
+                        <div v-if="dualityLoading" style="margin-top:10px; display:flex; align-items:center; gap:8px; font-size:13px; color:#888;">
+                            <span class="spinner-sm"></span> 시뮬레이션 진행 중...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== 실행 쿼리 확인 ========== -->
+                <div v-show="dualitySubMenu === 'query'" class="step-content">
+                    <h2 class="step-title">실행 쿼리 확인</h2>
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">최근 Duality 관련 쿼리 (V$SQL)</span>
+                            <button class="btn btn-primary btn-small" :disabled="dualityLoading" @click="fetchDualityRecentSql">
+                                <span v-if="dualityLoading" class="spinner spinner-sm"></span>
+                                조회
+                            </button>
+                        </div>
+                        <div v-if="dualityRecentSql" class="step-query-result">
+                            <div v-if="dualityRecentSql.error" class="error-box">[[ dualityRecentSql.error ]]</div>
+                            <div v-if="dualityRecentSql.sql_executed" class="sql-section">
+                                <div class="sql-header"><span>SQL</span></div>
+                                <pre class="sql-code"><code v-html="highlightSQLWithLines(dualityRecentSql.sql_executed)"></code></pre>
+                            </div>
+                            <div v-if="dualityRecentSql.data && dualityRecentSql.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr>
+                                    <th v-for="col in dualityRecentSql.columns" :key="col">[[ col ]]</th>
+                                </tr></thead><tbody>
+                                    <tr v-for="(row, ri) in dualityRecentSql.data" :key="ri">
+                                        <td v-for="col in dualityRecentSql.columns" :key="col">[[ row[col] ]]</td>
+                                    </tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ dualityRecentSql.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                </div><!-- /step-content-scroll -->
+            </main>
+        </div>
+
+        <!-- Property Graph 탭 -->
+        <div class="main-layout" v-show="activeTab === 'graph'">
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="6" r="3"></circle>
+                            <circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="18" r="3"></circle>
+                            <line x1="9" y1="6" x2="15" y2="6"></line><line x1="6" y1="9" x2="6" y2="15"></line>
+                            <line x1="18" y1="9" x2="18" y2="15"></line><line x1="9" y1="18" x2="15" y2="18"></line>
+                        </svg>
+                        그래프 관리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': graphSubMenu === 'create' }" @click="graphSubMenu = 'create'">
+                        그래프 생성
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': graphSubMenu === 'compare' }" @click="graphSubMenu = 'compare'">
+                        SQL vs SQL/PGQ 비교
+                    </button>
+                </div>
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        그래프 분석
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': graphSubMenu === 'pattern' }" @click="graphSubMenu = 'pattern'">
+                        관계 탐색 (패턴 매칭)
+                    </button>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': graphSubMenu === 'visualize' }" @click="graphSubMenu = 'visualize'">
+                        그래프 시각화
+                    </button>
+                </div>
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+                        </svg>
+                        쿼리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': graphSubMenu === 'query' }" @click="graphSubMenu = 'query'">
+                        실행 쿼리 확인
+                    </button>
+                </div>
+                <div class="sidebar-section" v-if="systemStatus">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                        시스템 상태
+                    </h3>
+                    <div class="status-list">
+                        <div class="status-row"><span class="status-label">DB</span><span class="status-value" :class="dbConnected ? 'status-ok' : 'status-err'">[[ dbConnected ? '연결됨' : '연결 안됨' ]]</span></div>
+                        <template v-if="systemStatus.db_version"><div class="status-row"><span class="status-label">버전</span><span class="status-value status-mono">[[ systemStatus.db_version.split(' ').slice(0,4).join(' ') ]]</span></div></template>
+                    </div>
+                </div>
+            </aside>
+            <main class="chat-area">
+                <div class="step-content-scroll">
+
+                <!-- 그래프 생성 -->
+                <div v-show="graphSubMenu === 'create'" class="step-content">
+                    <h2 class="step-title">Property Graph 생성</h2>
+                    <div class="step-card" style="margin-bottom:16px; background:linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border:1px solid #bbf7d0;">
+                        <h4 style="margin:0 0 10px; color:#14532d; font-size:15px;">SQL Property Graph — Oracle 26ai의 차별성</h4>
+                        <div style="font-size:13px; color:#14532d; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                기존 관계형 테이블 위에 <strong>그래프 모델을 정의</strong>하면, 별도 그래프 DB 없이 <strong>ISO 표준 SQL/PGQ</strong> 문법으로 관계를 탐색할 수 있습니다.
+                                데이터 복제/동기화가 필요 없으며, Oracle의 트랜잭션 일관성이 그대로 보장됩니다.
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">기존 그래프 DB (Neo4j 등)</div>
+                                    <div style="font-size:12px; color:#666;">별도 DB에 데이터 복제 필요. Cypher 등 전용 언어. 트랜잭션 일관성 보장 어려움.</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #16a34a;">
+                                    <div style="font-weight:600; color:#16a34a; margin-bottom:3px;">Oracle Property Graph (SQL/PGQ)</div>
+                                    <div style="font-size:12px; color:#666;">기존 테이블 그대로 사용. ISO 표준 SQL/PGQ. MVCC 트랜잭션 일관성. JSON/VECTOR와 통합.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="step-card">
+                        <p class="step-desc">SH 스키마의 CUSTOMERS, PRODUCTS, SALES 테이블을 기반으로 Property Graph를 생성합니다.</p>
+                        <div style="display:flex; gap:8px; margin-top:12px;">
+                            <button class="btn btn-primary btn-small" :disabled="graphLoading" @click="createPropertyGraph">
+                                <span v-if="graphLoading" class="spinner spinner-sm"></span> 그래프 생성
+                            </button>
+                            <button class="btn btn-danger btn-small" :disabled="graphLoading" @click="dropPropertyGraph">그래프 삭제</button>
+                        </div>
+                    </div>
+                    <div v-if="graphResult" class="step-card" style="margin-top:12px;">
+                        <div v-if="graphResult.error" class="error-box">[[ graphResult.error ]]</div>
+                        <div v-if="graphResult.message" class="info-box" style="padding:10px 14px; background:#f0fdf4; border-radius:6px; color:#166534; font-size:13px;">[[ graphResult.message ]]</div>
+                        <div v-if="graphResult.sql_executed" class="sql-section" style="margin-top:10px;">
+                            <div class="sql-header"><span>실행된 SQL</span></div>
+                            <pre class="sql-code"><code v-html="highlightSQLWithLines(graphResult.sql_executed)"></code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SQL vs SQL/PGQ 비교 -->
+                <div v-show="graphSubMenu === 'compare'" class="step-content">
+                    <h2 class="step-title">SQL vs SQL/PGQ 비교</h2>
+                    <p class="step-desc" style="margin-bottom:12px;">같은 질문을 기존 JOIN SQL과 SQL/PGQ 그래프 쿼리로 실행하여 비교합니다.</p>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                        <select v-model="graphCompareQuery" class="select-input" style="flex:1;">
+                            <option v-for="q in graphExampleQueries" :key="q.label" :value="q">[[ q.label ]]</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" :disabled="graphLoading" @click="compareGraphQuery">
+                            <span v-if="graphLoading" class="spinner spinner-sm"></span> 비교 실행
+                        </button>
+                    </div>
+                    <div v-if="graphCompareResult" class="duality-compare-grid">
+                        <div class="duality-compare-col">
+                            <div class="duality-compare-header" style="border-top:3px solid #7c3aed;">
+                                <span style="font-weight:600;">기존 SQL (JOIN)</span>
+                            </div>
+                            <div class="duality-compare-body">
+                                <div class="sql-section"><pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(graphCompareResult.sql_query)"></code></pre></div>
+                                <div v-if="graphCompareResult.sql_data" class="table-section" style="margin-top:8px;">
+                                    <div class="table-wrapper"><table class="result-table"><thead><tr><th v-for="col in graphCompareResult.sql_columns" :key="col">[[ col ]]</th></tr></thead><tbody>
+                                        <tr v-for="(row, ri) in graphCompareResult.sql_data" :key="ri"><td v-for="col in graphCompareResult.sql_columns" :key="col">[[ row[col] ]]</td></tr>
+                                    </tbody></table></div>
+                                    <p class="row-count">[[ graphCompareResult.sql_data.length ]]건 · [[ graphCompareResult.sql_elapsed ]]ms</p>
+                                </div>
+                                <div v-if="graphCompareResult.sql_error" class="error-box">[[ graphCompareResult.sql_error ]]</div>
+                            </div>
+                        </div>
+                        <div class="duality-compare-col">
+                            <div class="duality-compare-header" style="border-top:3px solid #16a34a;">
+                                <span style="font-weight:600;">SQL/PGQ (그래프 쿼리)</span>
+                            </div>
+                            <div class="duality-compare-body">
+                                <div class="sql-section"><pre class="sql-code vec-sql-code"><code v-html="highlightOracleSQL(graphCompareResult.pgq_query)"></code></pre></div>
+                                <div v-if="graphCompareResult.pgq_data" class="table-section" style="margin-top:8px;">
+                                    <div class="table-wrapper"><table class="result-table"><thead><tr><th v-for="col in graphCompareResult.pgq_columns" :key="col">[[ col ]]</th></tr></thead><tbody>
+                                        <tr v-for="(row, ri) in graphCompareResult.pgq_data" :key="ri"><td v-for="col in graphCompareResult.pgq_columns" :key="col">[[ row[col] ]]</td></tr>
+                                    </tbody></table></div>
+                                    <p class="row-count">[[ graphCompareResult.pgq_data.length ]]건 · [[ graphCompareResult.pgq_elapsed ]]ms</p>
+                                </div>
+                                <div v-if="graphCompareResult.pgq_error" class="error-box">[[ graphCompareResult.pgq_error ]]</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 관계 탐색 -->
+                <div v-show="graphSubMenu === 'pattern'" class="step-content">
+                    <h2 class="step-title">관계 탐색 (패턴 매칭)</h2>
+                    <p class="step-desc" style="margin-bottom:12px;">SQL/PGQ의 MATCH 패턴으로 노드와 엣지 관계를 탐색합니다.</p>
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <select v-model="graphPatternQuery" class="select-input" style="flex:1;">
+                            <option v-for="q in graphPatternQueries" :key="q.label" :value="q">[[ q.label ]]</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" :disabled="graphLoading" @click="runGraphPattern">
+                            <span v-if="graphLoading" class="spinner spinner-sm"></span> 실행
+                        </button>
+                    </div>
+                    <div v-if="graphPatternResult" class="step-card">
+                        <div v-if="graphPatternResult.error" class="error-box">[[ graphPatternResult.error ]]</div>
+                        <div v-if="graphPatternResult.sql_executed" class="sql-section">
+                            <div class="sql-header"><span>SQL/PGQ</span></div>
+                            <pre class="sql-code"><code v-html="highlightSQLWithLines(graphPatternResult.sql_executed)"></code></pre>
+                        </div>
+                        <div v-if="graphPatternResult.data" class="table-section" style="margin-top:8px;">
+                            <div class="table-wrapper"><table class="result-table"><thead><tr><th v-for="col in graphPatternResult.columns" :key="col">[[ col ]]</th></tr></thead><tbody>
+                                <tr v-for="(row, ri) in graphPatternResult.data" :key="ri"><td v-for="col in graphPatternResult.columns" :key="col">[[ row[col] ]]</td></tr>
+                            </tbody></table></div>
+                            <p class="row-count">[[ graphPatternResult.data.length ]]건 · [[ graphPatternResult.elapsed_ms ]]ms</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 그래프 시각화 -->
+                <div v-show="graphSubMenu === 'visualize'" class="step-content">
+                    <h2 class="step-title">그래프 시각화</h2>
+                    <p class="step-desc" style="margin-bottom:12px;">그래프 쿼리 결과를 노드-엣지 네트워크 다이어그램으로 시각화합니다. (향후 구현 예정)</p>
+                    <div class="step-card">
+                        <div class="empty-state" style="padding:40px 0;">
+                            <div class="empty-icon" style="font-size:36px;">🔗</div>
+                            <p>D3.js 또는 vis-network 기반 인터랙티브 그래프 시각화</p>
+                            <p class="empty-sub">노드(고객/제품) + 엣지(구매) 관계를 시각적으로 탐색</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 실행 쿼리 확인 -->
+                <div v-show="graphSubMenu === 'query'" class="step-content">
+                    <h2 class="step-title">실행 쿼리 확인</h2>
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">최근 그래프 관련 쿼리 (V$SQL)</span>
+                            <button class="btn btn-primary btn-small" :disabled="graphLoading" @click="fetchGraphRecentSql">
+                                <span v-if="graphLoading" class="spinner spinner-sm"></span> 조회
+                            </button>
+                        </div>
+                        <div v-if="graphRecentSql" class="step-query-result">
+                            <div v-if="graphRecentSql.error" class="error-box">[[ graphRecentSql.error ]]</div>
+                            <div v-if="graphRecentSql.sql_executed" class="sql-section"><div class="sql-header"><span>SQL</span></div><pre class="sql-code"><code v-html="highlightSQLWithLines(graphRecentSql.sql_executed)"></code></pre></div>
+                            <div v-if="graphRecentSql.data && graphRecentSql.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr><th v-for="col in graphRecentSql.columns" :key="col">[[ col ]]</th></tr></thead><tbody>
+                                    <tr v-for="(row, ri) in graphRecentSql.data" :key="ri"><td v-for="col in graphRecentSql.columns" :key="col">[[ row[col] ]]</td></tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ graphRecentSql.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                </div>
+            </main>
+        </div>
+
+        <!-- 개발생산성 향상 탭 -->
+        <div class="main-layout" v-show="activeTab === 'productivity'">
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        Lock-Free Reservations
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': prodSubMenu === 'lockfree' }" @click="prodSubMenu = 'lockfree'">
+                        동시 차감 시뮬레이션
+                    </button>
+                </div>
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                        Priority Transactions
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': prodSubMenu === 'priority' }" @click="prodSubMenu = 'priority'">
+                        우선순위 충돌 시뮬레이션
+                    </button>
+                </div>
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                        쿼리
+                    </h3>
+                    <button class="sub-menu-btn" :class="{ 'sub-menu-active': prodSubMenu === 'query' }" @click="prodSubMenu = 'query'">
+                        실행 쿼리 확인
+                    </button>
+                </div>
+                <div class="sidebar-section" v-if="systemStatus">
+                    <h3 class="sidebar-title">
+                        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                        시스템 상태
+                    </h3>
+                    <div class="status-list">
+                        <div class="status-row"><span class="status-label">DB</span><span class="status-value" :class="dbConnected ? 'status-ok' : 'status-err'">[[ dbConnected ? '연결됨' : '연결 안됨' ]]</span></div>
+                        <template v-if="systemStatus.db_version"><div class="status-row"><span class="status-label">버전</span><span class="status-value status-mono">[[ systemStatus.db_version.split(' ').slice(0,4).join(' ') ]]</span></div></template>
+                    </div>
+                </div>
+            </aside>
+            <main class="chat-area">
+                <div class="step-content-scroll">
+
+                <!-- Lock-Free Reservations -->
+                <div v-show="prodSubMenu === 'lockfree'" class="step-content">
+                    <h2 class="step-title">Lock-Free Column Value Reservations</h2>
+                    <div class="step-card" style="margin-bottom:16px; background:linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%); border:1px solid #fcd34d;">
+                        <h4 style="margin:0 0 10px; color:#78350f; font-size:15px;">Lock-Free Reservations — 기존 방식과 무엇이 다른가?</h4>
+                        <div style="font-size:13px; color:#78350f; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                숫자 컬럼에 <code>RESERVABLE</code> 속성을 지정하면, 여러 트랜잭션이 <strong>같은 행의 같은 컬럼을 동시에 차감/추가</strong>할 수 있습니다.<br>
+                                기존에는 한 트랜잭션이 행을 잠그면 다른 트랜잭션은 대기해야 했습니다.
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">기존 방식</div>
+                                    <div style="font-size:12px; color:#666;">Session A가 UPDATE → Session B 대기(블로킹) → A 커밋 후 B 진행</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #f59e0b;">
+                                    <div style="font-weight:600; color:#f59e0b; margin-bottom:3px;">Lock-Free Reservations</div>
+                                    <div style="font-size:12px; color:#666;">Session A, B, C 동시 차감 가능. CHECK 제약으로 잔액 부족 시만 실패.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="step-card">
+                        <h4 style="margin:0 0 8px; font-size:14px;">동시 차감 시뮬레이션 (계좌 잔액)</h4>
+                        <p class="step-desc" style="margin-bottom:10px;">RESERVABLE 컬럼이 있는 계좌 테이블에서 여러 세션이 동시에 잔액을 차감하는 시나리오입니다.</p>
+                        <button class="btn btn-primary btn-small" :disabled="prodLoading" @click="simulateLockFree">
+                            <span v-if="prodLoading" class="spinner spinner-sm"></span> 시뮬레이션 실행
+                        </button>
+                        <div v-if="lockFreeResult && lockFreeResult.steps && lockFreeResult.steps.length > 0" style="margin-top:12px;">
+                            <div v-for="(step, si) in lockFreeResult.steps" :key="si" style="margin-bottom:10px; padding:10px 14px; border-radius:6px; font-size:13px; border-left:4px solid;"
+                                 :style="{ background: step.success ? '#f0fdf4' : '#fef2f2', color: step.success ? '#166534' : '#991b1b', borderColor: step.success ? '#16a34a' : '#dc2626' }">
+                                <div><strong>Step [[ si + 1 ]]:</strong> [[ step.description ]]</div>
+                                <pre v-if="step.sql" class="sql-code vec-sql-code" style="margin-top:6px; font-size:11px; padding:6px 8px;"><code v-html="highlightOracleSQL(step.sql)"></code></pre>
+                            </div>
+                        </div>
+                        <div v-if="prodLoading" style="margin-top:10px; display:flex; align-items:center; gap:8px; font-size:13px; color:#888;">
+                            <span class="spinner-sm"></span> 시뮬레이션 진행 중...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Priority Transactions -->
+                <div v-show="prodSubMenu === 'priority'" class="step-content">
+                    <h2 class="step-title">Priority Transactions</h2>
+                    <div class="step-card" style="margin-bottom:16px; background:linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%); border:1px solid #f9a8d4;">
+                        <h4 style="margin:0 0 10px; color:#831843; font-size:15px;">Priority Transactions — 26ai 신기능</h4>
+                        <div style="font-size:13px; color:#831843; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                트랜잭션에 우선순위(<strong>HIGH / MEDIUM / LOW</strong>)를 부여합니다.<br>
+                                높은 우선순위 트랜잭션이 낮은 우선순위에 의해 블로킹되면, <strong>DB가 자동으로 낮은 우선순위 트랜잭션을 롤백</strong>합니다.
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">기존 방식</div>
+                                    <div style="font-size:12px; color:#666;">VIP든 일반이든 먼저 잠근 쪽이 우선. 중요한 트랜잭션이 대기할 수 있음.</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #ec4899;">
+                                    <div style="font-weight:600; color:#ec4899; margin-bottom:3px;">Priority Transactions</div>
+                                    <div style="font-size:12px; color:#666;">HIGH가 LOW에 블로킹되면, 대기 시간 초과 후 LOW 자동 롤백 → HIGH 진행.</div>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px; font-size:12px; color:#666;">
+                                <code>ALTER SESSION SET TXN_PRIORITY = HIGH | MEDIUM | LOW</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="step-card">
+                        <h4 style="margin:0 0 8px; font-size:14px;">우선순위 충돌 시뮬레이션</h4>
+                        <p class="step-desc" style="margin-bottom:10px;">LOW 트랜잭션이 행을 잠근 상태에서 HIGH 트랜잭션이 같은 행을 요청하는 시나리오입니다.</p>
+                        <button class="btn btn-primary btn-small" :disabled="prodLoading" @click="simulatePriorityTx">
+                            <span v-if="prodLoading" class="spinner spinner-sm"></span> 시뮬레이션 실행
+                        </button>
+                        <div v-if="priorityTxResult && priorityTxResult.steps && priorityTxResult.steps.length > 0" style="margin-top:12px;">
+                            <div v-for="(step, si) in priorityTxResult.steps" :key="si" style="margin-bottom:10px; padding:10px 14px; border-radius:6px; font-size:13px; border-left:4px solid;"
+                                 :style="{ background: step.success ? '#f0fdf4' : '#fef2f2', color: step.success ? '#166534' : '#991b1b', borderColor: step.success ? '#16a34a' : '#dc2626' }">
+                                <div><strong>Step [[ si + 1 ]]:</strong> [[ step.description ]]</div>
+                                <pre v-if="step.sql" class="sql-code vec-sql-code" style="margin-top:6px; font-size:11px; padding:6px 8px;"><code v-html="highlightOracleSQL(step.sql)"></code></pre>
+                            </div>
+                        </div>
+                        <div v-if="prodLoading" style="margin-top:10px; display:flex; align-items:center; gap:8px; font-size:13px; color:#888;">
+                            <span class="spinner-sm"></span> 시뮬레이션 진행 중...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 실행 쿼리 확인 -->
+                <div v-show="prodSubMenu === 'query'" class="step-content">
+                    <h2 class="step-title">실행 쿼리 확인</h2>
+                    <div class="step-card">
+                        <div class="step-card-header">
+                            <span class="step-card-title">최근 관련 쿼리 (V$SQL)</span>
+                            <button class="btn btn-primary btn-small" :disabled="prodLoading" @click="fetchProdRecentSql">
+                                <span v-if="prodLoading" class="spinner spinner-sm"></span> 조회
+                            </button>
+                        </div>
+                        <div v-if="prodRecentSql" class="step-query-result">
+                            <div v-if="prodRecentSql.error" class="error-box">[[ prodRecentSql.error ]]</div>
+                            <div v-if="prodRecentSql.sql_executed" class="sql-section"><div class="sql-header"><span>SQL</span></div><pre class="sql-code"><code v-html="highlightSQLWithLines(prodRecentSql.sql_executed)"></code></pre></div>
+                            <div v-if="prodRecentSql.data && prodRecentSql.data.length > 0" class="table-section">
+                                <div class="table-wrapper"><table class="result-table"><thead><tr><th v-for="col in prodRecentSql.columns" :key="col">[[ col ]]</th></tr></thead><tbody>
+                                    <tr v-for="(row, ri) in prodRecentSql.data" :key="ri"><td v-for="col in prodRecentSql.columns" :key="col">[[ row[col] ]]</td></tr>
+                                </tbody></table></div>
+                                <p class="row-count">[[ prodRecentSql.row_count ]]건</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                </div>
+            </main>
+        </div>
+
         <!-- 기타 부가 기능 탭 -->
         <div class="main-layout" v-show="activeTab === 'extra'">
             <!-- 사이드바 -->
@@ -1913,6 +2712,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=57"></script>
+    <script src="/static/js/app.js?v=67"></script>
 </body>
 </html>

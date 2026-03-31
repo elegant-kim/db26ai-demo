@@ -747,6 +747,254 @@ async def vector_visualize(req: VectorVisRequest):
         )
 
 
+# === JSON Relational Duality Endpoints ===
+
+from app.duality import (
+    create_duality_views, drop_duality_views, list_duality_views,
+    compare_relational_vs_json, list_duality_docs, fetch_duality_doc, update_duality_doc,
+    simulate_etag_conflict, query_duality_recent_sql,
+)
+
+
+class DualityCompareRequest(BaseModel):
+    view_name: str = "CUSTOMERS_DV"
+    limit: int = 5
+
+
+class DualityCrudRequest(BaseModel):
+    view_name: str
+    doc_id: str = ""
+    doc_json: dict = {}
+
+
+@router.post("/duality/create-views")
+async def duality_create():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await create_duality_views(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/duality/drop-views")
+async def duality_drop():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await drop_duality_views(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/duality/views")
+async def duality_list():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await list_duality_views(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/duality/compare")
+async def duality_compare(req: DualityCompareRequest):
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await compare_relational_vs_json(pool, req.view_name, req.limit)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/duality/docs")
+async def duality_list_docs(req: DualityCrudRequest):
+    """Duality View 문서 목록 (ID + 요약) 조회"""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await list_duality_docs(pool, req.view_name)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/duality/doc")
+async def duality_fetch_doc(req: DualityCrudRequest):
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await fetch_duality_doc(pool, req.view_name, req.doc_id)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/duality/doc/update")
+async def duality_update_doc(req: DualityCrudRequest):
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await update_duality_doc(pool, req.view_name, req.doc_json)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/duality/etag-simulation")
+async def duality_etag():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await simulate_etag_conflict(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/duality/recent-queries")
+async def duality_recent_sql():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await query_duality_recent_sql(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+# === Property Graph Endpoints ===
+
+from app.graph import (
+    create_property_graph, drop_property_graph, compare_sql_vs_pgq,
+    run_pattern_query, query_graph_recent_sql,
+    get_compare_queries, get_pattern_queries,
+)
+from app.productivity import (
+    simulate_lock_free, simulate_priority_tx, query_prod_recent_sql,
+)
+
+
+class GraphQueryRequest(BaseModel):
+    query_index: int = 0
+
+
+@router.post("/graph/create")
+async def graph_create():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await create_property_graph(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/graph/drop")
+async def graph_drop():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await drop_property_graph(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/graph/queries")
+async def graph_queries():
+    return {"success": True, "compare": get_compare_queries(), "pattern": get_pattern_queries()}
+
+
+@router.post("/graph/compare")
+async def graph_compare(req: GraphQueryRequest):
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await compare_sql_vs_pgq(pool, req.query_index)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/graph/pattern")
+async def graph_pattern(req: GraphQueryRequest):
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await run_pattern_query(pool, req.query_index)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/graph/recent-queries")
+async def graph_recent():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await query_graph_recent_sql(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+# === 개발생산성 향상 Endpoints ===
+
+@router.post("/productivity/lockfree")
+async def prod_lockfree():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await simulate_lock_free(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/productivity/priority-tx")
+async def prod_priority():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await simulate_priority_tx(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/productivity/recent-queries")
+async def prod_recent():
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
+    try:
+        result = await query_prod_recent_sql(pool)
+        return {"success": True, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
 # === AWR Analyzer Endpoints ===
 
 # 서버 메모리에 최근 AWR 파싱 결과 캐싱 (후속 질문용)

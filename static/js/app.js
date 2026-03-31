@@ -117,6 +117,43 @@ const app = createApp({
             },
         };
 
+        // === JSON Duality State ===
+        const dualitySubMenu = ref('create');
+        const dualityLoading = ref(false);
+        const dualityResult = ref(null);
+        const dualityViews = ref([]);
+        const dualityCompareView = ref('CUSTOMERS_DV');
+        const dualityCompareLimit = ref(5);
+        const dualityCompareResult = ref(null);
+        const dualityCrudView = ref('CUSTOMERS_DV');
+        const dualityCrudId = ref('');
+        const dualityCrudDoc = ref(null);
+        const dualityCrudDocText = ref('');
+        const dualityCrudMessage = ref(null);
+        const dualityAppPreview = ref(false);
+        const dualityDocList = ref([]);
+        const dualityEtagResult = ref(null);
+        const dualityRecentSql = ref(null);
+
+        // === Property Graph State ===
+        const graphSubMenu = ref('create');
+        const graphLoading = ref(false);
+        const graphResult = ref(null);
+        const graphExampleQueries = ref([]);
+        const graphCompareQuery = ref(null);
+        const graphCompareResult = ref(null);
+        const graphPatternQueries = ref([]);
+        const graphPatternQuery = ref(null);
+        const graphPatternResult = ref(null);
+        const graphRecentSql = ref(null);
+
+        // === 개발생산성 향상 State ===
+        const prodSubMenu = ref('lockfree');
+        const prodLoading = ref(false);
+        const lockFreeResult = ref(null);
+        const priorityTxResult = ref(null);
+        const prodRecentSql = ref(null);
+
         // === Vector Search State ===
         const vectorSubMenu = ref('store');  // 'store', 'upload', 'onnx', 'search', 'query'
         const vectorInput = ref('');
@@ -1406,6 +1443,329 @@ const app = createApp({
             });
         }
 
+        // === Property Graph Methods ===
+
+        async function loadGraphQueries() {
+            try {
+                const res = await fetch('/api/graph/queries');
+                const data = await res.json();
+                if (data.success) {
+                    graphExampleQueries.value = data.compare || [];
+                    graphPatternQueries.value = data.pattern || [];
+                    if (data.compare.length) graphCompareQuery.value = data.compare[0];
+                    if (data.pattern.length) graphPatternQuery.value = data.pattern[0];
+                }
+            } catch (e) { /* silent */ }
+        }
+
+        async function createPropertyGraph() {
+            graphLoading.value = true; graphResult.value = null;
+            try {
+                const res = await fetch('/api/graph/create', { method: 'POST' });
+                graphResult.value = await res.json();
+                if (graphResult.value.success && !graphResult.value.error) showToast('Property Graph 생성 완료');
+            } catch (err) { graphResult.value = { error: err.message }; }
+            finally { graphLoading.value = false; }
+        }
+
+        async function dropPropertyGraph() {
+            if (!confirm('Property Graph를 삭제하시겠습니까?')) return;
+            graphLoading.value = true; graphResult.value = null;
+            try {
+                const res = await fetch('/api/graph/drop', { method: 'POST' });
+                graphResult.value = await res.json();
+            } catch (err) { graphResult.value = { error: err.message }; }
+            finally { graphLoading.value = false; }
+        }
+
+        async function compareGraphQuery() {
+            if (!graphCompareQuery.value) return;
+            graphLoading.value = true; graphCompareResult.value = null;
+            try {
+                const res = await fetch('/api/graph/compare', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query_index: graphCompareQuery.value.index }),
+                });
+                const data = await res.json();
+                if (data.success) graphCompareResult.value = data;
+                else showToast(data.error || '비교 실행 실패', 'error');
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { graphLoading.value = false; }
+        }
+
+        async function runGraphPattern() {
+            if (!graphPatternQuery.value) return;
+            graphLoading.value = true; graphPatternResult.value = null;
+            try {
+                const res = await fetch('/api/graph/pattern', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query_index: graphPatternQuery.value.index }),
+                });
+                const data = await res.json();
+                if (data.success) graphPatternResult.value = data;
+                else showToast(data.error || '실행 실패', 'error');
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { graphLoading.value = false; }
+        }
+
+        async function fetchGraphRecentSql() {
+            graphLoading.value = true; graphRecentSql.value = null;
+            try {
+                const res = await fetch('/api/graph/recent-queries');
+                graphRecentSql.value = await res.json();
+            } catch (err) { graphRecentSql.value = { error: err.message }; }
+            finally { graphLoading.value = false; }
+        }
+
+        // === 개발생산성 향상 Methods ===
+
+        async function simulateLockFree() {
+            prodLoading.value = true;
+            lockFreeResult.value = { steps: [] };
+            try {
+                const res = await fetch('/api/productivity/lockfree', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.steps) {
+                    for (let i = 0; i < data.steps.length; i++) {
+                        await new Promise(r => setTimeout(r, i === 0 ? 300 : 1200));
+                        lockFreeResult.value.steps.push(data.steps[i]);
+                    }
+                } else { showToast(data.error || '시뮬레이션 실패', 'error'); }
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { prodLoading.value = false; }
+        }
+
+        async function simulatePriorityTx() {
+            prodLoading.value = true;
+            priorityTxResult.value = { steps: [] };
+            try {
+                const res = await fetch('/api/productivity/priority-tx', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.steps) {
+                    for (let i = 0; i < data.steps.length; i++) {
+                        await new Promise(r => setTimeout(r, i === 0 ? 300 : 1200));
+                        priorityTxResult.value.steps.push(data.steps[i]);
+                    }
+                } else { showToast(data.error || '시뮬레이션 실패', 'error'); }
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { prodLoading.value = false; }
+        }
+
+        async function fetchProdRecentSql() {
+            prodLoading.value = true; prodRecentSql.value = null;
+            try {
+                const res = await fetch('/api/productivity/recent-queries');
+                prodRecentSql.value = await res.json();
+            } catch (err) { prodRecentSql.value = { error: err.message }; }
+            finally { prodLoading.value = false; }
+        }
+
+        // === JSON Duality Methods ===
+
+        async function createDualityViews() {
+            dualityLoading.value = true;
+            dualityResult.value = null;
+            try {
+                const res = await fetch('/api/duality/create-views', { method: 'POST' });
+                dualityResult.value = await res.json();
+                if (dualityResult.value.success) {
+                    showToast('Duality View 생성 완료');
+                    await listDualityViews();
+                }
+            } catch (err) {
+                dualityResult.value = { error: err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function dropDualityViews() {
+            if (!confirm('Duality View를 삭제하시겠습니까?')) return;
+            dualityLoading.value = true;
+            dualityResult.value = null;
+            try {
+                const res = await fetch('/api/duality/drop-views', { method: 'POST' });
+                dualityResult.value = await res.json();
+                if (dualityResult.value.success) {
+                    showToast('Duality View 삭제 완료');
+                    dualityViews.value = [];
+                }
+            } catch (err) {
+                dualityResult.value = { error: err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function listDualityViews(showResult = false) {
+            if (showResult) dualityLoading.value = true;
+            try {
+                const res = await fetch('/api/duality/views');
+                const data = await res.json();
+                if (data.success) {
+                    dualityViews.value = data.views || [];
+                    if (data.views.length > 0) {
+                        if (!dualityCompareView.value) dualityCompareView.value = data.views[0].name;
+                        if (!dualityCrudView.value) dualityCrudView.value = data.views[0].name;
+                    }
+                    if (showResult) {
+                        dualityResult.value = {
+                            views: data.views,
+                            sql_executed: data.sql_executed,
+                            message: `Duality View ${data.views.length}개 조회됨`,
+                        };
+                    }
+                }
+            } catch (err) {
+                if (showResult) dualityResult.value = { error: err.message };
+            } finally {
+                if (showResult) dualityLoading.value = false;
+            }
+        }
+
+        async function compareDuality() {
+            dualityLoading.value = true;
+            dualityCompareResult.value = null;
+            try {
+                const res = await fetch('/api/duality/compare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_name: dualityCompareView.value,
+                        limit: dualityCompareLimit.value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dualityCompareResult.value = data;
+                } else {
+                    showToast(data.error || '비교 실행 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function fetchDualityDocList() {
+            dualityLoading.value = true;
+            dualityDocList.value = [];
+            try {
+                const res = await fetch('/api/duality/docs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ view_name: dualityCrudView.value }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dualityDocList.value = data.docs || [];
+                } else {
+                    showToast(data.error || '문서 목록 조회 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function fetchDualityDoc() {
+            if (!dualityCrudId.value.trim()) {
+                showToast('문서 ID를 입력하세요', 'error');
+                return;
+            }
+            dualityLoading.value = true;
+            dualityCrudDoc.value = null;
+            dualityCrudMessage.value = null;
+            try {
+                const res = await fetch('/api/duality/doc', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_name: dualityCrudView.value,
+                        doc_id: dualityCrudId.value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success && data.document) {
+                    dualityCrudDoc.value = { ...data.document, _etag: data.etag };
+                    dualityCrudDocText.value = data.document_text || JSON.stringify(data.document, null, 2);
+                } else {
+                    showToast(data.error || '문서 조회 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function updateDualityDoc() {
+            dualityLoading.value = true;
+            dualityCrudMessage.value = null;
+            try {
+                const docJson = JSON.parse(dualityCrudDocText.value);
+                const res = await fetch('/api/duality/doc/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_name: dualityCrudView.value,
+                        doc_json: docJson,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dualityCrudMessage.value = { type: 'success', text: data.message || '업데이트 성공' };
+                    if (data.new_etag) {
+                        dualityCrudDoc.value._etag = data.new_etag;
+                    }
+                } else {
+                    dualityCrudMessage.value = { type: 'error', text: data.error || '업데이트 실패' };
+                }
+            } catch (err) {
+                dualityCrudMessage.value = { type: 'error', text: 'JSON 파싱 오류: ' + err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function simulateEtagConflict() {
+            dualityLoading.value = true;
+            dualityEtagResult.value = { steps: [] };
+            try {
+                const res = await fetch('/api/duality/etag-simulation', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.steps) {
+                    // 단계별 딜레이로 표시
+                    for (let i = 0; i < data.steps.length; i++) {
+                        await new Promise(r => setTimeout(r, i === 0 ? 300 : 1200));
+                        dualityEtagResult.value.steps.push(data.steps[i]);
+                    }
+                } else {
+                    showToast(data.error || '시뮬레이션 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function fetchDualityRecentSql() {
+            dualityLoading.value = true;
+            dualityRecentSql.value = null;
+            try {
+                const res = await fetch('/api/duality/recent-queries');
+                const data = await res.json();
+                dualityRecentSql.value = data;
+            } catch (err) {
+                dualityRecentSql.value = { error: err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
         // === Init ===
         async function checkHealth() {
             try {
@@ -2129,6 +2489,8 @@ const app = createApp({
             loadLlmProviders();
             loadEmbeddingConfig();
             loadOnnxModels();
+            listDualityViews();
+            loadGraphQueries();
         });
 
         return {
@@ -2253,6 +2615,60 @@ const app = createApp({
             llmProviders,
             llmProvider,
             selectedLlmProvider,
+
+            // Property Graph
+            graphSubMenu,
+            graphLoading,
+            graphResult,
+            graphExampleQueries,
+            graphCompareQuery,
+            graphCompareResult,
+            graphPatternQueries,
+            graphPatternQuery,
+            graphPatternResult,
+            graphRecentSql,
+            createPropertyGraph,
+            dropPropertyGraph,
+            compareGraphQuery,
+            runGraphPattern,
+            fetchGraphRecentSql,
+
+            // 개발생산성 향상
+            prodSubMenu,
+            prodLoading,
+            lockFreeResult,
+            priorityTxResult,
+            prodRecentSql,
+            simulateLockFree,
+            simulatePriorityTx,
+            fetchProdRecentSql,
+
+            // JSON Duality
+            dualitySubMenu,
+            dualityLoading,
+            dualityResult,
+            dualityViews,
+            dualityCompareView,
+            dualityCompareLimit,
+            dualityCompareResult,
+            dualityCrudView,
+            dualityCrudId,
+            dualityCrudDoc,
+            dualityCrudDocText,
+            dualityCrudMessage,
+            dualityAppPreview,
+            dualityDocList,
+            dualityEtagResult,
+            dualityRecentSql,
+            createDualityViews,
+            dropDualityViews,
+            listDualityViews,
+            compareDuality,
+            fetchDualityDocList,
+            fetchDualityDoc,
+            updateDualityDoc,
+            simulateEtagConflict,
+            fetchDualityRecentSql,
 
             // AWR Analyzer
             extraSubMenu,
