@@ -230,30 +230,35 @@ const app = createApp({
         const awrFollowupLoading = ref(false);
         const awrStep = ref(0);
         const awrElapsed = ref(0);
-        const awrProgress = ref(0);  // 추정 기반 프로그레스 (0~100)
+        const awrProgress = ref(0);
         let awrTimer = null;
         let awrProgressTimer = null;
-        let awrStepTimeouts = [];  // step 전환 setTimeout ID 보관
+        let awrStepTimeouts = [];
         const awrFollowupMessages = ref([]);
         const awrFollowupMessagesRef = ref(null);
+        const awrResults = ref([]);
+        const awrActiveTab = ref(0);
 
-        // AWR 파이프라인 진행률 (0~100) — 프로그레스 링
         const awrRingPercent = computed(() => {
             const step = awrStep.value;
             if (step <= 0) return 0;
-            // step1(파싱): 10%, step2(AI분석): 10~90% (awrProgress 반영), step3(결과생성): 90%
             if (step === 1) return 10;
-            if (step === 2) {
-                // awrProgress 0~100을 10~90 범위에 매핑
-                return 10 + Math.round(awrProgress.value * 0.8);
-            }
+            if (step === 2) return 10 + Math.round(awrProgress.value * 0.8);
             if (step >= 3) return 90;
             return 0;
         });
 
-        // 다중 분석 결과 보관
-        const awrResults = ref([]);  // [{filename, analysis, sessionId, parseInfo, elapsedMs, provider, timestamp}]
-        const awrActiveTab = ref(0);
+        // 보고서 8개 섹션 키 순서
+        const awrSectionKeys = [
+            'section1_system_overview',
+            'section2_bottleneck',
+            'section3_top_sql',
+            'section4_io',
+            'section5_hot_segments',
+            'section6_memory',
+            'section7_host_cpu',
+            'section8_recommendations',
+        ];
 
         // === Constants ===
         const actionModesLeft = [
@@ -1989,11 +1994,11 @@ const app = createApp({
             return labels[key] || key;
         }
 
+        // === AWR Functions ===
+
         async function handleAwrFileSelect(event) {
             const file = event.target.files[0];
-            if (file) {
-                await analyzeAwrFile(file);
-            }
+            if (file) await analyzeAwrFile(file);
             event.target.value = '';
         }
 
@@ -2013,7 +2018,6 @@ const app = createApp({
                 return;
             }
 
-            // 이전 타이머 모두 정리
             if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
             if (awrProgressTimer) { clearInterval(awrProgressTimer); awrProgressTimer = null; }
             awrStepTimeouts.forEach(id => clearTimeout(id));
@@ -2027,26 +2031,18 @@ const app = createApp({
             awrElapsed.value = 0;
             awrProgress.value = 0;
 
-            // 경과 시간 타이머 시작
             awrTimer = setInterval(() => { awrElapsed.value++; }, 1000);
-
-            // 추정 기반 프로그레스 타이머 (100초=100%, 5초 간격)
             awrProgressTimer = setInterval(() => {
-                if (awrProgress.value < 100) {
-                    awrProgress.value += 5;  // 5초마다 5% 증가
-                }
+                if (awrProgress.value < 100) awrProgress.value += 5;
             }, 5000);
 
             const formData = new FormData();
             formData.append('file', file);
-            if (llmProvider.value) {
-                formData.append('provider', llmProvider.value);
-            }
+            if (llmProvider.value) formData.append('provider', llmProvider.value);
 
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 180000);
 
-            // 단계 진행 시뮬레이션 (파싱은 빠르고, AI 분석이 오래 걸림)
             awrStepTimeouts.push(setTimeout(() => { if (awrLoading.value) awrStep.value = 2; }, 2000));
             awrStepTimeouts.push(setTimeout(() => { if (awrLoading.value) awrStep.value = 3; }, 90000));
 
@@ -2060,32 +2056,31 @@ const app = createApp({
                 clearTimeout(timeout);
 
                 if (data.success) {
-                    // JSON 파싱 실패 감지 (summary가 없으면 빈 결과)
-                    if (!data.analysis || (!data.analysis.summary && !data.analysis.categoryScores)) {
+                    if (!data.analysis || (!data.analysis.section1_system_overview && !data.analysis.categoryScores)) {
                         awrError.value = 'LLM 응답에서 유효한 분석 결과를 추출하지 못했습니다. 다시 시도해 주세요.';
                     } else {
-                    awrAnalysis.value = data.analysis;
-                    awrSessionId.value = data.session_id;
-                    awrFilename.value = data.filename;
-                    awrParseInfo.value = data.parse_info;
-                    awrElapsedMs.value = data.elapsed_ms;
-                    // 결과를 이력에 추가
-                    const providerInfo = selectedLlmProvider.value;
-                    awrResults.value.push({
-                        filename: data.filename,
-                        analysis: data.analysis,
-                        sessionId: data.session_id,
-                        parseInfo: data.parse_info,
-                        elapsedMs: data.elapsed_ms,
-                        provider: providerInfo ? providerInfo.name : llmProvider.value,
-                        timestamp: new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}),
-                        followupMessages: [],
-                    });
-                    awrActiveTab.value = awrResults.value.length - 1;
-                    awrFollowupMessages.value = [];
-                    extraSubMenu.value = 'awr-result';
-                    showToast(`AWR 분석 완료 (${awrElapsed.value}초 소요)`, 'success');
-                    }  // end of valid analysis check
+                        awrAnalysis.value = data.analysis;
+                        awrSessionId.value = data.session_id;
+                        awrFilename.value = data.filename;
+                        awrParseInfo.value = data.parse_info;
+                        awrElapsedMs.value = data.elapsed_ms;
+
+                        const providerInfo = selectedLlmProvider.value;
+                        awrResults.value.push({
+                            filename: data.filename,
+                            analysis: data.analysis,
+                            sessionId: data.session_id,
+                            parseInfo: data.parse_info,
+                            elapsedMs: data.elapsed_ms,
+                            provider: providerInfo ? providerInfo.name : llmProvider.value,
+                            timestamp: new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}),
+                            followupMessages: [],
+                        });
+                        awrActiveTab.value = awrResults.value.length - 1;
+                        awrFollowupMessages.value = [];
+                        extraSubMenu.value = 'awr-result';
+                        showToast(`AWR 분석 완료 (${awrElapsed.value}초 소요)`, 'success');
+                    }
                 } else {
                     awrError.value = data.error || '분석에 실패했습니다.';
                 }
@@ -2109,7 +2104,6 @@ const app = createApp({
 
         function switchAwrTab(index) {
             if (index < 0 || index >= awrResults.value.length) return;
-            // 현재 탭의 followup 메시지를 저장
             if (awrActiveTab.value < awrResults.value.length) {
                 awrResults.value[awrActiveTab.value].followupMessages = [...awrFollowupMessages.value];
             }
@@ -2130,39 +2124,6 @@ const app = createApp({
                 awrActiveTab.value = awrResults.value.length - 1;
             }
             switchAwrTab(awrActiveTab.value);
-        }
-
-        // 발견사항 category → AWR 원문 검색 키워드 매핑
-        function findingSourceKeyword(finding) {
-            // detail에서 구체적 이벤트명/지표명을 추출 시도
-            const detail = finding.detail || '';
-            const category = (finding.category || '').toLowerCase();
-
-            // Wait Event 이름이 detail에 있으면 그걸 사용 (가장 정확)
-            const eventMatch = detail.match(/['"`]([a-z][a-z_ :]+(?:read|write|scan|sync|lock|wait|contention|cpu)[a-z_ ]*)['"`]/i)
-                || detail.match(/(db file (?:sequential|scattered) read|log file (?:sync|parallel write)|cell smart (?:table|index) scan|enq: \w+ - \w+|DB CPU)/i);
-            if (eventMatch) return eventMatch[1];
-
-            // category별 기본 AWR 섹션
-            const map = {
-                'wait events': 'Top 10 Foreground Events',
-                'db time': 'Load Profile',
-                'cpu': 'Host CPU',
-                'memory': 'SGA Target Advisory',
-                'i/o': 'Tablespace IO Stats',
-                'sql': 'SQL ordered by Elapsed Time',
-                'exadata': 'Exadata',
-            };
-            return map[category] || finding.title || category;
-        }
-
-        function openAwrSource(sectionKeyword) {
-            if (!awrSessionId.value) {
-                showToast('AWR 세션이 없습니다.', 'error');
-                return;
-            }
-            const url = `/api/awr/source/${awrSessionId.value}?section=${encodeURIComponent(sectionKeyword)}`;
-            window.open(url, '_blank');
         }
 
         async function sendAwrFollowup() {
@@ -2188,21 +2149,65 @@ const app = createApp({
                 });
                 const data = await response.json();
                 assistantMsg.loading = false;
-
-                if (data.success) {
-                    assistantMsg.content = data.answer;
-                } else {
-                    assistantMsg.content = '오류: ' + (data.error || '응답 생성에 실패했습니다.');
-                }
+                assistantMsg.content = data.success ? data.answer : ('오류: ' + (data.error || '응답 생성에 실패했습니다.'));
             } catch (err) {
                 assistantMsg.loading = false;
                 assistantMsg.content = '오류: ' + err.message;
             } finally {
                 awrFollowupLoading.value = false;
                 await nextTick();
-                const el = document.querySelector('.awr-followup-messages');
+                const el = awrFollowupMessagesRef.value;
                 if (el) el.scrollTop = el.scrollHeight;
             }
+        }
+
+        // Markdown → HTML 렌더링 (표, 굵은체, 코드, 리스트, ⚠️ 강조)
+        function renderMarkdown(text) {
+            if (!text) return '';
+            let html = text;
+
+            // 코드 블록 ```...```
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="awr-code"><code>$2</code></pre>');
+
+            // Markdown 표 변환
+            html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, function(match, headerLine, sepLine, bodyLines) {
+                const headers = headerLine.split('|').filter(c => c.trim());
+                const rows = bodyLines.trim().split('\n').map(r => r.split('|').filter(c => c.trim()));
+                let table = '<div class="table-wrapper"><table class="result-table awr-table"><thead><tr>';
+                headers.forEach(h => { table += '<th>' + h.trim() + '</th>'; });
+                table += '</tr></thead><tbody>';
+                rows.forEach(r => {
+                    table += '<tr>';
+                    r.forEach(c => {
+                        const cell = c.trim();
+                        // ⚠️ 포함 시 경고 스타일
+                        const cls = cell.includes('⚠️') ? ' class="awr-warn-cell"' : '';
+                        table += '<td' + cls + '>' + cell + '</td>';
+                    });
+                    table += '</tr>';
+                });
+                table += '</tbody></table></div>';
+                return table;
+            });
+
+            // 줄바꿈 처리 (테이블 외 영역)
+            html = html.replace(/\n/g, '<br>');
+
+            // 헤딩 (#### → h5, ### → h4, ## → h3)
+            html = html.replace(/<br>####\s+(.+?)(<br>|$)/g, '<h5 class="awr-h5">$1</h5>');
+            html = html.replace(/<br>###\s+(.+?)(<br>|$)/g, '<h4 class="awr-h4">$1</h4>');
+            html = html.replace(/<br>##\s+(.+?)(<br>|$)/g, '<h3 class="awr-h3">$1</h3>');
+
+            // 굵은체 **text**
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+            // 인라인 코드 `text`
+            html = html.replace(/`([^`]+)`/g, '<code class="awr-inline-code">$1</code>');
+
+            // 리스트 항목 - item
+            html = html.replace(/<br>- (.+?)(?=<br>|$)/g, '<br><span class="awr-list-item">• $1</span>');
+
+            return html;
         }
 
         // 임베딩 설정 로드
@@ -2322,6 +2327,9 @@ const app = createApp({
         const onnxUploading = ref(false);
         const onnxUploadResult = ref(null);
         const onnxDragOver = ref(false);
+        const onnxLocalModelName = ref('');
+        const onnxLocalUploading = ref(false);
+        const onnxLocalUploadResult = ref(null);
 
         // ONNX 모델 목록 새로고침
         async function refreshOnnxModels() {
@@ -2398,6 +2406,54 @@ const app = createApp({
                 }
             } else {
                 showToast('.onnx 파일만 업로드 가능합니다.', 'error');
+            }
+        }
+
+        // 로컬 ONNX 파일 업로드 → DB 적재
+        async function uploadOnnxLocal() {
+            if (!onnxSelectedFile.value) return;
+
+            onnxLocalUploading.value = true;
+            onnxLocalUploadResult.value = null;
+
+            // 모델명: 사용자 입력 또는 파일명에서 자동 생성
+            let modelName = onnxLocalModelName.value.trim();
+            if (!modelName) {
+                modelName = onnxSelectedFile.value.name.replace('.onnx', '').replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+            }
+
+            const formData = new FormData();
+            formData.append('file', onnxSelectedFile.value);
+            formData.append('model_name', modelName);
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 600000); // 10분
+
+                const res = await fetch('/api/vector/onnx-models/upload', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+
+                const data = await res.json();
+                onnxLocalUploadResult.value = data;
+
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    await loadOnnxModels();
+                    onnxSelectedFile.value = null;
+                    onnxLocalModelName.value = '';
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    onnxLocalUploadResult.value = { success: false, error: '적재 시간이 초과되었습니다 (10분).' };
+                } else {
+                    onnxLocalUploadResult.value = { success: false, error: e.message };
+                }
+            } finally {
+                onnxLocalUploading.value = false;
             }
         }
 
@@ -2610,6 +2666,10 @@ const app = createApp({
             handleOnnxFileSelect,
             handleOnnxFileDrop,
             loadOnnxFromCloud,
+            uploadOnnxLocal,
+            onnxLocalModelName,
+            onnxLocalUploading,
+            onnxLocalUploadResult,
 
             // LLM 제공자
             llmProviders,
@@ -2690,15 +2750,15 @@ const app = createApp({
             awrFollowupMessagesRef,
             awrScoreClass,
             awrSnapshotLabel,
-            handleAwrFileSelect,
-            handleAwrFileDrop,
-            openAwrSource,
-            findingSourceKeyword,
-            sendAwrFollowup,
             awrResults,
             awrActiveTab,
+            awrSectionKeys,
+            handleAwrFileSelect,
+            handleAwrFileDrop,
             switchAwrTab,
             removeAwrTab,
+            sendAwrFollowup,
+            renderMarkdown,
         };
     },
 });

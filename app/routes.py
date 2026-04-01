@@ -14,12 +14,12 @@ from app.select_ai import (
     execute_raw_sql, get_current_schema, get_schema_info, get_explain_plan,
     get_annotations, apply_annotations, remove_annotations,
 )
-from app.awr_analyzer import (
-    parse_awr_html,
-    build_analysis_prompt,
-    build_followup_prompt,
-    analyze_awr_with_llm,
-    followup_question,
+from app.awr_analyzer_v2 import (
+    parse_awr_html_v2,
+    build_analysis_prompt_v2,
+    build_followup_prompt_v2,
+    analyze_awr_v2,
+    followup_question_v2,
 )
 from app.llm_client import get_available_providers
 from app.vector_search import (
@@ -997,16 +997,7 @@ async def prod_recent():
 
 # === AWR Analyzer Endpoints ===
 
-# 서버 메모리에 최근 AWR 파싱 결과 캐싱 (후속 질문용)
-_awr_cache: dict = {}
-
 MAX_AWR_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
-
-
-class AWRFollowupRequest(BaseModel):
-    question: str
-    session_id: str = "default"
-    provider: str = ""
 
 
 @router.get("/llm/providers")
@@ -1257,10 +1248,21 @@ async def vector_onnx_detail(model_name: str):
         )
 
 
+
+# === AWR Analyzer Endpoints ===
+
+_awr_cache: dict = {}
+
+
+class AWRFollowupRequest(BaseModel):
+    question: str
+    session_id: str = "default"
+    provider: str = ""
+
+
 @router.post("/awr/analyze")
-async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
-    """AWR HTML 파일 업로드 → 파싱 → LLM 분석"""
-    # 파일 유효성 검사
+async def awr_analyze_v2(file: UploadFile = File(...), provider: str = Form("")):
+    """AWR HTML 파일 업로드 → 파싱 (23개 섹션) → LLM 분석 (8개 섹션 보고서)"""
     if not file.filename.lower().endswith((".html", ".htm")):
         return JSONResponse(
             status_code=400,
@@ -1278,7 +1280,7 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
     try:
         # 1) HTML 파싱
         html_text = content.decode("utf-8", errors="replace")
-        parsed = parse_awr_html(html_text)
+        parsed = parse_awr_html_v2(html_text)
 
         if parsed["section_count"] == 0:
             return JSONResponse(
@@ -1288,12 +1290,12 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
 
         parse_ms = int((time.time() - start) * 1000)
 
-        # 2) LLM 분석 프롬프트 생성 및 호출 (제공자별 입력 크기 적용)
+        # 2) LLM 분석 프롬프트 생성 및 호출
         from app.llm_client import get_max_input_chars
         llm_provider = provider or None
         max_chars = get_max_input_chars(llm_provider)
-        prompt = build_analysis_prompt(parsed, max_input_chars=max_chars)
-        llm_result = await analyze_awr_with_llm(prompt, provider=llm_provider)
+        prompt = build_analysis_prompt_v2(parsed, max_input_chars=max_chars)
+        llm_result = await analyze_awr_v2(prompt, provider=llm_provider)
         total_ms = int((time.time() - start) * 1000)
 
         # JSON 파싱 실패 감지
@@ -1302,19 +1304,19 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
                 status_code=500,
                 content={
                     "success": False,
-                    "error": f"LLM 응답의 JSON 파싱에 실패했습니다. 다시 시도해 주세요.",
+                    "error": "LLM 응답의 JSON 파싱에 실패했습니다. 다시 시도해 주세요.",
                     "raw_response": llm_result.get("raw_response", "")[:500],
                     "elapsed_ms": total_ms,
                 },
             )
 
-        # 캐싱 (후속 질문 + 원문 보기용)
+        # 캐싱
         session_id = f"awr_{int(time.time())}"
         _awr_cache[session_id] = {
             "parsed": parsed,
-            "summary": llm_result.get("summary", ""),
+            "sections": llm_result,
             "provider": provider,
-            "html": html_text,  # 원문 HTML 저장 (원문 보기 기능용)
+            "html": html_text,
         }
 
         return {
@@ -1323,9 +1325,12 @@ async def awr_analyze(file: UploadFile = File(...), provider: str = Form("")):
             "analysis": llm_result,
             "parse_info": {
                 "section_count": parsed["section_count"],
-                "total_tables": parsed["total_tables"],
+                "is_rac": parsed["is_rac"],
                 "is_exadata": parsed["is_exadata"],
                 "parse_ms": parse_ms,
+                "extracted_sections": list(parsed["sections"].keys()),
+                "raw_text_length": len(parsed["raw_text"]),
+                "max_input_chars": max_chars,
             },
             "elapsed_ms": total_ms,
             "filename": file.filename,
@@ -1353,13 +1358,13 @@ async def awr_followup(req: AWRFollowupRequest):
 
     start = time.time()
     try:
-        prompt = build_followup_prompt(
+        prompt = build_followup_prompt_v2(
             cached["parsed"],
-            cached["summary"],
+            cached["sections"],
             req.question,
         )
         llm_provider = req.provider or cached.get("provider") or None
-        answer = await followup_question(prompt, provider=llm_provider)
+        answer = await followup_question_v2(prompt, provider=llm_provider)
         elapsed_ms = int((time.time() - start) * 1000)
 
         return {
@@ -1377,10 +1382,8 @@ async def awr_followup(req: AWRFollowupRequest):
 
 
 @router.get("/awr/source/{session_id}")
-async def awr_source_html(session_id: str, section: str = ""):
-    """업로드된 AWR HTML 원문을 새 탭에서 볼 수 있도록 제공 (앵커 이동 지원)"""
-    import re as _re
-
+async def awr_source_html_v2(session_id: str, section: str = ""):
+    """AWR HTML 원문 보기"""
     cached = _awr_cache.get(session_id)
     if not cached or "html" not in cached:
         return HTMLResponse(
@@ -1390,12 +1393,10 @@ async def awr_source_html(session_id: str, section: str = ""):
 
     html = cached["html"]
 
-    # 한글 깨짐 방지: meta charset이 없으면 UTF-8 추가
     if "<meta" not in html[:500].lower() or "charset" not in html[:500].lower():
         html = '<meta charset="UTF-8">\n' + html
 
     if section:
-        # 서버 측에서 Python으로 해당 텍스트 위치를 찾아 앵커+하이라이트 삽입
         section_lower = section.lower()
         anchor_id = "awr_highlight_target"
         highlight_css = (
@@ -1405,32 +1406,23 @@ async def awr_source_html(session_id: str, section: str = ""):
             f'background-color: #fff3cd !important; '
             f'}}</style>'
         )
-        inserted = False
 
-        # 1차: 대소문자 무시하고 텍스트에서 직접 검색 (가장 확실)
-        # AWR HTML에서 섹션 키워드가 포함된 위치를 찾아 앵커 삽입
         search_pos = html.lower().find(section_lower)
         if search_pos >= 0:
-            # 해당 위치 바로 앞에 앵커 삽입
             anchor_tag = f'<a id="{anchor_id}"></a>'
             html = html[:search_pos] + anchor_tag + html[search_pos:]
-            inserted = True
 
-        if inserted:
-            # CSS + 자동 스크롤 스크립트 삽입
             scroll_script = f"""
 {highlight_css}
 <script>
 document.addEventListener('DOMContentLoaded', function() {{
     var el = document.getElementById('{anchor_id}');
     if (el) {{
-        // 앵커 다음의 가장 가까운 테이블 또는 부모 요소에 하이라이트
         var target = el.nextElementSibling || el.parentElement;
         if (target && target.tagName === 'TABLE') {{
             target.id = '{anchor_id}';
             el.remove();
         }} else {{
-            // 부모 중 테이블을 찾기
             var parent = el.parentElement;
             while (parent && parent.tagName !== 'TABLE' && parent.tagName !== 'BODY') {{
                 parent = parent.parentElement;

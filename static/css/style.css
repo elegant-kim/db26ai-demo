@@ -1638,6 +1638,17 @@ html, body {
     color: #fff;
 }
 
+.onnx-load-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+@media (max-width: 900px) {
+    .onnx-load-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .onnx-upload-form {
     padding: 16px 0;
 }
@@ -1681,6 +1692,35 @@ html, body {
 .upload-area-onnx:hover {
     border-color: var(--oracle-red);
     background: rgba(199, 70, 52, 0.04);
+}
+
+.onnx-selected-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.onnx-file-size {
+    color: var(--text-light);
+    font-size: 11px;
+}
+.onnx-file-remove {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-light);
+    padding: 0 4px;
+    line-height: 1;
+}
+.onnx-file-remove:hover {
+    color: var(--oracle-red);
 }
 
 .onnx-upload-result {
@@ -2799,5 +2839,117 @@ html, body {
     font-size: 11px;
     color: var(--text-secondary);
     margin-top: 1px;
+}
+
+/* === AWR V2 Markdown Content === */
+.awr-markdown-content {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+.awr-markdown-content h3.awr-h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 18px 0 8px;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+}
+.awr-markdown-content h4.awr-h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 14px 0 6px;
+    color: var(--text-primary);
+}
+.awr-markdown-content h5.awr-h5 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 10px 0 4px;
+    color: var(--text-secondary);
+}
+.awr-markdown-content strong {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.awr-markdown-content .table-wrapper {
+    overflow-x: auto;
+    margin: 10px 0;
+}
+.awr-markdown-content .result-table {
+    font-size: 12px;
+    width: 100%;
+}
+.awr-markdown-content .result-table th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.awr-markdown-content .result-table td,
+.awr-markdown-content .result-table th {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+}
+.awr-warn-cell {
+    background: #fff3cd !important;
+    font-weight: 600;
+}
+.awr-inline-code {
+    background: var(--bg-secondary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+}
+.awr-code {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    overflow-x: auto;
+    font-size: 12px;
+    margin: 8px 0;
+}
+.awr-list-item {
+    display: block;
+    padding-left: 8px;
+}
+
+/* AWR V2: 경고 값 표시 */
+.awr-kv-warn {
+    color: #b45309 !important;
+    font-weight: 600;
+}
+
+/* AWR V2: 액션 아이템 우선순위 색상 */
+.awr-priority-urgent {
+    background: #dc2626 !important;
+    color: #fff !important;
+    font-size: 11px;
+    min-width: 44px;
+    text-align: center;
+}
+.awr-priority-high {
+    background: #f59e0b !important;
+    color: #fff !important;
+    font-size: 11px;
+    min-width: 44px;
+    text-align: center;
+}
+.awr-priority-medium {
+    background: #3b82f6 !important;
+    color: #fff !important;
+    font-size: 11px;
+    min-width: 44px;
+    text-align: center;
+}
+.awr-action-evidence {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 0;
+    padding: 4px 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    line-height: 1.5;
 }
 

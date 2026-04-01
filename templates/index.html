@@ -6,7 +6,7 @@
     <title>Oracle AI Database 26ai 데모</title>
     <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=67">
+    <link rel="stylesheet" href="/static/css/style.css?v=74">
 </head>
 <body>
     <div id="app">
@@ -210,6 +210,31 @@
             <!-- 메인 채팅 영역 -->
             <main class="chat-area">
                 <div class="chat-messages" ref="chatMessages">
+                    <!-- 기능 설명 블록 -->
+                    <div class="step-card" style="margin:0 0 16px; background:linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%); border:1px solid #c7d2fe;">
+                        <h4 style="margin:0 0 10px; color:#312e81; font-size:15px;">Oracle Select AI — 자연어로 데이터를 질의하다</h4>
+                        <div style="font-size:13px; color:#312e81; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                기존에는 데이터를 조회하려면 SQL을 알아야 했습니다.
+                                Select AI는 자연어 질문을 Oracle DB가 직접 SQL로 변환하여 실행합니다.
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">기존 방식</div>
+                                    <div style="font-size:12px; color:#666;">개발자가 SQL 직접 작성. 스키마 이해 필수. 앱마다 쿼리 개발 필요.</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #6366f1;">
+                                    <div style="font-weight:600; color:#6366f1; margin-bottom:3px;">Oracle Select AI</div>
+                                    <div style="font-size:12px; color:#666;">자연어 → DB가 SQL 자동 생성. AI 프로필이 스키마 자동 참조. 프로필 하나로 다양한 질문 대응.</div>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px; font-size:12px; color:#555; line-height:1.6;">
+                                <strong>DB 네이티브:</strong> <code>DBMS_CLOUD_AI.GENERATE</code> PL/SQL 한 줄로 동작 ·
+                                <strong>Schema Annotation:</strong> 테이블/컬럼에 설명 추가 → AI 정확도 향상 ·
+                                <strong>다양한 Action:</strong> showsql, runsql, narrate, explainsql, chat 등
+                            </div>
+                        </div>
+                    </div>
                     <!-- 빈 상태 -->
                     <div v-if="messages.length === 0" class="empty-state">
                         <div class="empty-icon">💬</div>
@@ -609,6 +634,33 @@
                 <!-- ========== Step 1: 문서 로드 & 스플릿 & 저장 ========== -->
                 <div v-show="vectorSubMenu === 'store'" class="step-content">
                     <h2 class="step-title">Vector Store 관리</h2>
+
+                    <!-- 기능 설명 블록 -->
+                    <div class="step-card" style="margin-bottom:16px; background:linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%); border:1px solid #fdba74;">
+                        <h4 style="margin:0 0 10px; color:#7c2d12; font-size:15px;">Oracle AI Vector Search — 의미 기반 검색을 SQL 안에서</h4>
+                        <div style="font-size:13px; color:#7c2d12; line-height:1.7;">
+                            <p style="margin-bottom:10px;">
+                                기존 키워드 검색은 정확한 단어가 일치해야만 결과를 반환합니다.
+                                AI Vector Search는 텍스트의 의미를 벡터로 변환하여 유사한 내용을 찾습니다.
+                            </p>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #e5e7eb;">
+                                    <div style="font-weight:600; color:#1d1d1f; margin-bottom:3px;">기존 키워드 검색</div>
+                                    <div style="font-size:12px; color:#666;">정확한 단어 매칭만. 별도 검색 엔진 필요 (Elasticsearch 등). 검색과 트랜잭션 분리.</div>
+                                </div>
+                                <div style="background:#fff; border-radius:6px; padding:8px 10px; border:1px solid #ea580c;">
+                                    <div style="font-weight:600; color:#ea580c; margin-bottom:3px;">Oracle AI Vector Search</div>
+                                    <div style="font-size:12px; color:#666;">의미적 유사성으로 검색. Oracle DB 안에서 SQL로 벡터 검색. 하나의 SQL에서 검색 + 비즈니스 로직.</div>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px; font-size:12px; color:#555; line-height:1.6;">
+                                <strong>VECTOR 데이터 타입:</strong> 임베딩 벡터를 DB에 네이티브 저장 ·
+                                <strong>VECTOR_DISTANCE / VECTOR_EMBEDDING:</strong> SQL 함수로 유사도 계산 + 임베딩 생성 ·
+                                <strong>ONNX 모델:</strong> DB 내부에서 직접 임베딩 (외부 API 불필요) ·
+                                <strong>하이브리드 검색 (26ai):</strong> 키워드 + 벡터를 단일 SQL에서 결합
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- 테이블 생성 / 삭제 -->
                     <div class="step-card">
@@ -1297,43 +1349,101 @@
                         </div>
                     </div>
 
-                    <!-- OCI Object Storage에서 ONNX 모델 적재 -->
-                    <div class="step-card">
-                        <div class="step-card-header">
-                            <span class="step-card-title">OCI Object Storage에서 ONNX 모델 적재</span>
+                    <!-- ONNX 모델 적재 (로컬 / Object Storage) -->
+                    <div class="onnx-load-grid">
+                        <!-- 좌측: 로컬 파일 업로드 -->
+                        <div class="step-card">
+                            <div class="step-card-header">
+                                <span class="step-card-title">로컬 파일 업로드</span>
+                            </div>
+                            <div class="onnx-upload-form">
+                                <div class="onnx-form-row">
+                                    <div class="upload-area-onnx"
+                                         @click="$refs.onnxLocalFileInput.click()"
+                                         @dragover.prevent="onnxDragOver = true"
+                                         @dragleave="onnxDragOver = false"
+                                         @drop.prevent="handleOnnxFileDrop($event)"
+                                         :class="{ 'upload-area-hover': onnxDragOver }">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:6px;">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                            <line x1="12" y1="18" x2="12" y2="12"></line>
+                                            <polyline points="9 15 12 12 15 15"></polyline>
+                                        </svg>
+                                        <div style="font-size:13px; font-weight:600; color:var(--text-primary);">.onnx 파일 업로드</div>
+                                        <div style="font-size:11px; color:var(--text-light); margin-top:2px;">클릭 또는 드래그 앤 드롭 (최대 3GB)</div>
+                                    </div>
+                                    <input type="file" ref="onnxLocalFileInput" accept=".onnx" @change="handleOnnxFileSelect($event)" style="display:none;">
+                                </div>
+                                <div v-if="onnxSelectedFile" class="onnx-form-row">
+                                    <div class="onnx-selected-file">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                        <span>[[ onnxSelectedFile.name ]]</span>
+                                        <span class="onnx-file-size">([[ (onnxSelectedFile.size / 1024 / 1024).toFixed(1) ]]MB)</span>
+                                        <button class="onnx-file-remove" @click="onnxSelectedFile = null" title="파일 제거">&times;</button>
+                                    </div>
+                                </div>
+                                <div class="onnx-form-row">
+                                    <label class="onnx-form-label">모델명 (DB 등록용)</label>
+                                    <input type="text" v-model="onnxLocalModelName" class="chat-input onnx-name-input"
+                                           placeholder="미입력 시 파일명에서 자동 생성">
+                                    <small class="onnx-form-hint">영문, 숫자, 밑줄(_)만 사용. 비워두면 파일명 기반으로 자동 생성됩니다.</small>
+                                </div>
+                                <div class="onnx-form-row">
+                                    <button class="btn btn-primary" :disabled="onnxLocalUploading || !onnxSelectedFile" @click="uploadOnnxLocal">
+                                        <span v-if="onnxLocalUploading" class="spinner spinner-sm"></span>
+                                        [[ onnxLocalUploading ? 'DB에 적재 중...' : '로컬 파일 DB 적재' ]]
+                                    </button>
+                                </div>
+                                <div v-if="onnxLocalUploadResult" class="onnx-upload-result" :class="onnxLocalUploadResult.success ? 'onnx-result-ok' : 'onnx-result-err'">
+                                    <template v-if="onnxLocalUploadResult.success">
+                                        [[ onnxLocalUploadResult.message ]] ([[ onnxLocalUploadResult.size_mb ]]MB, 소요: [[ onnxLocalUploadResult.elapsed_ms ]]ms)
+                                    </template>
+                                    <template v-else>
+                                        [[ onnxLocalUploadResult.error ]]
+                                    </template>
+                                </div>
+                            </div>
                         </div>
-                        <div class="onnx-upload-form">
-                            <div class="onnx-form-row">
-                                <label class="onnx-form-label">Location URI (Pre-Authenticated Request URL)</label>
-                                <input type="text" v-model="onnxLocationUri" class="chat-input"
-                                       placeholder="https://objectstorage.us-ashburn-1.oci.customer-oci.com/p/.../n/.../b/.../o/">
-                                <small class="onnx-form-hint">OCI Object Storage의 PAR URL 또는 공개 URL (끝에 /o/ 까지)</small>
+
+                        <!-- 우측: OCI Object Storage -->
+                        <div class="step-card">
+                            <div class="step-card-header">
+                                <span class="step-card-title">OCI Object Storage에서 적재</span>
                             </div>
-                            <div class="onnx-form-row">
-                                <label class="onnx-form-label">ONNX 파일명</label>
-                                <input type="text" v-model="onnxFileName" class="chat-input onnx-name-input"
-                                       placeholder="예: multilingual_e5_small.onnx">
-                                <small class="onnx-form-hint">Object Storage에 업로드된 .onnx 파일 이름</small>
-                            </div>
-                            <div class="onnx-form-row">
-                                <label class="onnx-form-label">모델명 (DB 등록용, 선택)</label>
-                                <input type="text" v-model="onnxUploadName" class="chat-input onnx-name-input"
-                                       placeholder="미입력 시 파일명에서 자동 생성">
-                                <small class="onnx-form-hint">영문, 숫자, 밑줄(_)만 사용. 비워두면 파일명 기반으로 자동 생성됩니다.</small>
-                            </div>
-                            <div class="onnx-form-row">
-                                <button class="btn btn-primary" :disabled="onnxUploading || !onnxLocationUri.trim() || !onnxFileName.trim()" @click="loadOnnxFromCloud">
-                                    <span v-if="onnxUploading" class="spinner spinner-sm"></span>
-                                    [[ onnxUploading ? 'DB에 적재 중...' : 'Object Storage에서 DB 적재' ]]
-                                </button>
-                            </div>
-                            <div v-if="onnxUploadResult" class="onnx-upload-result" :class="onnxUploadResult.success ? 'onnx-result-ok' : 'onnx-result-err'">
-                                <template v-if="onnxUploadResult.success">
-                                    [[ onnxUploadResult.message ]] (소요: [[ onnxUploadResult.elapsed_ms ]]ms)
-                                </template>
-                                <template v-else>
-                                    [[ onnxUploadResult.error ]]
-                                </template>
+                            <div class="onnx-upload-form">
+                                <div class="onnx-form-row">
+                                    <label class="onnx-form-label">Location URI (Pre-Authenticated Request URL)</label>
+                                    <input type="text" v-model="onnxLocationUri" class="chat-input"
+                                           placeholder="https://objectstorage.us-ashburn-1.oci.customer-oci.com/p/.../n/.../b/.../o/">
+                                    <small class="onnx-form-hint">OCI Object Storage의 PAR URL 또는 공개 URL (끝에 /o/ 까지)</small>
+                                </div>
+                                <div class="onnx-form-row">
+                                    <label class="onnx-form-label">ONNX 파일명</label>
+                                    <input type="text" v-model="onnxFileName" class="chat-input onnx-name-input"
+                                           placeholder="예: multilingual_e5_small.onnx">
+                                    <small class="onnx-form-hint">Object Storage에 업로드된 .onnx 파일 이름</small>
+                                </div>
+                                <div class="onnx-form-row">
+                                    <label class="onnx-form-label">모델명 (DB 등록용, 선택)</label>
+                                    <input type="text" v-model="onnxUploadName" class="chat-input onnx-name-input"
+                                           placeholder="미입력 시 파일명에서 자동 생성">
+                                    <small class="onnx-form-hint">영문, 숫자, 밑줄(_)만 사용. 비워두면 파일명 기반으로 자동 생성됩니다.</small>
+                                </div>
+                                <div class="onnx-form-row">
+                                    <button class="btn btn-primary" :disabled="onnxUploading || !onnxLocationUri.trim() || !onnxFileName.trim()" @click="loadOnnxFromCloud">
+                                        <span v-if="onnxUploading" class="spinner spinner-sm"></span>
+                                        [[ onnxUploading ? 'DB에 적재 중...' : 'Object Storage에서 DB 적재' ]]
+                                    </button>
+                                </div>
+                                <div v-if="onnxUploadResult" class="onnx-upload-result" :class="onnxUploadResult.success ? 'onnx-result-ok' : 'onnx-result-err'">
+                                    <template v-if="onnxUploadResult.success">
+                                        [[ onnxUploadResult.message ]] (소요: [[ onnxUploadResult.elapsed_ms ]]ms)
+                                    </template>
+                                    <template v-else>
+                                        [[ onnxUploadResult.error ]]
+                                    </template>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2208,8 +2318,8 @@
                             <span class="awr-info-value">[[ awrParseInfo.section_count ]]개</span>
                         </div>
                         <div class="awr-info-item">
-                            <span class="awr-info-label">추출 테이블</span>
-                            <span class="awr-info-value">[[ awrParseInfo.total_tables ]]개</span>
+                            <span class="awr-info-label">RAC</span>
+                            <span class="awr-info-value">[[ awrParseInfo.is_rac ? '예' : '아니오' ]]</span>
                         </div>
                         <div class="awr-info-item">
                             <span class="awr-info-label">Exadata</span>
@@ -2218,6 +2328,20 @@
                         <div class="awr-info-item">
                             <span class="awr-info-label">분석 소요</span>
                             <span class="awr-info-value">[[ awrElapsedMs ]]ms</span>
+                        </div>
+                        <div class="awr-info-item" v-if="awrParseInfo.raw_text_length">
+                            <span class="awr-info-label">원문 길이</span>
+                            <span class="awr-info-value">[[ awrParseInfo.raw_text_length?.toLocaleString() ]]자</span>
+                        </div>
+                        <div class="awr-info-item" v-if="awrParseInfo.max_input_chars">
+                            <span class="awr-info-label">입력 제한</span>
+                            <span class="awr-info-value">[[ awrParseInfo.max_input_chars?.toLocaleString() ]]자</span>
+                        </div>
+                        <div v-if="awrParseInfo.extracted_sections" style="margin-top:6px;">
+                            <span class="awr-info-label" style="display:block; margin-bottom:3px;">추출 섹션 목록:</span>
+                            <div style="font-size:11px; color:var(--text-secondary); line-height:1.6;">
+                                <span v-for="(sec, si) in awrParseInfo.extracted_sections" :key="si" style="display:inline-block; background:var(--bg-secondary); padding:1px 6px; border-radius:3px; margin:1px 2px;">[[ sec ]]</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2254,123 +2378,104 @@
             <main class="chat-area">
                 <div class="step-content-scroll">
 
-                <!-- AWR 업로드 화면 -->
+                <!-- ===== AWR 업로드 화면 ===== -->
                 <div v-show="extraSubMenu === 'awr-upload'" class="step-content">
                     <h2 class="step-title">AWR 리포트 업로드 &amp; AI 분석</h2>
                     <div class="step-card">
-                        <p class="step-desc">AWR HTML 리포트 파일을 업로드하면, AI가 핵심 지표를 분석하여 전문적인 검토 의견을 제공합니다.</p>
+                        <p class="step-desc">AWR HTML 리포트를 업로드하면, 23개 핵심 섹션을 추출하고 8개 분석 보고서(시스템 개요, 병목 진단, Top SQL, I/O, Hot Segments, 메모리, CPU, 종합 권고)를 생성합니다.</p>
                         <div class="upload-area"
                              @click="$refs.awrFileInput.click()"
                              @dragover.prevent="awrDragOver = true"
                              @dragleave="awrDragOver = false"
                              @drop.prevent="handleAwrFileDrop($event)"
                              :class="{ 'upload-area-hover': awrDragOver }">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
                             </svg>
                             <span class="upload-text">AWR HTML 파일 업로드</span>
-                            <span class="upload-sub">클릭 또는 드래그 앤 드롭 (.html, 최대 20MB)</span>
+                            <span class="upload-hint">클릭 또는 드래그 앤 드롭 (최대 20MB)</span>
                         </div>
                         <input type="file" ref="awrFileInput" accept=".html,.htm" @change="handleAwrFileSelect($event)" style="display: none;">
                     </div>
 
-                    <!-- 업로드/분석 중 — 파이프라인 UI -->
+                    <!-- 분석 진행 상태 -->
                     <div v-if="awrLoading" class="step-card pipeline-card">
                         <div class="pipeline-header">
-                            <div class="pipeline-ring"
+                            <div class="pipeline-ring-wrap">
+                                 <div class="pipeline-ring"
                                  :style="'--pct: ' + (awrRingPercent * 3.6) + 'deg'">
-                                <div class="pipeline-ring-inner">
-                                    <span class="pipeline-ring-text">[[ awrRingPercent ]]%</span>
+                                    <div class="pipeline-ring-inner">
+                                        <span class="pipeline-ring-text">[[ awrRingPercent ]]%</span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="pipeline-header-text">
                                 <strong>AWR 리포트 AI 분석 중</strong>
-                                <span class="pipeline-header-sub">파싱 → AI 분석 → 결과 생성</span>
+                                <p style="color:var(--text-secondary); font-size:13px; margin:2px 0 0;">23개 섹션 추출 → 8개 분석 보고서 생성</p>
                             </div>
                         </div>
                         <div class="pipeline-steps">
-                            <!-- Step 1: HTML 파싱 -->
                             <div class="pipeline-step"
                                  :class="{ 'pipeline-step-done': awrStep > 1, 'pipeline-step-running': awrStep === 1, 'pipeline-step-pending': awrStep < 1 }">
-                                <div class="pipeline-step-indicator">
+                                <div class="pipeline-step-icon">
                                     <div v-if="awrStep < 1" class="pipeline-dot"></div>
                                     <div v-else-if="awrStep === 1" class="pipeline-dot-running"><div class="pipeline-dot-pulse"></div></div>
-                                    <div v-else class="pipeline-dot-done">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                    </div>
-                                    <div class="pipeline-line" :class="{ 'pipeline-line-done': awrStep > 1 }"></div>
+                                    <div v-else class="pipeline-dot-done">&#10003;</div>
                                 </div>
                                 <div class="pipeline-step-content">
-                                    <div class="pipeline-step-label">
-                                        <span class="pipeline-step-num">1</span>
-                                        <span>HTML 파싱 및 핵심 섹션 추출</span>
-                                    </div>
-                                    <div class="pipeline-step-detail" v-if="awrStep === 1">AWR 리포트에서 성능 지표 테이블을 추출하고 있습니다...</div>
+                                    <div class="pipeline-line" :class="{ 'pipeline-line-done': awrStep > 1 }"></div>
+                                    <div class="pipeline-step-label">1단계: HTML 파싱</div>
+                                    <div class="pipeline-step-detail" v-if="awrStep === 1">23개 섹션 제목을 검색하여 테이블 데이터를 추출하고 있습니다...</div>
                                 </div>
                             </div>
-                            <!-- Step 2: AI 분석 -->
                             <div class="pipeline-step"
                                  :class="{ 'pipeline-step-done': awrStep > 2, 'pipeline-step-running': awrStep === 2, 'pipeline-step-pending': awrStep < 2 }">
-                                <div class="pipeline-step-indicator">
+                                <div class="pipeline-step-icon">
                                     <div v-if="awrStep < 2" class="pipeline-dot"></div>
                                     <div v-else-if="awrStep === 2" class="pipeline-dot-running"><div class="pipeline-dot-pulse"></div></div>
-                                    <div v-else class="pipeline-dot-done">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                    </div>
-                                    <div class="pipeline-line" :class="{ 'pipeline-line-done': awrStep > 2 }"></div>
+                                    <div v-else class="pipeline-dot-done">&#10003;</div>
                                 </div>
                                 <div class="pipeline-step-content">
-                                    <div class="pipeline-step-label">
-                                        <span class="pipeline-step-num">2</span>
-                                        <span>AI 성능 지표 분석</span>
-                                    </div>
-                                    <div class="pipeline-step-detail" v-if="awrStep === 2">AI가 추출된 데이터를 분석하고 있습니다... (가장 오래 걸리는 단계)</div>
-                                    <!-- 추정 기반 프로그레스바 (step 2에서만) -->
+                                    <div class="pipeline-line" :class="{ 'pipeline-line-done': awrStep > 2 }"></div>
+                                    <div class="pipeline-step-label">2단계: AI 분석</div>
+                                    <div class="pipeline-step-detail" v-if="awrStep === 2">AI가 8개 섹션 분석 보고서를 생성하고 있습니다... (가장 오래 걸리는 단계)</div>
                                     <div v-if="awrStep === 2" class="pipeline-progress-bar-wrap">
-                                        <div class="pipeline-progress-bar" style="height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden;">
+                                        <div class="pipeline-progress-bar">
                                             <div class="pipeline-progress-fill" :style="{ width: Math.min(awrProgress, 100) + '%', height: '100%', background: 'linear-gradient(90deg, #86efac, #22c55e, #16a34a)', borderRadius: '5px', transition: 'width 1s ease' }"></div>
                                         </div>
                                         <span class="pipeline-progress-text">~[[ Math.min(awrProgress, 100) ]]%</span>
                                     </div>
                                 </div>
                             </div>
-                            <!-- Step 3: 결과 생성 -->
                             <div class="pipeline-step"
                                  :class="{ 'pipeline-step-done': awrStep > 3, 'pipeline-step-running': awrStep === 3, 'pipeline-step-pending': awrStep < 3 }">
-                                <div class="pipeline-step-indicator">
+                                <div class="pipeline-step-icon">
                                     <div v-if="awrStep < 3" class="pipeline-dot"></div>
                                     <div v-else-if="awrStep === 3" class="pipeline-dot-running"><div class="pipeline-dot-pulse"></div></div>
-                                    <div v-else class="pipeline-dot-done">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                    </div>
+                                    <div v-else class="pipeline-dot-done">&#10003;</div>
                                 </div>
                                 <div class="pipeline-step-content">
-                                    <div class="pipeline-step-label">
-                                        <span class="pipeline-step-num">3</span>
-                                        <span>분석 결과 생성</span>
-                                    </div>
-                                    <div class="pipeline-step-detail" v-if="awrStep === 3">카테고리별 점수 및 종합 소견을 생성하고 있습니다...</div>
+                                    <div class="pipeline-step-label">3단계: 결과 정리</div>
+                                    <div class="pipeline-step-detail" v-if="awrStep === 3">보고서를 정리하고 있습니다...</div>
                                 </div>
                             </div>
                         </div>
-                        <!-- 하단 안내 -->
-                        <div style="padding: 0 24px 20px; display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-size:12px; color:var(--text-secondary);">AI 분석에는 약 30초 ~ 2분 소요됩니다.</span>
+                        <div class="pipeline-footer">
                             <span v-if="awrElapsed > 0" style="font-size:13px; font-weight:600; color:var(--primary);">⏱️ [[ awrElapsed ]]초</span>
                         </div>
                     </div>
 
-                    <!-- 에러 -->
                     <div v-if="awrError" class="step-card">
                         <div class="error-box">[[ awrError ]]</div>
                     </div>
                 </div>
 
-                <!-- AWR 분석 결과 화면 -->
+                <!-- ===== AWR 분석 결과 화면 ===== -->
                 <div v-if="extraSubMenu === 'awr-result' && awrAnalysis" class="step-content awr-result-content">
 
-                    <!-- 분석 결과 탭 바 (다중 결과 전환) -->
+                    <!-- 결과 탭 (여러 분석 이력) -->
                     <div v-if="awrResults.length > 1" class="awr-result-tabs">
                         <div v-for="(tab, ti) in awrResults" :key="ti"
                              class="awr-result-tab" :class="{ active: awrActiveTab === ti }"
@@ -2382,7 +2487,7 @@
                         </div>
                     </div>
 
-                    <!-- 카테고리별 점수 -->
+                    <!-- ① 카테고리별 성능 점수 -->
                     <div v-if="awrAnalysis.categoryScores" class="awr-section-card">
                         <h3 class="awr-section-title">카테고리별 성능 점수</h3>
                         <div class="awr-category-scores">
@@ -2399,275 +2504,70 @@
                         </div>
                     </div>
 
-                    <!-- DB Time 분석 -->
-                    <div v-if="awrAnalysis.dbTimeAnalysis" class="awr-section-card">
-                        <h3 class="awr-section-title">DB Time 분석</h3>
-                        <div class="awr-kv-grid">
-                            <span class="awr-kv-label">DB Time</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.dbTimeSec ]] sec</span>
-                            <span class="awr-kv-label">Elapsed Time</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.elapsedSec ]] sec</span>
-                            <span class="awr-kv-label">Avg Active Sessions</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.avgActiveSessions ]]</span>
-                            <span class="awr-kv-label">CPU Time %</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.cpuTimePct ]]%</span>
-                            <span class="awr-kv-label">Wait Time %</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.dbTimeAnalysis.waitTimePct ]]%</span>
-                        </div>
-                        <p class="awr-interp">[[ awrAnalysis.dbTimeAnalysis.interpretation ]]</p>
-                    </div>
+                    <!-- ② 8개 섹션 개별 표시 (하이브리드 렌더링) -->
+                    <template v-for="secKey in awrSectionKeys" :key="secKey">
+                        <div v-if="awrAnalysis[secKey]" class="awr-section-card">
+                            <h3 class="awr-section-title">[[ awrAnalysis[secKey].title ]]</h3>
 
-                    <!-- 종합 소견 -->
-                    <div class="awr-summary-card">
-                        <div class="awr-summary-text">
-                            <h3>종합 소견</h3>
-                            <p style="white-space:pre-line;">[[ awrAnalysis.summary ]]</p>
-                        </div>
-                    </div>
-
-                    <!-- 스냅샷 정보 -->
-                    <div v-if="awrAnalysis.snapshotInfo" class="awr-section-card">
-                        <h3 class="awr-section-title">스냅샷 정보</h3>
-                        <div class="awr-kv-grid">
-                            <template v-for="(val, key) in awrAnalysis.snapshotInfo" :key="key">
-                                <template v-if="val !== null && val !== 'Unknown' && val !== 'N/A' && val !== ''">
-                                    <span class="awr-kv-label">[[ awrSnapshotLabel(key) ]]</span>
-                                    <span class="awr-kv-value">[[ val ]]</span>
+                            <!-- data (key-value) → awr-kv-grid -->
+                            <div v-if="awrAnalysis[secKey].data" class="awr-kv-grid">
+                                <template v-for="(val, key) in awrAnalysis[secKey].data" :key="key">
+                                    <span class="awr-kv-label">[[ key ]]</span>
+                                    <span class="awr-kv-value" :class="{ 'awr-kv-warn': val && String(val).includes('⚠️') }">[[ val ]]</span>
                                 </template>
+                            </div>
+
+                            <!-- table (단일 테이블) → result-table -->
+                            <div v-if="awrAnalysis[secKey].table" class="table-wrapper" style="margin: 10px 0;">
+                                <table class="result-table awr-table">
+                                    <thead><tr>
+                                        <th v-for="h in awrAnalysis[secKey].table.headers" :key="h">[[ h ]]</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        <tr v-for="(row, ri) in awrAnalysis[secKey].table.rows" :key="ri">
+                                            <td v-for="(cell, ci) in row" :key="ci" :class="{ 'awr-kv-warn': cell && String(cell).includes('⚠️') }">[[ cell ]]</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- tables (복수 테이블, Hot Segments 등) -->
+                            <template v-if="awrAnalysis[secKey].tables">
+                                <div v-for="(tbl, ti) in awrAnalysis[secKey].tables" :key="ti" style="margin: 10px 0;">
+                                    <h4 v-if="tbl.subtitle" style="font-size:13px; font-weight:600; margin:8px 0 4px; color:var(--text-secondary);">[[ tbl.subtitle ]]</h4>
+                                    <div class="table-wrapper">
+                                        <table class="result-table awr-table">
+                                            <thead><tr>
+                                                <th v-for="h in tbl.headers" :key="h">[[ h ]]</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                <tr v-for="(row, ri) in tbl.rows" :key="ri">
+                                                    <td v-for="(cell, ci) in row" :key="ci" :class="{ 'awr-kv-warn': cell && String(cell).includes('⚠️') }">[[ cell ]]</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </template>
-                        </div>
-                    </div>
 
-                    <!-- 발견 사항 (Findings) -->
-                    <div v-if="awrAnalysis.findings && awrAnalysis.findings.length > 0" class="awr-section-card">
-                        <h3 class="awr-section-title">발견 사항</h3>
-                        <div class="awr-findings-list">
-                            <div v-for="(f, fi) in awrAnalysis.findings" :key="fi" class="awr-finding-item" :class="'awr-finding-' + f.severity">
-                                <div class="awr-finding-header">
-                                    <span class="awr-severity-badge" :class="'awr-severity-' + f.severity">
-                                        [[ f.severity === 'critical' ? 'CRITICAL' : f.severity === 'warning' ? 'WARNING' : 'INFO' ]]
-                                    </span>
-                                    <span class="awr-finding-category">[[ f.category ]]</span>
-                                    <span class="awr-finding-title">[[ f.title ]]</span>
-                                    <button class="awr-source-btn awr-source-btn-sm" @click="openAwrSource(findingSourceKeyword(f))" title="AWR 원문에서 관련 섹션 보기">📋 원문</button>
-                                </div>
-                                <p class="awr-finding-detail">[[ f.detail ]]</p>
-                                <div v-if="f.recommendation" class="awr-finding-rec">
-                                    <strong>권고:</strong> [[ f.recommendation ]]
-                                </div>
-                            </div>
+                            <!-- interpretation → 서술형 해석 -->
+                            <p v-if="awrAnalysis[secKey].interpretation" class="awr-interp">[[ awrAnalysis[secKey].interpretation ]]</p>
                         </div>
-                    </div>
+                    </template>
 
-                    <!-- Top Wait Events -->
-                    <div v-if="awrAnalysis.waitEvents && awrAnalysis.waitEvents.length > 0" class="awr-section-card">
-                        <h3 class="awr-section-title">Top Wait Events
-                            <button class="awr-source-btn" @click="openAwrSource('Top 10 Foreground Events')" title="AWR 원문에서 보기">📋 원문</button>
-                        </h3>
-                        <div class="table-wrapper">
-                            <table class="result-table awr-table">
-                                <thead>
-                                    <tr>
-                                        <th>Event</th>
-                                        <th>Wait Class</th>
-                                        <th>Waits</th>
-                                        <th>Total Time</th>
-                                        <th>Avg Wait</th>
-                                        <th>% DB Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(w, wi) in awrAnalysis.waitEvents" :key="wi">
-                                        <td class="awr-event-name">[[ w.event ]]</td>
-                                        <td>[[ w.waitClass ]]</td>
-                                        <td>[[ w.waits?.toLocaleString?.() || w.waits ]]</td>
-                                        <td>[[ w.totalTime ]]</td>
-                                        <td>[[ w.avgWait ]]</td>
-                                        <td>
-                                            <div class="awr-pct-bar">
-                                                <div class="awr-pct-fill" :style="{ width: Math.min(w.pctDbTime, 100) + '%' }"></div>
-                                                <span>[[ w.pctDbTime ]]%</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div v-for="(w, wi) in awrAnalysis.waitEvents" :key="'interp-'+wi" class="awr-event-interp">
-                            <strong>[[ w.event ]]:</strong> [[ w.interpretation ]]
-                        </div>
-                    </div>
-
-                    <!-- Load Profile -->
-                    <div v-if="awrAnalysis.loadProfile" class="awr-section-card">
-                        <h3 class="awr-section-title">Load Profile
-                            <button class="awr-source-btn" @click="openAwrSource('Load Profile')" title="AWR 원문에서 보기">📋 원문</button>
-                        </h3>
-                        <div class="awr-kv-grid">
-                            <span class="awr-kv-label">DB Time/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.dbTimePerSec ]]</span>
-                            <span class="awr-kv-label">DB CPU/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.dbCpuPerSec ]]</span>
-                            <span class="awr-kv-label">Logical Reads/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.logicalReadsPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.logicalReadsPerSec ]]</span>
-                            <span class="awr-kv-label">Physical Reads/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.physicalReadsPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.physicalReadsPerSec ]]</span>
-                            <span class="awr-kv-label">Physical Writes/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.physicalWritesPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.physicalWritesPerSec ]]</span>
-                            <span class="awr-kv-label">Redo/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.redoPerSec ]]</span>
-                            <span class="awr-kv-label">Executions/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.executionsPerSec?.toLocaleString?.() || awrAnalysis.loadProfile.executionsPerSec ]]</span>
-                            <span class="awr-kv-label">Transactions/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.transactionsPerSec ]]</span>
-                            <span class="awr-kv-label">Parses/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.parsesPerSec ]]</span>
-                            <span class="awr-kv-label">Hard Parses/Sec</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.loadProfile.hardParsesPerSec ]]</span>
-                        </div>
-                        <p class="awr-interp">[[ awrAnalysis.loadProfile.interpretation ]]</p>
-                    </div>
-
-                    <!-- Instance Efficiency -->
-                    <div v-if="awrAnalysis.instanceEfficiency" class="awr-section-card">
-                        <h3 class="awr-section-title">Instance Efficiency
-                            <button class="awr-source-btn" @click="openAwrSource('Instance Efficiency')" title="AWR 원문에서 보기">📋 원문</button>
-                        </h3>
-                        <div class="awr-efficiency-bars">
-                            <div class="awr-eff-item">
-                                <span class="awr-eff-label">Buffer Hit %</span>
-                                <div class="awr-eff-bar-wrapper">
-                                    <div class="awr-eff-bar" :style="{ width: awrAnalysis.instanceEfficiency.bufferHitPct + '%' }"
-                                         :class="awrAnalysis.instanceEfficiency.bufferHitPct >= 95 ? 'awr-eff-good' : awrAnalysis.instanceEfficiency.bufferHitPct >= 85 ? 'awr-eff-warn' : 'awr-eff-bad'">
-                                    </div>
-                                </div>
-                                <span class="awr-eff-val">[[ awrAnalysis.instanceEfficiency.bufferHitPct ]]%</span>
-                            </div>
-                            <div class="awr-eff-item">
-                                <span class="awr-eff-label">Library Cache Hit %</span>
-                                <div class="awr-eff-bar-wrapper">
-                                    <div class="awr-eff-bar" :style="{ width: awrAnalysis.instanceEfficiency.libraryCacheHitPct + '%' }"
-                                         :class="awrAnalysis.instanceEfficiency.libraryCacheHitPct >= 95 ? 'awr-eff-good' : awrAnalysis.instanceEfficiency.libraryCacheHitPct >= 85 ? 'awr-eff-warn' : 'awr-eff-bad'">
-                                    </div>
-                                </div>
-                                <span class="awr-eff-val">[[ awrAnalysis.instanceEfficiency.libraryCacheHitPct ]]%</span>
-                            </div>
-                            <div class="awr-eff-item">
-                                <span class="awr-eff-label">Soft Parse %</span>
-                                <div class="awr-eff-bar-wrapper">
-                                    <div class="awr-eff-bar" :style="{ width: awrAnalysis.instanceEfficiency.softParsePct + '%' }"
-                                         :class="awrAnalysis.instanceEfficiency.softParsePct >= 95 ? 'awr-eff-good' : awrAnalysis.instanceEfficiency.softParsePct >= 85 ? 'awr-eff-warn' : 'awr-eff-bad'">
-                                    </div>
-                                </div>
-                                <span class="awr-eff-val">[[ awrAnalysis.instanceEfficiency.softParsePct ]]%</span>
-                            </div>
-                        </div>
-                        <p class="awr-interp">[[ awrAnalysis.instanceEfficiency.interpretation ]]</p>
-                    </div>
-
-                    <!-- Memory Advisory -->
-                    <div v-if="awrAnalysis.memoryAdvisory" class="awr-section-card">
-                        <h3 class="awr-section-title">Memory Advisory
-                            <button class="awr-source-btn" @click="openAwrSource('SGA Target Advisory')" title="AWR 원문에서 보기">📋 원문</button>
-                        </h3>
-                        <div class="awr-kv-grid">
-                            <span class="awr-kv-label">SGA 현재</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.memoryAdvisory.sgaCurrent ]]</span>
-                            <span class="awr-kv-label">SGA 권장</span>
-                            <span class="awr-kv-value awr-kv-highlight">[[ awrAnalysis.memoryAdvisory.sgaRecommended ]]</span>
-                            <span class="awr-kv-label">PGA 현재</span>
-                            <span class="awr-kv-value">[[ awrAnalysis.memoryAdvisory.pgaCurrent ]]</span>
-                            <span class="awr-kv-label">PGA 권장</span>
-                            <span class="awr-kv-value awr-kv-highlight">[[ awrAnalysis.memoryAdvisory.pgaRecommended ]]</span>
-                        </div>
-                        <p class="awr-interp">[[ awrAnalysis.memoryAdvisory.interpretation ]]</p>
-                    </div>
-
-                    <!-- I/O Analysis -->
-                    <div v-if="awrAnalysis.ioAnalysis" class="awr-section-card">
-                        <h3 class="awr-section-title">I/O Analysis
-                            <button class="awr-source-btn" @click="openAwrSource('Tablespace IO Stats')" title="AWR 원문에서 보기">📋 원문</button>
-                        </h3>
-                        <div v-if="awrAnalysis.ioAnalysis.topTablespaces && awrAnalysis.ioAnalysis.topTablespaces.length > 0" class="table-wrapper">
-                            <table class="result-table awr-table">
-                                <thead>
-                                    <tr><th>Tablespace</th><th>Reads</th><th>Writes</th><th>Avg Read Time</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(ts, ti) in awrAnalysis.ioAnalysis.topTablespaces" :key="ti">
-                                        <td>[[ ts.name ]]</td>
-                                        <td>[[ ts.reads?.toLocaleString?.() || ts.reads ]]</td>
-                                        <td>[[ ts.writes?.toLocaleString?.() || ts.writes ]]</td>
-                                        <td>[[ ts.avgReadTime ]]</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <p class="awr-interp">[[ awrAnalysis.ioAnalysis.interpretation ]]</p>
-                    </div>
-
-                    <!-- Top Segments -->
-                    <div v-if="awrAnalysis.topSegments && awrAnalysis.topSegments.length > 0" class="awr-section-card">
-                        <h3 class="awr-section-title">Top Segments
-                            <button class="awr-source-btn" @click="openAwrSource('Segments by Logical Reads')" title="AWR 원문에서 보기">📋 원문</button>
-                        </h3>
-                        <div class="table-wrapper">
-                            <table class="result-table awr-table">
-                                <thead>
-                                    <tr><th>Segment</th><th>Type</th><th>Logical Reads</th><th>Physical Reads</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(seg, si) in awrAnalysis.topSegments" :key="si">
-                                        <td>[[ seg.segment ]]</td>
-                                        <td>[[ seg.type ]]</td>
-                                        <td>[[ seg.logicalReads?.toLocaleString?.() || seg.logicalReads ]]</td>
-                                        <td>[[ seg.physicalReads?.toLocaleString?.() || seg.physicalReads ]]</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Exadata (조건부) -->
-                    <div v-if="awrAnalysis.exadata && awrAnalysis.exadata !== null" class="awr-section-card awr-section-exadata">
-                        <h3 class="awr-section-title">Exadata Performance</h3>
-                        <div class="awr-efficiency-bars">
-                            <div class="awr-eff-item">
-                                <span class="awr-eff-label">Cell Offload %</span>
-                                <div class="awr-eff-bar-wrapper">
-                                    <div class="awr-eff-bar" :style="{ width: awrAnalysis.exadata.cellOffloadPct + '%' }"
-                                         :class="awrAnalysis.exadata.cellOffloadPct >= 70 ? 'awr-eff-good' : awrAnalysis.exadata.cellOffloadPct >= 40 ? 'awr-eff-warn' : 'awr-eff-bad'"></div>
-                                </div>
-                                <span class="awr-eff-val">[[ awrAnalysis.exadata.cellOffloadPct ]]%</span>
-                            </div>
-                            <div class="awr-eff-item">
-                                <span class="awr-eff-label">Smart Scan %</span>
-                                <div class="awr-eff-bar-wrapper">
-                                    <div class="awr-eff-bar" :style="{ width: awrAnalysis.exadata.smartScanPct + '%' }"
-                                         :class="awrAnalysis.exadata.smartScanPct >= 70 ? 'awr-eff-good' : awrAnalysis.exadata.smartScanPct >= 40 ? 'awr-eff-warn' : 'awr-eff-bad'"></div>
-                                </div>
-                                <span class="awr-eff-val">[[ awrAnalysis.exadata.smartScanPct ]]%</span>
-                            </div>
-                            <div class="awr-eff-item">
-                                <span class="awr-eff-label">Flash Cache Hit %</span>
-                                <div class="awr-eff-bar-wrapper">
-                                    <div class="awr-eff-bar" :style="{ width: awrAnalysis.exadata.flashCacheHitPct + '%' }"
-                                         :class="awrAnalysis.exadata.flashCacheHitPct >= 90 ? 'awr-eff-good' : awrAnalysis.exadata.flashCacheHitPct >= 70 ? 'awr-eff-warn' : 'awr-eff-bad'"></div>
-                                </div>
-                                <span class="awr-eff-val">[[ awrAnalysis.exadata.flashCacheHitPct ]]%</span>
-                            </div>
-                        </div>
-                        <p class="awr-interp">[[ awrAnalysis.exadata.interpretation ]]</p>
-                    </div>
-
-                    <!-- Action Items -->
+                    <!-- ③ 액션 아이템 (우선순위순) -->
                     <div v-if="awrAnalysis.actionItems && awrAnalysis.actionItems.length > 0" class="awr-section-card awr-section-actions">
                         <h3 class="awr-section-title">액션 아이템 (우선순위순)</h3>
                         <div class="awr-action-list">
                             <div v-for="(item, ai) in awrAnalysis.actionItems" :key="ai" class="awr-action-item">
-                                <div class="awr-action-priority">[[ item.priority ]]</div>
+                                <div class="awr-action-priority" :class="{
+                                    'awr-priority-urgent': item.priority === '[긴급]',
+                                    'awr-priority-high': item.priority === '[높음]',
+                                    'awr-priority-medium': item.priority === '[중간]'
+                                }">[[ item.priority ]]</div>
                                 <div class="awr-action-body">
                                     <div class="awr-action-text">[[ item.action ]]</div>
+                                    <div v-if="item.evidence" class="awr-action-evidence">📊 [[ item.evidence ]]</div>
                                     <div class="awr-action-meta">
                                         <span class="awr-action-category">[[ item.category ]]</span>
                                         <span class="awr-action-impact">[[ item.expectedImpact ]]</span>
@@ -2677,7 +2577,7 @@
                         </div>
                     </div>
 
-                    <!-- 후속 질문 영역 -->
+                    <!-- ④ 후속 질문 영역 -->
                     <div class="awr-section-card awr-followup-section">
                         <h3 class="awr-section-title">추가 질문</h3>
                         <div class="awr-followup-messages" ref="awrFollowupMessagesRef">
@@ -2687,7 +2587,7 @@
                                         <div class="spinner"></div>
                                         <span class="loading-text">답변 생성 중...</span>
                                     </div>
-                                    <pre v-else class="text-pre">[[ msg.content ]]</pre>
+                                    <div v-else class="awr-markdown-content" v-html="renderMarkdown(msg.content)"></div>
                                 </div>
                             </div>
                         </div>
@@ -2699,7 +2599,7 @@
                 <!-- 후속 질문 입력창 (결과 화면에서만) -->
                 <div class="input-area" v-if="extraSubMenu === 'awr-result' && awrAnalysis">
                     <div class="input-wrapper">
-                        <input type="text" v-model="awrFollowupInput" @keyup.enter="sendAwrFollowup" :disabled="awrFollowupLoading" class="chat-input" placeholder="분석 결과에 대해 추가 질문하세요... (예: cell smart table scan에 대해 자세히 설명해줘)">
+                        <input type="text" v-model="awrFollowupInput" @keyup.enter="sendAwrFollowup" :disabled="awrFollowupLoading" class="chat-input" placeholder="분석 결과에 대해 추가 질문하세요...">
                         <button @click="sendAwrFollowup" :disabled="awrFollowupLoading || !awrFollowupInput.trim()" class="btn btn-primary send-btn">질문</button>
                     </div>
                 </div>
@@ -2712,6 +2612,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=67"></script>
+    <script src="/static/js/app.js?v=74"></script>
 </body>
 </html>

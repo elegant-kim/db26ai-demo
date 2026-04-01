@@ -40,7 +40,7 @@ python main.py
 | `app/select_ai.py` | Select AI 핵심: `DBMS_CLOUD_AI.GENERATE`, 프로필 관리, raw SQL 실행, 스키마 정보, Annotation, EXPLAIN PLAN |
 | `app/routes.py` | 모든 API 엔드포인트 (`/api` prefix) — NL2SQL, Vector Search, ONNX 모델 관리, AWR 분석 |
 | `app/vector_search.py` | 벡터 검색 전체: PDF 업로드(SSE 스트리밍), 청킹, 임베딩(ONNX/외부API), 검색(vector/keyword/hybrid/compare), RAG, ONNX 모델 관리 |
-| `app/awr_analyzer.py` | AWR HTML 파싱 (HTMLParser), 섹션 추출, LLM 분석 프롬프트 빌드, 후속 질문 |
+| `app/awr_analyzer_v2.py` | AWR HTML 파싱 (23개 섹션 타이틀 검색 방식), 8개 섹션 분석 보고서 프롬프트 빌드, categoryScores/actionItems 포함 LLM 분석, 후속 질문 |
 | `app/llm_client.py` | 공통 LLM 클라이언트 — Groq (Llama 3.3 70B), Google Gemini (2.5 Flash) 지원. OpenAI 호환 API 사용 |
 
 ### Frontend (Single-page, no build)
@@ -156,10 +156,13 @@ WITH TARGET ACCURACY 95;
 
 ## AWR 리포트 분석 (기타 부가 기능 탭)
 
-- AWR HTML 파일 업로드 (최대 20MB) → `parse_awr_html()` → 30+ 섹션 추출
-- LLM 분석 (Groq/Google Gemini 선택 가능) → JSON 구조화 결과
-- 카테고리별 성능 점수, 발견사항, 권장사항 표시
-- 후속 질문 지원
+- AWR HTML 파일 업로드 (최대 20MB) → `parse_awr_html_v2()` → 23개 섹션 타이틀 검색 방식으로 추출
+- TOC(목차) 링크 스킵 로직: `_find_section_pos()`가 `<li>/<a>` 태그(TOC) vs `<h2>/<h3>/<table>` 태그(본문) 구별
+- LLM 분석 → 8개 섹션 보고서 (시스템 개요, 병목 진단, Top SQL, I/O, Hot Segments, 메모리, CPU, 종합 권고)
+- **categoryScores**: 7개 카테고리 (systemLoad, waitEvents, topSql, ioPerformance, hotSegments, memory, hostCpu) 0-100점
+- **actionItems**: 우선순위별 ([긴급]/[높음]/[중간]) 액션 아이템 + evidence 필드
+- 하이브리드 렌더링: `data` → `awr-kv-grid` (2열 그리드), `table/tables` → `result-table`, `interpretation` → 텍스트
+- 후속 질문 지원 (Markdown 렌더링)
 - 다중 결과 탭 관리 (`awrResults` 배열, `awrActiveTab` 인덱스)
 - AWR 원본 HTML 보기 기능 (`/api/awr/source/{session_id}`)
 
@@ -229,7 +232,7 @@ Oracle LOB 값은 `await _lob_to_str(val)` 변환 필수. `hasattr(row[0], 'read
 `ALTER TABLE ... ANNOTATIONS` 등 DDL은 bind variable 사용 불가. 문자열 포맷팅 + `replace("'", "''")`로 이스케이프.
 
 ### Cache Busting
-`style.css?v=N`, `app.js?v=N` — 코드 변경 시 반드시 버전 증가. 현재 v=46.
+`style.css?v=N`, `app.js?v=N` — 코드 변경 시 반드시 버전 증가. 현재 v=74.
 
 ### SSE 스트리밍
 PDF 업로드와 AWR 분석은 `StreamingResponse` + `text/event-stream`으로 진행률 실시간 전달. 프론트엔드는 `EventSource` 또는 `fetch` + `ReadableStream`으로 수신.
