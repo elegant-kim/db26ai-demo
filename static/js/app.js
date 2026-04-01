@@ -8,6 +8,7 @@ const app = createApp({
         const activeTab = ref('nl2sql');
         const dbConnected = ref(false);
         const schema = ref('');
+        const systemStatus = ref(null);  // health API 상세 정보
         const profiles = ref([]);
         const selectedProfile = ref('');
 
@@ -116,16 +117,75 @@ const app = createApp({
             },
         };
 
+        // === JSON Duality State ===
+        const dualitySubMenu = ref('create');
+        const dualityLoading = ref(false);
+        const dualityResult = ref(null);
+        const dualityViews = ref([]);
+        const dualityCompareView = ref('CUSTOMERS_DV');
+        const dualityCompareLimit = ref(5);
+        const dualityCompareResult = ref(null);
+        const dualityCrudView = ref('CUSTOMERS_DV');
+        const dualityCrudId = ref('');
+        const dualityCrudDoc = ref(null);
+        const dualityCrudDocText = ref('');
+        const dualityCrudMessage = ref(null);
+        const dualityAppPreview = ref(false);
+        const dualityDocList = ref([]);
+        const dualityEtagResult = ref(null);
+        const dualityRecentSql = ref(null);
+
+        // === Property Graph State ===
+        const graphSubMenu = ref('create');
+        const graphLoading = ref(false);
+        const graphResult = ref(null);
+        const graphExampleQueries = ref([]);
+        const graphCompareQuery = ref(null);
+        const graphCompareResult = ref(null);
+        const graphPatternQueries = ref([]);
+        const graphPatternQuery = ref(null);
+        const graphPatternResult = ref(null);
+        const graphRecentSql = ref(null);
+
+        // === 개발생산성 향상 State ===
+        const prodSubMenu = ref('lockfree');
+        const prodLoading = ref(false);
+        const lockFreeResult = ref(null);
+        const priorityTxResult = ref(null);
+        const prodRecentSql = ref(null);
+
         // === Vector Search State ===
-        const vectorSubMenu = ref('load');  // 'load', 'table', 'upload', 'search', 'query'
+        const vectorSubMenu = ref('store');  // 'store', 'upload', 'onnx', 'search', 'query'
         const vectorInput = ref('');
         const vectorLoading = ref(false);
         const vectorSearchMode = ref('vector');
         const vectorMessages = ref([]);
         const vectorChatMessages = ref(null);
+        // 검색 세션 탭 (임베딩 소스별로 보관)
+        const vectorSessions = ref([]);  // [{label, source, model, messages, timestamp}]
+        const vectorActiveSession = ref(-1);  // -1 = 현재 작업 중 (저장 전)
         const uploadedDocs = ref([]);
         const isUploading = ref(false);
         const dragOver = ref(false);
+        const uploadPipeline = ref([]);   // 파이프라인 진행 단계
+        const uploadProgress = ref(null); // 임베딩 진행률 {current, total, percent}
+
+        // 파이프라인 전체 진행률 (0~100) — 헤더 프로그레스 링에 사용
+        const pipelineRingPercent = computed(() => {
+            if (!uploadPipeline.value.length) return 0;
+            const doneCount = uploadPipeline.value.filter(p => p.status === 'done').length;
+            const runningStep = uploadPipeline.value.find(p => p.status === 'running');
+            let extra = 0;
+            if (runningStep) {
+                // step 4(임베딩)는 uploadProgress로 세밀 계산, 나머지 running은 50%
+                if (runningStep.step === 4 && uploadProgress.value) {
+                    extra = (uploadProgress.value.percent || 0) / 100;
+                } else {
+                    extra = 0.5;
+                }
+            }
+            return Math.round(((doneCount + extra) / 5) * 100);
+        });
 
         // Step 1: Table Management State
         const tableActionLoading = ref(false);
@@ -145,6 +205,60 @@ const app = createApp({
         const explainPlanResult = ref(null);
         const recentSqlLoading = ref(false);
         const explainPlanLoading = ref(false);
+
+        // === 임베딩 설정 ===
+        const embeddingSource = ref('database');  // 'database' or 'external'
+        const embeddingModel = ref('');
+        const embeddingApiUrl = ref('(미설정)');
+        const onnxModels = ref([]);
+
+        // === LLM 제공자 (AWR 분석, RAG 공통) ===
+        const llmProviders = ref([]);
+        const llmProvider = ref('');
+
+        // === AWR Analyzer State ===
+        const extraSubMenu = ref('awr-upload');
+        const awrLoading = ref(false);
+        const awrError = ref('');
+        const awrAnalysis = ref(null);
+        const awrFilename = ref('');
+        const awrParseInfo = ref({});
+        const awrElapsedMs = ref(0);
+        const awrSessionId = ref('');
+        const awrDragOver = ref(false);
+        const awrFollowupInput = ref('');
+        const awrFollowupLoading = ref(false);
+        const awrStep = ref(0);
+        const awrElapsed = ref(0);
+        const awrProgress = ref(0);
+        let awrTimer = null;
+        let awrProgressTimer = null;
+        let awrStepTimeouts = [];
+        const awrFollowupMessages = ref([]);
+        const awrFollowupMessagesRef = ref(null);
+        const awrResults = ref([]);
+        const awrActiveTab = ref(0);
+
+        const awrRingPercent = computed(() => {
+            const step = awrStep.value;
+            if (step <= 0) return 0;
+            if (step === 1) return 10;
+            if (step === 2) return 10 + Math.round(awrProgress.value * 0.8);
+            if (step >= 3) return 90;
+            return 0;
+        });
+
+        // 보고서 8개 섹션 키 순서
+        const awrSectionKeys = [
+            'section1_system_overview',
+            'section2_bottleneck',
+            'section3_top_sql',
+            'section4_io',
+            'section5_hot_segments',
+            'section6_memory',
+            'section7_host_cpu',
+            'section8_recommendations',
+        ];
 
         // === Constants ===
         const actionModesLeft = [
@@ -198,9 +312,18 @@ const app = createApp({
         const exampleQuestions = ref(exampleQuestionsMap.SH);
 
         const vectorExampleQuestions = ref([
-            '연차 사용 규정을 알려주세요',
-            '퇴직금 산정 기준을 알려주세요',
-            '출장비 정산 절차를 알려주세요',
+            // 자동차보험약관
+            '자동차 사고 시 보험금 청구 절차는 어떻게 되나요?',
+            '음주운전 사고도 보험 보상이 되나요?',
+            '피보험자에 보상하지 않는 경우는 어떤 경우인가?',
+            // 카드 개인회원 약관
+            '카드 분실 시 부정사용 책임은 누구에게 있나요?',
+            '카드 연회비 반환 조건은 무엇인가요?',
+            '결제대금 이의제기 절차와 기한을 알려주세요',
+            // 공공언어바로쓰기
+            '외래어 사용 기준은 무엇인가요?',
+            '행정기관의 공문서 작성 원칙을 알려주세요',
+            '쉬운 공공언어로 바꿔야 하는 어려운 용어 사례는?',
         ]);
 
         const loadingMessageMap = {
@@ -301,20 +424,24 @@ const app = createApp({
             let s = sql.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
             // Oracle-specific functions (Oracle Red)
-            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE|DBMS_LOB\.SUBSTR|DBMS_XPLAN\.DISPLAY|VECTOR_SERIALIZE|VECTOR_INDEX_TRANSFORM)\b/g,
+            s = s.replace(/\b(VECTOR_DISTANCE|VECTOR_EMBEDDING|CONTAINS|SCORE|DBMS_VECTOR_CHAIN\.UTL_TO_CHUNKS|DBMS_CLOUD_AI\.GENERATE|DBMS_LOB\.SUBSTR|DBMS_XPLAN\.DISPLAY|VECTOR_SERIALIZE|VECTOR_INDEX_TRANSFORM)\b/g,
                 '<span style="color: #C74634; font-weight: 600;">$1</span>');
+
+            // SQL comments (gray, italic)
+            s = s.replace(/(--[^\n]*)/g, '<span style="color: #9ca3af; font-style: italic;">$1</span>');
 
             // String literals (green)
             s = s.replace(/'([^']*)'/g, '<span style="color: #16a34a;">\'$1\'</span>');
 
             // SQL keywords (purple)
+            // Note: CONTAINS, SCORE는 Oracle Red 함수로 이미 처리됨 — 여기서 제외
             const keywords = ['SELECT', 'FROM', 'WHERE', 'ORDER BY', 'FETCH FIRST', 'ROWS ONLY',
                 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'TABLE',
                 'INDEX', 'ON', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE',
-                'CONTAINS', 'INTO', 'BEGIN', 'END', 'DECLARE', 'USING', 'BY',
+                'INTO', 'BEGIN', 'END', 'DECLARE', 'USING', 'BY',
                 'DESC', 'ASC', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'GROUP', 'HAVING',
                 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'LOWER', 'UPPER',
-                'SCORE', 'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
+                'COSINE', 'ORGANIZATION', 'NEIGHBOR', 'PARTITIONS', 'DISTANCE',
                 'VECTOR', 'CLOB', 'NUMBER', 'VARCHAR2', 'TIMESTAMP', 'IDENTITY', 'PRIMARY KEY',
                 'INMEMORY', 'GRAPH', 'WITH', 'TARGET', 'ACCURACY', 'CASCADE', 'CONSTRAINTS',
                 'PURGE', 'DROP', 'EXPLAIN', 'PLAN', 'FOR', 'SUBSTR', 'CASE', 'WHEN', 'THEN', 'ELSE',
@@ -915,6 +1042,16 @@ const app = createApp({
             }
 
             isUploading.value = true;
+            uploadProgress.value = null;
+            // 5단계 파이프라인 초기화
+            uploadPipeline.value = [
+                { step: 1, label: '문서 등록',     status: 'pending', detail: '', duration_ms: 0 },
+                { step: 2, label: '텍스트 추출',   status: 'pending', detail: '', duration_ms: 0 },
+                { step: 3, label: '청크 분할',     status: 'pending', detail: '', duration_ms: 0 },
+                { step: 4, label: '임베딩 & 저장', status: 'pending', detail: '', duration_ms: 0 },
+                { step: 5, label: '인덱싱 완료',   status: 'pending', detail: '', duration_ms: 0 },
+            ];
+
             const formData = new FormData();
             formData.append('file', file);
 
@@ -924,12 +1061,60 @@ const app = createApp({
                     body: formData,
                 });
 
-                const data = await response.json();
-                if (data.success) {
-                    showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료`);
-                    await fetchDocuments();
+                // SSE 스트리밍 응답 처리
+                if (response.headers.get('content-type')?.includes('text/event-stream')) {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+
+                        // SSE 파싱: "event: xxx\ndata: {...}\n\n"
+                        const parts = buffer.split('\n\n');
+                        buffer = parts.pop(); // 미완성 부분 보존
+
+                        for (const part of parts) {
+                            if (!part.trim()) continue;
+                            let eventType = 'message';
+                            let eventData = '';
+                            for (const line of part.split('\n')) {
+                                if (line.startsWith('event: ')) eventType = line.slice(7);
+                                else if (line.startsWith('data: ')) eventData = line.slice(6);
+                            }
+                            if (!eventData) continue;
+
+                            try {
+                                const data = JSON.parse(eventData);
+                                if (eventType === 'step') {
+                                    const idx = uploadPipeline.value.findIndex(p => p.step === data.step);
+                                    if (idx >= 0) {
+                                        uploadPipeline.value[idx].status = data.status;
+                                        if (data.detail) uploadPipeline.value[idx].detail = data.detail;
+                                        if (data.duration_ms) uploadPipeline.value[idx].duration_ms = data.duration_ms;
+                                    }
+                                } else if (eventType === 'progress') {
+                                    uploadProgress.value = data;
+                                } else if (eventType === 'done') {
+                                    showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료 (${(data.total_ms / 1000).toFixed(1)}초)`);
+                                    await fetchDocuments();
+                                } else if (eventType === 'error') {
+                                    showToast(data.message || '처리 실패', 'error');
+                                }
+                            } catch (e) { /* ignore parse errors */ }
+                        }
+                    }
                 } else {
-                    showToast(data.error || '업로드에 실패했습니다.', 'error');
+                    // 폴백: 일반 JSON 응답
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료`);
+                        await fetchDocuments();
+                    } else {
+                        showToast(data.error || '업로드에 실패했습니다.', 'error');
+                    }
                 }
             } catch (err) {
                 showToast('업로드 중 오류가 발생했습니다: ' + err.message, 'error');
@@ -997,6 +1182,11 @@ const app = createApp({
                 keywordCompare: null,
                 keywordResults: null,
                 vectorResults: null,
+                // hybrid 전용
+                vectorWeight: null,
+                keywordWeight: null,
+                hybridFallback: false,
+                hybridNote: null,
                 timestamp: formatTime(),
             });
             vectorMessages.value.push(assistantMsg);
@@ -1018,6 +1208,7 @@ const app = createApp({
                         mode: mode,
                         top_k: 5,
                         profile_name: profileName,
+                        provider: llmProvider.value,
                     }),
                 });
 
@@ -1034,6 +1225,13 @@ const app = createApp({
                         assistantMsg.answer = data.answer;
                         assistantMsg.chunks = data.chunks;
                         assistantMsg.sql_executed = data.sql_executed;
+                        // hybrid 추가 정보
+                        if (mode === 'hybrid') {
+                            assistantMsg.vectorWeight = data.vector_weight;
+                            assistantMsg.keywordWeight = data.keyword_weight;
+                            assistantMsg.hybridFallback = data.hybrid_fallback || false;
+                            assistantMsg.hybridNote = data.hybrid_note || null;
+                        }
                     }
                 } else {
                     assistantMsg.error = data.error || '검색에 실패했습니다.';
@@ -1134,6 +1332,445 @@ const app = createApp({
             scrollVectorToBottom();
         }
 
+        // 벡터 2D 시각화
+        const vectorChartInstances = {};
+        async function showVectorVisualization(msgIdx) {
+            const msg = vectorMessages.value[msgIdx];
+            if (!msg || !msg.query) return;
+
+            if (msg.vectorViz) {
+                msg.vectorViz = null;
+                return;
+            }
+
+            const matchedIds = (msg.chunks || [])
+                .filter(c => c.chunk_id)
+                .map(c => c.chunk_id);
+
+            try {
+                const response = await fetch('/api/vector/visualize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: msg.query, matched_chunk_ids: matchedIds }),
+                });
+                const data = await response.json();
+                if (data.success) {
+                    msg.vectorViz = data;
+                    nextTick(() => renderVectorChart(msgIdx));
+                } else {
+                    showToast(data.error || '시각화 데이터 로드 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결에 실패했습니다.', 'error');
+            }
+            scrollVectorToBottom();
+        }
+
+        function renderVectorChart(msgIdx) {
+            nextTick(() => {
+                const canvas = document.querySelector(`canvas[data-vec-viz="${msgIdx}"]`);
+                if (!canvas) return;
+
+                if (vectorChartInstances[msgIdx]) {
+                    vectorChartInstances[msgIdx].destroy();
+                }
+
+                const viz = vectorMessages.value[msgIdx]?.vectorViz;
+                if (!viz) return;
+
+                const otherPts = viz.points.filter(p => !p.matched);
+                const matchedPts = viz.points.filter(p => p.matched);
+
+                const datasets = [
+                    {
+                        label: '기타 청크',
+                        data: otherPts.map(p => ({ x: p.x, y: p.y })),
+                        backgroundColor: '#cbd5e1',
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    },
+                    {
+                        label: '매칭 청크 (Top-K)',
+                        data: matchedPts.map(p => ({ x: p.x, y: p.y })),
+                        backgroundColor: '#16a34a',
+                        pointRadius: 7,
+                        pointHoverRadius: 9,
+                    },
+                ];
+
+                if (viz.query_point) {
+                    datasets.push({
+                        label: '검색 쿼리',
+                        data: [{ x: viz.query_point.x, y: viz.query_point.y }],
+                        backgroundColor: '#C74634',
+                        borderColor: '#C74634',
+                        borderWidth: 2,
+                        pointRadius: 7,
+                        pointStyle: 'rectRot',
+                        pointHoverRadius: 9,
+                    });
+                }
+
+                vectorChartInstances[msgIdx] = new Chart(canvas, {
+                    type: 'scatter',
+                    data: { datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        if (ctx.datasetIndex === 2) return `쿼리: ${viz.query_point.label}`;
+                                        const pts = ctx.datasetIndex === 1 ? matchedPts : otherPts;
+                                        const pt = pts[ctx.dataIndex];
+                                        if (!pt) return '';
+                                        const sim = pt.x.toFixed(3);
+                                        return `${pt.source_file} p.${pt.page_num} (유사도: ${sim})`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: '← 관련 낮음          코사인 유사도          관련 높음 →', font: { size: 11 } },
+                                grid: { color: '#f0f0f0' },
+                                reverse: false,
+                            },
+                            y: {
+                                title: { display: true, text: '의미적 분포', font: { size: 11 } },
+                                grid: { color: '#f0f0f0' },
+                            },
+                        },
+                    }
+                });
+            });
+        }
+
+        // === Property Graph Methods ===
+
+        async function loadGraphQueries() {
+            try {
+                const res = await fetch('/api/graph/queries');
+                const data = await res.json();
+                if (data.success) {
+                    graphExampleQueries.value = data.compare || [];
+                    graphPatternQueries.value = data.pattern || [];
+                    if (data.compare.length) graphCompareQuery.value = data.compare[0];
+                    if (data.pattern.length) graphPatternQuery.value = data.pattern[0];
+                }
+            } catch (e) { /* silent */ }
+        }
+
+        async function createPropertyGraph() {
+            graphLoading.value = true; graphResult.value = null;
+            try {
+                const res = await fetch('/api/graph/create', { method: 'POST' });
+                graphResult.value = await res.json();
+                if (graphResult.value.success && !graphResult.value.error) showToast('Property Graph 생성 완료');
+            } catch (err) { graphResult.value = { error: err.message }; }
+            finally { graphLoading.value = false; }
+        }
+
+        async function dropPropertyGraph() {
+            if (!confirm('Property Graph를 삭제하시겠습니까?')) return;
+            graphLoading.value = true; graphResult.value = null;
+            try {
+                const res = await fetch('/api/graph/drop', { method: 'POST' });
+                graphResult.value = await res.json();
+            } catch (err) { graphResult.value = { error: err.message }; }
+            finally { graphLoading.value = false; }
+        }
+
+        async function compareGraphQuery() {
+            if (!graphCompareQuery.value) return;
+            graphLoading.value = true; graphCompareResult.value = null;
+            try {
+                const res = await fetch('/api/graph/compare', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query_index: graphCompareQuery.value.index }),
+                });
+                const data = await res.json();
+                if (data.success) graphCompareResult.value = data;
+                else showToast(data.error || '비교 실행 실패', 'error');
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { graphLoading.value = false; }
+        }
+
+        async function runGraphPattern() {
+            if (!graphPatternQuery.value) return;
+            graphLoading.value = true; graphPatternResult.value = null;
+            try {
+                const res = await fetch('/api/graph/pattern', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query_index: graphPatternQuery.value.index }),
+                });
+                const data = await res.json();
+                if (data.success) graphPatternResult.value = data;
+                else showToast(data.error || '실행 실패', 'error');
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { graphLoading.value = false; }
+        }
+
+        async function fetchGraphRecentSql() {
+            graphLoading.value = true; graphRecentSql.value = null;
+            try {
+                const res = await fetch('/api/graph/recent-queries');
+                graphRecentSql.value = await res.json();
+            } catch (err) { graphRecentSql.value = { error: err.message }; }
+            finally { graphLoading.value = false; }
+        }
+
+        // === 개발생산성 향상 Methods ===
+
+        async function simulateLockFree() {
+            prodLoading.value = true;
+            lockFreeResult.value = { steps: [] };
+            try {
+                const res = await fetch('/api/productivity/lockfree', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.steps) {
+                    for (let i = 0; i < data.steps.length; i++) {
+                        await new Promise(r => setTimeout(r, i === 0 ? 300 : 1200));
+                        lockFreeResult.value.steps.push(data.steps[i]);
+                    }
+                } else { showToast(data.error || '시뮬레이션 실패', 'error'); }
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { prodLoading.value = false; }
+        }
+
+        async function simulatePriorityTx() {
+            prodLoading.value = true;
+            priorityTxResult.value = { steps: [] };
+            try {
+                const res = await fetch('/api/productivity/priority-tx', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.steps) {
+                    for (let i = 0; i < data.steps.length; i++) {
+                        await new Promise(r => setTimeout(r, i === 0 ? 300 : 1200));
+                        priorityTxResult.value.steps.push(data.steps[i]);
+                    }
+                } else { showToast(data.error || '시뮬레이션 실패', 'error'); }
+            } catch (err) { showToast('서버 연결 실패', 'error'); }
+            finally { prodLoading.value = false; }
+        }
+
+        async function fetchProdRecentSql() {
+            prodLoading.value = true; prodRecentSql.value = null;
+            try {
+                const res = await fetch('/api/productivity/recent-queries');
+                prodRecentSql.value = await res.json();
+            } catch (err) { prodRecentSql.value = { error: err.message }; }
+            finally { prodLoading.value = false; }
+        }
+
+        // === JSON Duality Methods ===
+
+        async function createDualityViews() {
+            dualityLoading.value = true;
+            dualityResult.value = null;
+            try {
+                const res = await fetch('/api/duality/create-views', { method: 'POST' });
+                dualityResult.value = await res.json();
+                if (dualityResult.value.success) {
+                    showToast('Duality View 생성 완료');
+                    await listDualityViews();
+                }
+            } catch (err) {
+                dualityResult.value = { error: err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function dropDualityViews() {
+            if (!confirm('Duality View를 삭제하시겠습니까?')) return;
+            dualityLoading.value = true;
+            dualityResult.value = null;
+            try {
+                const res = await fetch('/api/duality/drop-views', { method: 'POST' });
+                dualityResult.value = await res.json();
+                if (dualityResult.value.success) {
+                    showToast('Duality View 삭제 완료');
+                    dualityViews.value = [];
+                }
+            } catch (err) {
+                dualityResult.value = { error: err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function listDualityViews(showResult = false) {
+            if (showResult) dualityLoading.value = true;
+            try {
+                const res = await fetch('/api/duality/views');
+                const data = await res.json();
+                if (data.success) {
+                    dualityViews.value = data.views || [];
+                    if (data.views.length > 0) {
+                        if (!dualityCompareView.value) dualityCompareView.value = data.views[0].name;
+                        if (!dualityCrudView.value) dualityCrudView.value = data.views[0].name;
+                    }
+                    if (showResult) {
+                        dualityResult.value = {
+                            views: data.views,
+                            sql_executed: data.sql_executed,
+                            message: `Duality View ${data.views.length}개 조회됨`,
+                        };
+                    }
+                }
+            } catch (err) {
+                if (showResult) dualityResult.value = { error: err.message };
+            } finally {
+                if (showResult) dualityLoading.value = false;
+            }
+        }
+
+        async function compareDuality() {
+            dualityLoading.value = true;
+            dualityCompareResult.value = null;
+            try {
+                const res = await fetch('/api/duality/compare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_name: dualityCompareView.value,
+                        limit: dualityCompareLimit.value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dualityCompareResult.value = data;
+                } else {
+                    showToast(data.error || '비교 실행 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function fetchDualityDocList() {
+            dualityLoading.value = true;
+            dualityDocList.value = [];
+            try {
+                const res = await fetch('/api/duality/docs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ view_name: dualityCrudView.value }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dualityDocList.value = data.docs || [];
+                } else {
+                    showToast(data.error || '문서 목록 조회 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function fetchDualityDoc() {
+            if (!dualityCrudId.value.trim()) {
+                showToast('문서 ID를 입력하세요', 'error');
+                return;
+            }
+            dualityLoading.value = true;
+            dualityCrudDoc.value = null;
+            dualityCrudMessage.value = null;
+            try {
+                const res = await fetch('/api/duality/doc', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_name: dualityCrudView.value,
+                        doc_id: dualityCrudId.value,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success && data.document) {
+                    dualityCrudDoc.value = { ...data.document, _etag: data.etag };
+                    dualityCrudDocText.value = data.document_text || JSON.stringify(data.document, null, 2);
+                } else {
+                    showToast(data.error || '문서 조회 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function updateDualityDoc() {
+            dualityLoading.value = true;
+            dualityCrudMessage.value = null;
+            try {
+                const docJson = JSON.parse(dualityCrudDocText.value);
+                const res = await fetch('/api/duality/doc/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_name: dualityCrudView.value,
+                        doc_json: docJson,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dualityCrudMessage.value = { type: 'success', text: data.message || '업데이트 성공' };
+                    if (data.new_etag) {
+                        dualityCrudDoc.value._etag = data.new_etag;
+                    }
+                } else {
+                    dualityCrudMessage.value = { type: 'error', text: data.error || '업데이트 실패' };
+                }
+            } catch (err) {
+                dualityCrudMessage.value = { type: 'error', text: 'JSON 파싱 오류: ' + err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function simulateEtagConflict() {
+            dualityLoading.value = true;
+            dualityEtagResult.value = { steps: [] };
+            try {
+                const res = await fetch('/api/duality/etag-simulation', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.steps) {
+                    // 단계별 딜레이로 표시
+                    for (let i = 0; i < data.steps.length; i++) {
+                        await new Promise(r => setTimeout(r, i === 0 ? 300 : 1200));
+                        dualityEtagResult.value.steps.push(data.steps[i]);
+                    }
+                } else {
+                    showToast(data.error || '시뮬레이션 실패', 'error');
+                }
+            } catch (err) {
+                showToast('서버 연결 실패', 'error');
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
+        async function fetchDualityRecentSql() {
+            dualityLoading.value = true;
+            dualityRecentSql.value = null;
+            try {
+                const res = await fetch('/api/duality/recent-queries');
+                const data = await res.json();
+                dualityRecentSql.value = data;
+            } catch (err) {
+                dualityRecentSql.value = { error: err.message };
+            } finally {
+                dualityLoading.value = false;
+            }
+        }
+
         // === Init ===
         async function checkHealth() {
             try {
@@ -1141,8 +1778,10 @@ const app = createApp({
                 const data = await response.json();
                 dbConnected.value = data.database_connected;
                 schema.value = data.schema || '';
+                systemStatus.value = data;
             } catch {
                 dbConnected.value = false;
+                systemStatus.value = null;
             }
         }
 
@@ -1327,10 +1966,587 @@ const app = createApp({
             }
         }
 
+        // === AWR Analyzer Methods ===
+
+        function awrScoreClass(score) {
+            if (score >= 80) return 'score-good';
+            if (score >= 60) return 'score-warn';
+            if (score >= 40) return 'score-caution';
+            return 'score-bad';
+        }
+
+        function awrSnapshotLabel(key) {
+            const labels = {
+                dbName: 'DB Name',
+                instanceName: 'Instance',
+                hostName: 'Host',
+                platform: 'Platform',
+                cpus: 'CPUs',
+                memory: 'Memory',
+                dbVersion: 'DB Version',
+                isRAC: 'RAC',
+                startTime: '시작 시간',
+                endTime: '종료 시간',
+                elapsed: '경과 시간',
+                dbTime: 'DB Time',
+                isExadata: 'Exadata',
+            };
+            return labels[key] || key;
+        }
+
+        // === AWR Functions ===
+
+        async function handleAwrFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) await analyzeAwrFile(file);
+            event.target.value = '';
+        }
+
+        function handleAwrFileDrop(event) {
+            awrDragOver.value = false;
+            const file = event.dataTransfer.files[0];
+            if (file && /\.(html?|htm)$/i.test(file.name)) {
+                analyzeAwrFile(file);
+            } else {
+                showToast('HTML 파일만 업로드 가능합니다.', 'error');
+            }
+        }
+
+        async function analyzeAwrFile(file) {
+            if (file.size > 20 * 1024 * 1024) {
+                showToast('파일 크기가 20MB를 초과합니다.', 'error');
+                return;
+            }
+
+            if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
+            if (awrProgressTimer) { clearInterval(awrProgressTimer); awrProgressTimer = null; }
+            awrStepTimeouts.forEach(id => clearTimeout(id));
+            awrStepTimeouts = [];
+
+            awrLoading.value = true;
+            awrError.value = '';
+            awrAnalysis.value = null;
+            awrFollowupMessages.value = [];
+            awrStep.value = 1;
+            awrElapsed.value = 0;
+            awrProgress.value = 0;
+
+            awrTimer = setInterval(() => { awrElapsed.value++; }, 1000);
+            awrProgressTimer = setInterval(() => {
+                if (awrProgress.value < 100) awrProgress.value += 5;
+            }, 5000);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (llmProvider.value) formData.append('provider', llmProvider.value);
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 180000);
+
+            awrStepTimeouts.push(setTimeout(() => { if (awrLoading.value) awrStep.value = 2; }, 2000));
+            awrStepTimeouts.push(setTimeout(() => { if (awrLoading.value) awrStep.value = 3; }, 90000));
+
+            try {
+                const response = await fetch('/api/awr/analyze', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal,
+                });
+                const data = await response.json();
+                clearTimeout(timeout);
+
+                if (data.success) {
+                    if (!data.analysis || (!data.analysis.section1_system_overview && !data.analysis.categoryScores)) {
+                        awrError.value = 'LLM 응답에서 유효한 분석 결과를 추출하지 못했습니다. 다시 시도해 주세요.';
+                    } else {
+                        awrAnalysis.value = data.analysis;
+                        awrSessionId.value = data.session_id;
+                        awrFilename.value = data.filename;
+                        awrParseInfo.value = data.parse_info;
+                        awrElapsedMs.value = data.elapsed_ms;
+
+                        const providerInfo = selectedLlmProvider.value;
+                        awrResults.value.push({
+                            filename: data.filename,
+                            analysis: data.analysis,
+                            sessionId: data.session_id,
+                            parseInfo: data.parse_info,
+                            elapsedMs: data.elapsed_ms,
+                            provider: providerInfo ? providerInfo.name : llmProvider.value,
+                            timestamp: new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}),
+                            followupMessages: [],
+                        });
+                        awrActiveTab.value = awrResults.value.length - 1;
+                        awrFollowupMessages.value = [];
+                        extraSubMenu.value = 'awr-result';
+                        showToast(`AWR 분석 완료 (${awrElapsed.value}초 소요)`, 'success');
+                    }
+                } else {
+                    awrError.value = data.error || '분석에 실패했습니다.';
+                }
+            } catch (err) {
+                clearTimeout(timeout);
+                if (err.name === 'AbortError') {
+                    awrError.value = '분석 시간이 초과되었습니다. (3분)';
+                } else {
+                    awrError.value = err.message;
+                }
+            } finally {
+                awrLoading.value = false;
+                awrStep.value = 0;
+                awrProgress.value = 0;
+                if (awrTimer) { clearInterval(awrTimer); awrTimer = null; }
+                if (awrProgressTimer) { clearInterval(awrProgressTimer); awrProgressTimer = null; }
+                awrStepTimeouts.forEach(id => clearTimeout(id));
+                awrStepTimeouts = [];
+            }
+        }
+
+        function switchAwrTab(index) {
+            if (index < 0 || index >= awrResults.value.length) return;
+            if (awrActiveTab.value < awrResults.value.length) {
+                awrResults.value[awrActiveTab.value].followupMessages = [...awrFollowupMessages.value];
+            }
+            awrActiveTab.value = index;
+            const result = awrResults.value[index];
+            awrAnalysis.value = result.analysis;
+            awrSessionId.value = result.sessionId;
+            awrFilename.value = result.filename;
+            awrParseInfo.value = result.parseInfo;
+            awrElapsedMs.value = result.elapsedMs;
+            awrFollowupMessages.value = result.followupMessages || [];
+        }
+
+        function removeAwrTab(index) {
+            if (awrResults.value.length <= 1) return;
+            awrResults.value.splice(index, 1);
+            if (awrActiveTab.value >= awrResults.value.length) {
+                awrActiveTab.value = awrResults.value.length - 1;
+            }
+            switchAwrTab(awrActiveTab.value);
+        }
+
+        async function sendAwrFollowup() {
+            const question = awrFollowupInput.value.trim();
+            if (!question || awrFollowupLoading.value) return;
+
+            awrFollowupMessages.value.push({ role: 'user', content: question });
+            awrFollowupInput.value = '';
+
+            const assistantMsg = { role: 'assistant', content: '', loading: true };
+            awrFollowupMessages.value.push(assistantMsg);
+            awrFollowupLoading.value = true;
+
+            try {
+                const response = await fetch('/api/awr/followup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        question: question,
+                        session_id: awrSessionId.value,
+                        provider: llmProvider.value,
+                    }),
+                });
+                const data = await response.json();
+                assistantMsg.loading = false;
+                assistantMsg.content = data.success ? data.answer : ('오류: ' + (data.error || '응답 생성에 실패했습니다.'));
+            } catch (err) {
+                assistantMsg.loading = false;
+                assistantMsg.content = '오류: ' + err.message;
+            } finally {
+                awrFollowupLoading.value = false;
+                await nextTick();
+                const el = awrFollowupMessagesRef.value;
+                if (el) el.scrollTop = el.scrollHeight;
+            }
+        }
+
+        // Markdown → HTML 렌더링 (표, 굵은체, 코드, 리스트, ⚠️ 강조)
+        function renderMarkdown(text) {
+            if (!text) return '';
+            let html = text;
+
+            // 코드 블록 ```...```
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="awr-code"><code>$2</code></pre>');
+
+            // Markdown 표 변환
+            html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, function(match, headerLine, sepLine, bodyLines) {
+                const headers = headerLine.split('|').filter(c => c.trim());
+                const rows = bodyLines.trim().split('\n').map(r => r.split('|').filter(c => c.trim()));
+                let table = '<div class="table-wrapper"><table class="result-table awr-table"><thead><tr>';
+                headers.forEach(h => { table += '<th>' + h.trim() + '</th>'; });
+                table += '</tr></thead><tbody>';
+                rows.forEach(r => {
+                    table += '<tr>';
+                    r.forEach(c => {
+                        const cell = c.trim();
+                        // ⚠️ 포함 시 경고 스타일
+                        const cls = cell.includes('⚠️') ? ' class="awr-warn-cell"' : '';
+                        table += '<td' + cls + '>' + cell + '</td>';
+                    });
+                    table += '</tr>';
+                });
+                table += '</tbody></table></div>';
+                return table;
+            });
+
+            // 줄바꿈 처리 (테이블 외 영역)
+            html = html.replace(/\n/g, '<br>');
+
+            // 헤딩 (#### → h5, ### → h4, ## → h3)
+            html = html.replace(/<br>####\s+(.+?)(<br>|$)/g, '<h5 class="awr-h5">$1</h5>');
+            html = html.replace(/<br>###\s+(.+?)(<br>|$)/g, '<h4 class="awr-h4">$1</h4>');
+            html = html.replace(/<br>##\s+(.+?)(<br>|$)/g, '<h3 class="awr-h3">$1</h3>');
+
+            // 굵은체 **text**
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+            // 인라인 코드 `text`
+            html = html.replace(/`([^`]+)`/g, '<code class="awr-inline-code">$1</code>');
+
+            // 리스트 항목 - item
+            html = html.replace(/<br>- (.+?)(?=<br>|$)/g, '<br><span class="awr-list-item">• $1</span>');
+
+            return html;
+        }
+
+        // 임베딩 설정 로드
+        async function loadEmbeddingConfig() {
+            try {
+                const res = await fetch('/api/vector/embedding-config');
+                const data = await res.json();
+                if (data.success) {
+                    embeddingSource.value = data.source;
+                    embeddingModel.value = data.model;
+                    embeddingApiUrl.value = data.external_api_url;
+                }
+            } catch (e) {
+                console.error('임베딩 설정 로드 실패:', e);
+            }
+        }
+
+        // ONNX 모델 목록 로드
+        async function loadOnnxModels() {
+            try {
+                const res = await fetch('/api/vector/onnx-models');
+                const data = await res.json();
+                if (data.success) {
+                    onnxModels.value = data.models;
+                }
+            } catch (e) {
+                console.error('ONNX 모델 목록 로드 실패:', e);
+            }
+        }
+
+        // 검색 세션 탭 관리
+        function saveCurrentVectorSession() {
+            if (vectorMessages.value.length === 0) return;
+            const srcLabel = embeddingSource.value === 'database' ? 'ONNX' : 'API';
+            const label = srcLabel + '/' + embeddingModel.value;
+            vectorSessions.value.push({
+                label,
+                source: embeddingSource.value,
+                model: embeddingModel.value,
+                messages: [...vectorMessages.value],
+                timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+            });
+        }
+        function switchVectorSession(index) {
+            if (index === -1) {
+                // 현재 세션으로 복귀
+                vectorActiveSession.value = -1;
+                return;
+            }
+            if (index < 0 || index >= vectorSessions.value.length) return;
+            vectorActiveSession.value = index;
+        }
+        function removeVectorSession(index) {
+            vectorSessions.value.splice(index, 1);
+            if (vectorActiveSession.value >= vectorSessions.value.length) {
+                vectorActiveSession.value = -1;
+            }
+        }
+
+        // 임베딩 소스 전환
+        async function setEmbeddingSource(source) {
+            if (source === embeddingSource.value) return;
+
+            const confirmed = confirm(
+                '임베딩 소스를 변경하면 벡터 차원이 달라질 수 있습니다.\n' +
+                '기존 문서의 임베딩과 호환되지 않으므로,\n' +
+                'Vector Store를 초기화하고 문서를 재업로드해야 합니다.\n\n' +
+                '임베딩 소스를 변경하시겠습니까?'
+            );
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/vector/embedding-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source, reset_model: true }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    // 현재 검색 결과를 세션으로 저장
+                    saveCurrentVectorSession();
+                    vectorMessages.value = [];
+                    vectorActiveSession.value = -1;
+
+                    embeddingSource.value = data.source;
+                    embeddingModel.value = data.model;
+
+                    // Vector Store 초기화
+                    const resetConfirmed = confirm(
+                        '기존 Vector Store 데이터를 초기화하시겠습니까?\n' +
+                        '(취소하면 데이터를 유지하지만, 검색 시 차원 불일치 오류가 발생할 수 있습니다.)'
+                    );
+                    if (resetConfirmed) {
+                        await fetch('/api/vector/drop-tables', { method: 'POST' });
+                        await fetch('/api/vector/create-tables', { method: 'POST' });
+                        showToast('임베딩 소스 변경 + Vector Store 초기화 완료. 문서를 재업로드하세요.', 'success');
+                        uploadedDocs.value = [];
+                        await fetchDocuments();
+                    } else {
+                        showToast(data.message, 'success');
+                    }
+                } else {
+                    showToast(data.error || '설정 변경 실패', 'error');
+                }
+            } catch (e) {
+                showToast('임베딩 소스 변경 실패: ' + e.message, 'error');
+            }
+        }
+
+        // ONNX 모델 관리 상태
+        const onnxModelLoading = ref(false);
+        const onnxTestResult = ref(null);
+        const onnxUploadName = ref('');
+        const onnxLocationUri = ref('');
+        const onnxFileName = ref('');
+        const onnxSelectedFile = ref(null);
+        const onnxUploading = ref(false);
+        const onnxUploadResult = ref(null);
+        const onnxDragOver = ref(false);
+        const onnxLocalModelName = ref('');
+        const onnxLocalUploading = ref(false);
+        const onnxLocalUploadResult = ref(null);
+
+        // ONNX 모델 목록 새로고침
+        async function refreshOnnxModels() {
+            onnxModelLoading.value = true;
+            try {
+                await loadOnnxModels();
+                showToast(`ONNX 모델 ${onnxModels.value.length}개 조회됨`, 'success');
+            } catch (e) {
+                showToast('ONNX 모델 조회 실패', 'error');
+            } finally {
+                onnxModelLoading.value = false;
+            }
+        }
+
+        // ONNX 모델 선택 (DB 임베딩 모델 전환)
+        async function switchOnnxModel(modelName) {
+            embeddingModel.value = modelName;
+            await onEmbeddingModelChange();
+        }
+
+        // ONNX 모델 테스트
+        async function testOnnxModel(modelName) {
+            onnxTestResult.value = { model_name: modelName, loading: true };
+            try {
+                const res = await fetch('/api/vector/onnx-models/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: modelName, sample_text: '한국어 임베딩 모델 테스트 문장입니다.' }),
+                });
+                const data = await res.json();
+                onnxTestResult.value = data.success ? data : { model_name: modelName, error: data.error };
+            } catch (e) {
+                onnxTestResult.value = { model_name: modelName, error: e.message };
+            }
+        }
+
+        // ONNX 모델 삭제
+        async function deleteOnnxModel(modelName) {
+            if (!confirm(`모델 '${modelName}'을(를) DB에서 삭제하시겠습니까?\n\n삭제 후 해당 모델로 생성된 임베딩은 더 이상 사용할 수 없습니다.`)) return;
+
+            try {
+                const res = await fetch(`/api/vector/onnx-models/${modelName}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    await loadOnnxModels();
+                } else {
+                    showToast(data.error || '삭제 실패', 'error');
+                }
+            } catch (e) {
+                showToast('모델 삭제 실패: ' + e.message, 'error');
+            }
+        }
+
+        // ONNX 파일 선택/드롭
+        function handleOnnxFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                onnxSelectedFile.value = file;
+                // 파일명에서 모델명 자동 추천
+                if (!onnxUploadName.value.trim()) {
+                    onnxUploadName.value = file.name.replace('.onnx', '').replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+                }
+            }
+        }
+
+        function handleOnnxFileDrop(event) {
+            onnxDragOver.value = false;
+            const file = event.dataTransfer.files[0];
+            if (file && file.name.toLowerCase().endsWith('.onnx')) {
+                onnxSelectedFile.value = file;
+                if (!onnxUploadName.value.trim()) {
+                    onnxUploadName.value = file.name.replace('.onnx', '').replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+                }
+            } else {
+                showToast('.onnx 파일만 업로드 가능합니다.', 'error');
+            }
+        }
+
+        // 로컬 ONNX 파일 업로드 → DB 적재
+        async function uploadOnnxLocal() {
+            if (!onnxSelectedFile.value) return;
+
+            onnxLocalUploading.value = true;
+            onnxLocalUploadResult.value = null;
+
+            // 모델명: 사용자 입력 또는 파일명에서 자동 생성
+            let modelName = onnxLocalModelName.value.trim();
+            if (!modelName) {
+                modelName = onnxSelectedFile.value.name.replace('.onnx', '').replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+            }
+
+            const formData = new FormData();
+            formData.append('file', onnxSelectedFile.value);
+            formData.append('model_name', modelName);
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 600000); // 10분
+
+                const res = await fetch('/api/vector/onnx-models/upload', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+
+                const data = await res.json();
+                onnxLocalUploadResult.value = data;
+
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    await loadOnnxModels();
+                    onnxSelectedFile.value = null;
+                    onnxLocalModelName.value = '';
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    onnxLocalUploadResult.value = { success: false, error: '적재 시간이 초과되었습니다 (10분).' };
+                } else {
+                    onnxLocalUploadResult.value = { success: false, error: e.message };
+                }
+            } finally {
+                onnxLocalUploading.value = false;
+            }
+        }
+
+        // OCI Object Storage에서 ONNX 모델 적재
+        async function loadOnnxFromCloud() {
+            if (!onnxLocationUri.value.trim() || !onnxFileName.value.trim()) return;
+
+            onnxUploading.value = true;
+            onnxUploadResult.value = null;
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 600000); // 10분
+
+                const res = await fetch('/api/vector/onnx-models/load-cloud', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        location_uri: onnxLocationUri.value.trim(),
+                        onnx_file_name: onnxFileName.value.trim(),
+                        model_name: onnxUploadName.value.trim(),
+                    }),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+
+                const data = await res.json();
+                onnxUploadResult.value = data;
+
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    await loadOnnxModels();
+                    onnxFileName.value = '';
+                    onnxUploadName.value = '';
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    onnxUploadResult.value = { success: false, error: '적재 시간이 초과되었습니다 (10분).' };
+                } else {
+                    onnxUploadResult.value = { success: false, error: e.message };
+                }
+            } finally {
+                onnxUploading.value = false;
+            }
+        }
+
+        // 임베딩 모델 변경
+        async function onEmbeddingModelChange() {
+            try {
+                const res = await fetch('/api/vector/embedding-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: embeddingModel.value }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                }
+            } catch (e) {
+                showToast('모델 변경 실패: ' + e.message, 'error');
+            }
+        }
+
+        // LLM 제공자 목록 로드
+        async function loadLlmProviders() {
+            try {
+                const res = await fetch('/api/llm/providers');
+                const data = await res.json();
+                if (data.success && data.providers.length > 0) {
+                    llmProviders.value = data.providers;
+                    // 서버 설정의 기본 제공자를 선택, 없으면 첫 번째
+                    const defaultId = data.default || '';
+                    const hasDefault = data.providers.some(p => p.id === defaultId);
+                    llmProvider.value = hasDefault ? defaultId : data.providers[0].id;
+                }
+            } catch (e) {
+                console.error('LLM 제공자 목록 로드 실패:', e);
+            }
+        }
+
+        const selectedLlmProvider = computed(() => {
+            return llmProviders.value.find(p => p.id === llmProvider.value) || null;
+        });
+
         onMounted(() => {
             checkHealth();
             loadProfiles();
             fetchDocuments();
+            loadLlmProviders();
+            loadEmbeddingConfig();
+            loadOnnxModels();
+            listDualityViews();
+            loadGraphQueries();
         });
 
         return {
@@ -1338,6 +2554,7 @@ const app = createApp({
             activeTab,
             dbConnected,
             schema,
+            systemStatus,
             profiles,
             selectedProfile,
             onProfileChange,
@@ -1379,9 +2596,16 @@ const app = createApp({
             vectorSearchMode,
             vectorMessages,
             vectorChatMessages,
+            vectorSessions,
+            vectorActiveSession,
+            switchVectorSession,
+            removeVectorSession,
             uploadedDocs,
             isUploading,
             dragOver,
+            uploadPipeline,
+            uploadProgress,
+            pipelineRingPercent,
             vectorExampleQuestions,
             handleFileSelect,
             handleFileDrop,
@@ -1390,6 +2614,7 @@ const app = createApp({
             showEmbeddingInfo,
             showIndexInfo,
             doKeywordCompare,
+            showVectorVisualization,
 
             // Step 1: Table Management
             tableActionLoading,
@@ -1416,6 +2641,124 @@ const app = createApp({
             explainPlanLoading,
             fetchRecentSql,
             fetchExplainPlan,
+
+            // 임베딩 설정
+            embeddingSource,
+            embeddingModel,
+            embeddingApiUrl,
+            onnxModels,
+            onnxModelLoading,
+            setEmbeddingSource,
+            onEmbeddingModelChange,
+            refreshOnnxModels,
+            switchOnnxModel,
+            // ONNX 모델 관리
+            onnxTestResult,
+            onnxUploadName,
+            onnxLocationUri,
+            onnxFileName,
+            onnxSelectedFile,
+            onnxUploading,
+            onnxUploadResult,
+            onnxDragOver,
+            testOnnxModel,
+            deleteOnnxModel,
+            handleOnnxFileSelect,
+            handleOnnxFileDrop,
+            loadOnnxFromCloud,
+            uploadOnnxLocal,
+            onnxLocalModelName,
+            onnxLocalUploading,
+            onnxLocalUploadResult,
+
+            // LLM 제공자
+            llmProviders,
+            llmProvider,
+            selectedLlmProvider,
+
+            // Property Graph
+            graphSubMenu,
+            graphLoading,
+            graphResult,
+            graphExampleQueries,
+            graphCompareQuery,
+            graphCompareResult,
+            graphPatternQueries,
+            graphPatternQuery,
+            graphPatternResult,
+            graphRecentSql,
+            createPropertyGraph,
+            dropPropertyGraph,
+            compareGraphQuery,
+            runGraphPattern,
+            fetchGraphRecentSql,
+
+            // 개발생산성 향상
+            prodSubMenu,
+            prodLoading,
+            lockFreeResult,
+            priorityTxResult,
+            prodRecentSql,
+            simulateLockFree,
+            simulatePriorityTx,
+            fetchProdRecentSql,
+
+            // JSON Duality
+            dualitySubMenu,
+            dualityLoading,
+            dualityResult,
+            dualityViews,
+            dualityCompareView,
+            dualityCompareLimit,
+            dualityCompareResult,
+            dualityCrudView,
+            dualityCrudId,
+            dualityCrudDoc,
+            dualityCrudDocText,
+            dualityCrudMessage,
+            dualityAppPreview,
+            dualityDocList,
+            dualityEtagResult,
+            dualityRecentSql,
+            createDualityViews,
+            dropDualityViews,
+            listDualityViews,
+            compareDuality,
+            fetchDualityDocList,
+            fetchDualityDoc,
+            updateDualityDoc,
+            simulateEtagConflict,
+            fetchDualityRecentSql,
+
+            // AWR Analyzer
+            extraSubMenu,
+            awrLoading,
+            awrStep,
+            awrElapsed,
+            awrProgress,
+            awrRingPercent,
+            awrError,
+            awrAnalysis,
+            awrFilename,
+            awrParseInfo,
+            awrElapsedMs,
+            awrSessionId,
+            awrDragOver,
+            awrFollowupInput,
+            awrFollowupLoading,
+            awrFollowupMessages,
+            awrFollowupMessagesRef,
+            awrScoreClass,
+            awrSnapshotLabel,
+            awrResults,
+            awrActiveTab,
+            awrSectionKeys,
+            handleAwrFileSelect,
+            handleAwrFileDrop,
+            switchAwrTab,
+            removeAwrTab,
+            sendAwrFollowup,
+            renderMarkdown,
         };
     },
 });

@@ -9,6 +9,11 @@ from app.config import settings
 from app.select_ai import _lob_to_str
 
 
+def _vec_to_str(vec: list) -> str:
+    """Python list를 Oracle VECTOR 리터럴 문자열로 변환한다."""
+    return "[" + ",".join(str(v) for v in vec) + "]"
+
+
 # === Table Initialization ===
 
 async def init_vector_tables(pool):
@@ -51,7 +56,7 @@ async def init_vector_tables(pool):
                                 chunk_text  CLOB,
                                 source_file VARCHAR2(500),
                                 page_num    NUMBER,
-                                embedding   VECTOR(768, FLOAT32)
+                                embedding   VECTOR
                             )
                         ';
                     END IF;
@@ -150,12 +155,15 @@ async def try_db_chunking(pool, text: str) -> list:
 
 async def get_embedding_from_db(pool, text: str, model_name: str) -> list:
     """DB 내 ONNX 모델을 사용하여 임베딩을 생성한다."""
+    # VECTOR_EMBEDDING의 모델명은 SQL identifier이므로 bind variable이 아닌 리터럴로 삽입
+    safe_model = model_name.replace("'", "").replace('"', '').replace(';', '')
+    sql = f"""
+        SELECT VECTOR_EMBEDDING({safe_model} USING :text_data AS data)
+        FROM dual
+    """
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute("""
-                SELECT VECTOR_EMBEDDING(:model_name USING :text_data AS data)
-                FROM dual
-            """, {"model_name": model_name, "text_data": text})
+            await cursor.execute(sql, {"text_data": text})
             row = await cursor.fetchone()
             if row:
                 return row[0]
@@ -175,10 +183,12 @@ async def get_embedding_external(text: str) -> list:
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
     }
-    payload = json.dumps({
+    body = {
         "input": text,
         "model": model,
-    }).encode("utf-8")
+        "dimensions": settings.EMBEDDING_DIM,
+    }
+    payload = json.dumps(body).encode("utf-8")
 
     req = urllib.request.Request(api_url, data=payload, headers=headers, method="POST")
     try:
@@ -199,12 +209,21 @@ async def get_embedding(pool, text: str) -> list:
 
 # === Document Upload Pipeline ===
 
-async def upload_document(pool, file_path: str, filename: str) -> dict:
-    """PDF 파일을 처리하여 청킹 -> 임베딩 -> DB 저장 파이프라인을 실행한다."""
+async def upload_document(pool, file_path: str, filename: str, progress_callback=None) -> dict:
+    """PDF 파일을 처리하여 청킹 -> 임베딩 -> DB 저장 파이프라인을 실행한다.
+
+    progress_callback이 주어지면 각 단계마다 호출하여 실시간 진행 상황을 전달한다.
+    callback(event_type, data_dict) 형태.
+    """
     pipeline = []
     start_total = time.time()
 
+    async def emit(event, data):
+        if progress_callback:
+            await progress_callback(event, data)
+
     # Step 1: 문서 레코드 생성
+    await emit("step", {"step": 1, "label": "문서 등록", "status": "running"})
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             doc_id_var = cursor.var(int)
@@ -215,25 +234,31 @@ async def upload_document(pool, file_path: str, filename: str) -> dict:
             """, {"filename": filename, "doc_id": doc_id_var})
             doc_id = doc_id_var.getvalue()[0]
             await conn.commit()
+    await emit("step", {"step": 1, "label": "문서 등록", "status": "done",
+                         "detail": f"doc_id={doc_id}",
+                         "duration_ms": int((time.time() - start_total) * 1000)})
 
     try:
         # Step 2: PDF 텍스트 추출
         step_start = time.time()
+        await emit("step", {"step": 2, "label": "텍스트 추출", "status": "running"})
         pages = extract_text_from_pdf(file_path)
-        pipeline.append({
-            "step": "문서 로드",
-            "sql": "-- Python pdfplumber로 PDF 텍스트 추출",
-            "duration_ms": int((time.time() - step_start) * 1000),
-        })
+        step_ms = int((time.time() - step_start) * 1000)
+        pipeline.append({"step": "텍스트 추출", "sql": "-- pdfplumber PDF 텍스트 추출", "duration_ms": step_ms})
 
         if not pages:
             raise ValueError("PDF에서 텍스트를 추출할 수 없습니다.")
 
+        total_chars = sum(len(p["text"]) for p in pages)
+        await emit("step", {"step": 2, "label": "텍스트 추출", "status": "done",
+                             "detail": f"{len(pages)}페이지 / {total_chars:,}자",
+                             "duration_ms": step_ms})
+
         # Step 3: 청킹
         step_start = time.time()
+        await emit("step", {"step": 3, "label": "청크 분할", "status": "running"})
         all_chunks = []
         for page in pages:
-            # DB 청킹 시도, 실패 시 Python 청킹
             db_chunks = await try_db_chunking(pool, page["text"])
             if db_chunks:
                 for chunk in db_chunks:
@@ -243,35 +268,37 @@ async def upload_document(pool, file_path: str, filename: str) -> dict:
                 for chunk in py_chunks:
                     all_chunks.append({"text": chunk, "page_num": page["page_num"]})
 
+        step_ms = int((time.time() - step_start) * 1000)
         chunking_sql = "SELECT DBMS_VECTOR_CHAIN.UTL_TO_CHUNKS(:text, JSON('{\"max_chunk_size\": 500, \"overlap\": 50}')) FROM dual"
-        pipeline.append({
-            "step": "청크 분할",
-            "sql": chunking_sql,
-            "duration_ms": int((time.time() - step_start) * 1000),
-        })
+        pipeline.append({"step": "청크 분할", "sql": chunking_sql, "duration_ms": step_ms})
+        await emit("step", {"step": 3, "label": "청크 분할", "status": "done",
+                             "detail": f"{len(all_chunks)}개 청크 생성",
+                             "duration_ms": step_ms})
 
-        # Step 4: 임베딩 생성 + DB 저장
+        # Step 4: 임베딩 생성 + DB 저장  (가장 오래 걸림 — 청크별 진행률 전달)
         step_start_embed = time.time()
+        total_chunks = len(all_chunks)
         embed_count = 0
+        await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "running",
+                             "detail": f"0/{total_chunks}", "progress": 0})
+
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                for chunk_info in all_chunks:
+                for idx, chunk_info in enumerate(all_chunks):
                     try:
                         embedding = await get_embedding(pool, chunk_info["text"])
                         if embedding is not None:
                             await cursor.execute("""
                                 INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num, embedding)
-                                VALUES (:doc_id, :chunk_text, :source_file, :page_num, :embedding)
+                                VALUES (:doc_id, :chunk_text, :source_file, :page_num, TO_VECTOR(:embedding))
                             """, {
                                 "doc_id": doc_id,
                                 "chunk_text": chunk_info["text"],
                                 "source_file": filename,
                                 "page_num": chunk_info["page_num"],
-                                "embedding": embedding,
+                                "embedding": _vec_to_str(embedding),
                             })
-                            embed_count += 1
                         else:
-                            # 임베딩 없이 텍스트만 저장
                             await cursor.execute("""
                                 INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
                                 VALUES (:doc_id, :chunk_text, :source_file, :page_num)
@@ -281,9 +308,7 @@ async def upload_document(pool, file_path: str, filename: str) -> dict:
                                 "source_file": filename,
                                 "page_num": chunk_info["page_num"],
                             })
-                            embed_count += 1
                     except Exception:
-                        # 개별 청크 실패 시 임베딩 없이 저장
                         await cursor.execute("""
                             INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
                             VALUES (:doc_id, :chunk_text, :source_file, :page_num)
@@ -293,29 +318,29 @@ async def upload_document(pool, file_path: str, filename: str) -> dict:
                             "source_file": filename,
                             "page_num": chunk_info["page_num"],
                         })
-                        embed_count += 1
+                    embed_count += 1
+                    # 매 청크마다 또는 적절한 간격으로 진행률 전달
+                    if total_chunks <= 20 or (idx + 1) % max(1, total_chunks // 20) == 0 or idx == total_chunks - 1:
+                        pct = int((idx + 1) / total_chunks * 100)
+                        await emit("progress", {
+                            "step": 4, "current": idx + 1, "total": total_chunks, "percent": pct,
+                        })
 
                 await conn.commit()
 
+        step_ms_embed = int((time.time() - step_start_embed) * 1000)
         if settings.EMBEDDING_SOURCE == "database":
             embed_sql = f"SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :text AS data) FROM dual"
         else:
-            embed_sql = f"-- 외부 API ({settings.EMBEDDING_MODEL}) 호출 후 벡터 INSERT"
+            embed_sql = f"-- 외부 API ({settings.EMBEDDING_MODEL}) 사용"
+        pipeline.append({"step": "임베딩 & 저장", "sql": embed_sql, "duration_ms": step_ms_embed})
+        await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "done",
+                             "detail": f"{embed_count}개 완료",
+                             "duration_ms": step_ms_embed})
 
-        pipeline.append({
-            "step": "임베딩 생성",
-            "sql": embed_sql,
-            "duration_ms": int((time.time() - step_start_embed) * 1000),
-        })
-
-        step_start_save = time.time()
-        pipeline.append({
-            "step": "DB 저장",
-            "sql": "INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num, embedding) VALUES (:1, :2, :3, :4, :5)",
-            "duration_ms": int((time.time() - step_start_save) * 1000),
-        })
-
-        # Step 5: 문서 상태 업데이트
+        # Step 5: 인덱싱 완료
+        step_start_idx = time.time()
+        await emit("step", {"step": 5, "label": "인덱싱 완료", "status": "running"})
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
@@ -325,17 +350,23 @@ async def upload_document(pool, file_path: str, filename: str) -> dict:
                 """, {"cnt": embed_count, "doc_id": doc_id})
                 await conn.commit()
 
-        return {
+        step_ms_idx = int((time.time() - step_start_idx) * 1000)
+        pipeline.append({"step": "인덱싱 완료", "duration_ms": step_ms_idx})
+
+        total_ms = int((time.time() - start_total) * 1000)
+        result = {
             "success": True,
             "filename": filename,
             "doc_id": doc_id,
             "chunks_count": embed_count,
+            "pages_count": len(pages),
             "pipeline": pipeline,
-            "total_ms": int((time.time() - start_total) * 1000),
+            "total_ms": total_ms,
         }
+        await emit("done", result)
+        return result
 
     except Exception as e:
-        # 실패 시 문서 상태를 error로 업데이트
         try:
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
@@ -345,6 +376,7 @@ async def upload_document(pool, file_path: str, filename: str) -> dict:
                     await conn.commit()
         except Exception:
             pass
+        await emit("error", {"message": str(e)})
         raise e
 
 
@@ -357,7 +389,7 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
     if settings.EMBEDDING_SOURCE == "database":
         # DB 내 임베딩 모델 사용
         sql = f"""
-            SELECT chunk_text, source_file, page_num,
+            SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding,
                        VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data),
                        COSINE) AS distance
@@ -366,25 +398,7 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
             ORDER BY distance
             FETCH FIRST :top_k ROWS ONLY
         """
-        sql_executed = sql.replace(":query", f"'{query}'").replace(":top_k", str(top_k))
-
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(sql, {"query": query, "top_k": top_k})
-                rows = await cursor.fetchall()
-                columns = [col[0] for col in cursor.description]
-    else:
-        # 외부 임베딩 사용
-        query_vector = await get_embedding_external(query)
-        sql = """
-            SELECT chunk_text, source_file, page_num,
-                   VECTOR_DISTANCE(embedding, :query_vector, COSINE) AS distance
-            FROM doc_chunks
-            WHERE embedding IS NOT NULL
-            ORDER BY distance
-            FETCH FIRST :top_k ROWS ONLY
-        """
-        sql_executed = f"""SELECT chunk_text, source_file, page_num,
+        sql_executed = f"""SELECT chunk_id, chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding,
            VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data),
            COSINE) AS distance
@@ -395,18 +409,44 @@ FETCH FIRST {top_k} ROWS ONLY"""
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute(sql, {"query_vector": query_vector, "top_k": top_k})
+                await cursor.execute(sql, {"query": query, "top_k": top_k})
+                rows = await cursor.fetchall()
+                columns = [col[0] for col in cursor.description]
+    else:
+        # 외부 임베딩 사용
+        query_vector = await get_embedding_external(query)
+        query_vec_str = _vec_to_str(query_vector)
+        sql = """
+            SELECT chunk_id, chunk_text, source_file, page_num,
+                   VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector), COSINE) AS distance
+            FROM doc_chunks
+            WHERE embedding IS NOT NULL
+            ORDER BY distance
+            FETCH FIRST :top_k ROWS ONLY
+        """
+        sql_executed = f"""-- 외부 임베딩 API ({settings.EMBEDDING_MODEL}) 사용
+SELECT chunk_id, chunk_text, source_file, page_num,
+       VECTOR_DISTANCE(embedding, TO_VECTOR('<{len(query_vector)}차원 벡터>'), COSINE) AS distance
+FROM doc_chunks
+WHERE embedding IS NOT NULL
+ORDER BY distance
+FETCH FIRST {top_k} ROWS ONLY"""
+
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql, {"query_vector": query_vec_str, "top_k": top_k})
                 rows = await cursor.fetchall()
                 columns = [col[0] for col in cursor.description]
 
     chunks = []
     for row in rows:
-        chunk_text = await _lob_to_str(row[0]) if hasattr(row[0], 'read') else row[0]
-        similarity = 1 - (row[3] if row[3] else 0)  # cosine distance -> similarity
+        chunk_text = await _lob_to_str(row[1]) if hasattr(row[1], 'read') else row[1]
+        similarity = 1 - (row[4] if row[4] else 0)  # cosine distance -> similarity
         chunks.append({
+            "chunk_id": row[0],
             "chunk_text": chunk_text,
-            "source_file": row[1],
-            "page_num": row[2],
+            "source_file": row[2],
+            "page_num": row[3],
             "similarity": round(similarity, 4),
         })
 
@@ -496,13 +536,137 @@ async def compare_search(pool, query: str, top_k: int = 5) -> dict:
     }
 
 
+async def hybrid_search(pool, query: str, top_k: int = 5, vector_weight: float = 0.7) -> dict:
+    """하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합.
+
+    Oracle 26ai의 핵심 기능으로, 단일 SQL에서 키워드 매칭과 벡터 유사도를 결합하여
+    두 방식의 장점을 모두 활용한다. Oracle Text 인덱스 불필요.
+
+    hybrid_score = vector_weight × vector_similarity + (1 - vector_weight) × keyword_match(0 or 1)
+    """
+    start = time.time()
+    keyword_weight = round(1 - vector_weight, 2)
+
+    if settings.EMBEDDING_SOURCE == "database":
+        sql = f"""
+            SELECT chunk_id, chunk_text, source_file, page_num,
+                   VECTOR_DISTANCE(embedding,
+                       VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data),
+                       COSINE) AS vec_distance,
+                   CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword) THEN 100 ELSE 0 END AS keyword_score
+            FROM doc_chunks
+            WHERE embedding IS NOT NULL
+            ORDER BY (
+                {vector_weight} * (1 - VECTOR_DISTANCE(embedding,
+                    VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query2 AS data),
+                    COSINE))
+                + {keyword_weight} * CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword2) THEN 1 ELSE 0 END
+            ) DESC
+            FETCH FIRST :top_k ROWS ONLY
+        """
+        keyword_pattern = f"%{query}%"
+        bind_params = {
+            "query": query, "query2": query,
+            "keyword": keyword_pattern, "keyword2": keyword_pattern,
+            "top_k": top_k,
+        }
+
+        sql_display = f"""-- 하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합
+-- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_match
+SELECT chunk_id, chunk_text, source_file, page_num,
+       VECTOR_DISTANCE(embedding,
+           VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data),
+           COSINE) AS vec_distance,
+       CASE WHEN LOWER(chunk_text) LIKE LOWER('%{query}%') THEN 100 ELSE 0 END AS keyword_score
+FROM doc_chunks
+WHERE embedding IS NOT NULL
+ORDER BY ({vector_weight} * (1 - vec_distance)
+        + {keyword_weight} * CASE WHEN keyword_match THEN 1 ELSE 0 END) DESC
+FETCH FIRST {top_k} ROWS ONLY"""
+
+    else:
+        query_vector = await get_embedding_external(query)
+        query_vec_str = _vec_to_str(query_vector)
+        sql = f"""
+            SELECT chunk_id, chunk_text, source_file, page_num,
+                   VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector), COSINE) AS vec_distance,
+                   CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword) THEN 100 ELSE 0 END AS keyword_score
+            FROM doc_chunks
+            WHERE embedding IS NOT NULL
+            ORDER BY (
+                {vector_weight} * (1 - VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector2), COSINE))
+                + {keyword_weight} * CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword2) THEN 1 ELSE 0 END
+            ) DESC
+            FETCH FIRST :top_k ROWS ONLY
+        """
+        keyword_pattern = f"%{query}%"
+        bind_params = {
+            "query_vector": query_vec_str, "query_vector2": query_vec_str,
+            "keyword": keyword_pattern, "keyword2": keyword_pattern,
+            "top_k": top_k,
+        }
+
+        sql_display = f"""-- 하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합
+-- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_match
+SELECT chunk_id, chunk_text, source_file, page_num,
+       VECTOR_DISTANCE(embedding, TO_VECTOR(<query_vector>), COSINE) AS vec_distance,
+       CASE WHEN LOWER(chunk_text) LIKE LOWER('%{query}%') THEN 100 ELSE 0 END AS keyword_score
+FROM doc_chunks
+WHERE embedding IS NOT NULL
+ORDER BY ({vector_weight} * (1 - vec_distance)
+        + {keyword_weight} * CASE WHEN keyword_match THEN 1 ELSE 0 END) DESC
+FETCH FIRST {top_k} ROWS ONLY"""
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(sql, bind_params)
+            rows = await cursor.fetchall()
+
+    chunks = []
+    for row in rows:
+        chunk_text = await _lob_to_str(row[1]) if hasattr(row[1], 'read') else row[1]
+        vec_distance = row[4] if row[4] else 0
+        keyword_score_raw = row[5] if row[5] else 0
+        vec_similarity = 1 - vec_distance
+        kw_normalized = keyword_score_raw / 100
+        hybrid_score = vector_weight * vec_similarity + keyword_weight * kw_normalized
+        chunks.append({
+            "chunk_id": row[0],
+            "chunk_text": chunk_text,
+            "source_file": row[2],
+            "page_num": row[3],
+            "similarity": round(vec_similarity, 4),
+            "keyword_score": round(keyword_score_raw, 1),
+            "hybrid_score": round(hybrid_score, 4),
+        })
+
+    elapsed = int((time.time() - start) * 1000)
+
+    return {
+        "chunks": chunks,
+        "match_count": len(chunks),
+        "sql_executed": sql_display,
+        "elapsed_ms": elapsed,
+        "vector_weight": vector_weight,
+        "keyword_weight": keyword_weight,
+    }
+
+
 # === RAG Answer Generation ===
 
-async def generate_rag_answer(pool, query: str, chunks: list, profile_name: str) -> str:
-    """검색된 청크를 컨텍스트로 LLM 답변을 생성한다."""
+async def generate_rag_answer(query: str, chunks: list, provider: str = None) -> str:
+    """검색된 청크를 컨텍스트로 외부 LLM API를 통해 답변을 생성한다."""
+    from app.llm_client import call_llm
+
     context = "\n\n".join([c["chunk_text"] for c in chunks if c.get("chunk_text")])
 
-    prompt = f"""다음 문서 내용을 참고하여 질문에 답변하세요.
+    system_prompt = (
+        "당신은 문서 기반 질의응답 AI 어시스턴트입니다. "
+        "제공된 참고 문서 내용만을 근거로 한국어로 답변하세요. "
+        "문서에 없는 내용은 답변하지 마세요."
+    )
+
+    prompt = f"""다음 문서 내용을 참고하여 질문에 한국어로 답변하세요.
 
 [참고 문서]
 {context}
@@ -510,26 +674,10 @@ async def generate_rag_answer(pool, query: str, chunks: list, profile_name: str)
 [질문]
 {query}
 
-문서에 없는 내용은 답변하지 마세요."""
+반드시 참고 문서에 있는 내용만을 근거로 답변하세요."""
 
     try:
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                sql = """
-                    SELECT DBMS_CLOUD_AI.GENERATE(
-                        prompt       => :prompt,
-                        profile_name => :profile,
-                        action       => 'chat'
-                    ) FROM dual
-                """
-                await cursor.execute(sql, {
-                    "prompt": prompt,
-                    "profile": profile_name,
-                })
-                row = await cursor.fetchone()
-                if row:
-                    return await _lob_to_str(row[0])
-                return "답변을 생성할 수 없습니다."
+        return await call_llm(prompt, provider=provider, system_prompt=system_prompt)
     except Exception as e:
         return f"LLM 답변 생성 중 오류: {str(e)}"
 
@@ -537,13 +685,17 @@ async def generate_rag_answer(pool, query: str, chunks: list, profile_name: str)
 # === Document Management ===
 
 async def list_documents(pool) -> list:
-    """업로드된 문서 목록을 조회한다."""
+    """업로드된 문서 목록을 조회한다. 각 문서의 임베딩 차원 수도 포함."""
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("""
-                SELECT doc_id, filename, upload_date, status, chunks_count
-                FROM documents
-                ORDER BY upload_date DESC
+                SELECT d.doc_id, d.filename, d.upload_date, d.status, d.chunks_count,
+                       (SELECT VECTOR_DIMENSION_COUNT(c.embedding)
+                        FROM doc_chunks c
+                        WHERE c.doc_id = d.doc_id AND c.embedding IS NOT NULL
+                        AND ROWNUM = 1) AS embed_dim
+                FROM documents d
+                ORDER BY d.upload_date DESC
             """)
             rows = await cursor.fetchall()
             return [
@@ -553,6 +705,7 @@ async def list_documents(pool) -> list:
                     "upload_date": row[2].isoformat() if row[2] else None,
                     "status": row[3],
                     "chunks_count": row[4],
+                    "embed_dim": row[5],
                 }
                 for row in rows
             ]
@@ -643,6 +796,238 @@ async def get_embedding_info(pool, text: str) -> dict:
     return result
 
 
+# === ONNX Model Info ===
+
+async def get_onnx_models(pool) -> list:
+    """DB에 로드된 ONNX 임베딩 모델 목록을 조회한다 (USER_MINING_MODELS)."""
+    models = []
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""
+                    SELECT model_name, mining_function, algorithm, creation_date
+                    FROM user_mining_models
+                    WHERE algorithm = 'ONNX'
+                    ORDER BY creation_date DESC
+                """)
+                rows = await cursor.fetchall()
+                for row in rows:
+                    models.append({
+                        "model_name": row[0],
+                        "mining_function": row[1],
+                        "algorithm": row[2],
+                        "creation_date": str(row[3]) if row[3] else None,
+                    })
+    except Exception:
+        # USER_MINING_MODELS 뷰가 없거나 권한 부족 시 무시
+        pass
+    return models
+
+
+async def load_onnx_model(pool, model_name: str, onnx_data: bytes, metadata: dict = None) -> dict:
+    """ONNX 파일(바이트)을 DB에 임베딩 모델로 적재한다.
+
+    DBMS_VECTOR.LOAD_ONNX_MODEL(model_name, model_source(BLOB), metadata(JSON))
+    """
+    if metadata is None:
+        metadata = {
+            "function": "embedding",
+            "embeddingOutput": "embedding",
+            "input": {"input": ["DATA"]},
+        }
+
+    metadata_json = json.dumps(metadata)
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            # 임시 BLOB 생성 후 데이터 기록
+            temp_blob = await conn.createlob(oracledb.DB_TYPE_BLOB)
+            await temp_blob.write(onnx_data)
+
+            # Step 1: 임시 테이블에 BLOB 저장
+            await cursor.execute("""
+                DECLARE
+                    v_cnt NUMBER;
+                BEGIN
+                    SELECT COUNT(*) INTO v_cnt FROM user_tables WHERE table_name = 'ONNX_TEMP';
+                    IF v_cnt = 0 THEN
+                        EXECUTE IMMEDIATE 'CREATE TABLE onnx_temp (name VARCHAR2(200), data BLOB)';
+                    END IF;
+                END;
+            """)
+
+            # 기존 데이터 삭제 후 삽입
+            await cursor.execute("DELETE FROM onnx_temp WHERE name = :n", {"n": model_name})
+            await cursor.execute(
+                "INSERT INTO onnx_temp (name, data) VALUES (:n, :d)",
+                {"n": model_name, "d": temp_blob},
+            )
+            await conn.commit()
+
+            # Step 2: PL/SQL 내에서 BLOB을 읽어서 LOAD_ONNX_MODEL 호출
+            plsql = f"""
+                DECLARE
+                    v_blob BLOB;
+                BEGIN
+                    SELECT data INTO v_blob FROM onnx_temp WHERE name = '{model_name}';
+                    DBMS_VECTOR.LOAD_ONNX_MODEL('{model_name}', v_blob, JSON('{metadata_json}'));
+                    DELETE FROM onnx_temp WHERE name = '{model_name}';
+                    COMMIT;
+                END;
+            """
+            await cursor.execute(plsql)
+            await conn.commit()
+
+    return {
+        "model_name": model_name,
+        "metadata": metadata,
+        "size_bytes": len(onnx_data),
+    }
+
+
+async def load_onnx_model_cloud(pool, model_name: str, location_uri: str, onnx_file_name: str) -> dict:
+    """OCI Object Storage에서 ONNX 파일을 가져와 DB에 적재한다.
+
+    PL/SQL 흐름:
+      1. DBMS_DATA_MINING.DROP_MODEL (기존 모델 제거)
+      2. DBMS_CLOUD.GET_OBJECT → DATA_PUMP_DIR 로 복사
+      3. DBMS_VECTOR.LOAD_ONNX_MODEL → DB 적재
+    """
+    start = time.time()
+    clean_name = model_name.strip().upper().replace("-", "_").replace(" ", "_")
+    object_uri = location_uri.rstrip("/") + "/" + onnx_file_name
+
+    plsql = f"""
+        DECLARE
+            v_model_name VARCHAR2(200) := '{clean_name}';
+            v_file_name  VARCHAR2(200) := '{onnx_file_name}';
+            v_uri        VARCHAR2(500) := '{object_uri}';
+        BEGIN
+            -- 기존 모델 삭제 (없으면 무시)
+            BEGIN
+                DBMS_DATA_MINING.DROP_MODEL(model_name => v_model_name);
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END;
+
+            -- Object Storage → DATA_PUMP_DIR
+            DBMS_CLOUD.GET_OBJECT(
+                credential_name => NULL,
+                directory_name  => 'DATA_PUMP_DIR',
+                object_uri      => v_uri
+            );
+
+            -- ONNX 모델 DB 적재
+            DBMS_VECTOR.LOAD_ONNX_MODEL(
+                directory  => 'DATA_PUMP_DIR',
+                file_name  => v_file_name,
+                model_name => v_model_name
+            );
+        END;
+    """
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(plsql)
+            await conn.commit()
+
+    elapsed_ms = int((time.time() - start) * 1000)
+    return {
+        "model_name": clean_name,
+        "onnx_file": onnx_file_name,
+        "object_uri": object_uri,
+        "elapsed_ms": elapsed_ms,
+    }
+
+
+async def drop_onnx_model(pool, model_name: str) -> dict:
+    """DB에서 ONNX 모델을 삭제한다."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("""
+                BEGIN
+                    DBMS_DATA_MINING.DROP_MODEL(:model_name);
+                END;
+            """, {"model_name": model_name})
+            await conn.commit()
+
+    return {"model_name": model_name, "status": "dropped"}
+
+
+async def test_onnx_model(pool, model_name: str, sample_text: str = "테스트 문장입니다") -> dict:
+    """ONNX 모델로 샘플 텍스트의 임베딩을 생성하여 정상 작동을 확인한다."""
+    start = time.time()
+    result = {
+        "model_name": model_name,
+        "sample_text": sample_text[:200],
+        "sql_executed": f"SELECT VECTOR_EMBEDDING({model_name} USING '{sample_text[:50]}...' AS data) FROM dual",
+    }
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(f"""
+                    SELECT VECTOR_EMBEDDING({model_name} USING :text AS data) FROM dual
+                """, {"text": sample_text})
+                row = await cursor.fetchone()
+
+                if row and row[0]:
+                    vec = row[0]
+                    dimensions = len(vec) if hasattr(vec, '__len__') else 0
+                    result["success"] = True
+                    result["dimensions"] = dimensions
+                    result["vector_preview"] = str(vec[:5]) + "..." if dimensions > 5 else str(vec)
+                    result["processing_ms"] = int((time.time() - start) * 1000)
+                else:
+                    result["success"] = False
+                    result["error"] = "임베딩 결과가 없습니다."
+    except Exception as e:
+        result["success"] = False
+        result["error"] = str(e)
+        result["processing_ms"] = int((time.time() - start) * 1000)
+
+    return result
+
+
+async def get_onnx_model_detail(pool, model_name: str) -> dict:
+    """ONNX 모델의 상세 정보를 조회한다."""
+    detail = {"model_name": model_name}
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            # 기본 정보
+            try:
+                await cursor.execute("""
+                    SELECT model_name, mining_function, algorithm,
+                           build_duration, model_size, creation_date
+                    FROM user_mining_models
+                    WHERE model_name = :mn
+                """, {"mn": model_name})
+                row = await cursor.fetchone()
+                if row:
+                    detail["mining_function"] = row[1]
+                    detail["algorithm"] = row[2]
+                    detail["build_duration"] = row[3]
+                    detail["model_size"] = row[4]
+                    detail["creation_date"] = str(row[5]) if row[5] else None
+            except Exception:
+                pass
+
+            # 모델 속성 (DM$VA 뷰)
+            try:
+                await cursor.execute("""
+                    SELECT attribute_name, attribute_value
+                    FROM user_mining_model_attributes
+                    WHERE model_name = :mn
+                    ORDER BY attribute_name
+                """, {"mn": model_name})
+                rows = await cursor.fetchall()
+                detail["attributes"] = {row[0]: row[1] for row in rows}
+            except Exception:
+                detail["attributes"] = {}
+
+    return detail
+
+
 # === Vector Store Table Management ===
 
 async def drop_vector_tables(pool) -> dict:
@@ -710,7 +1095,7 @@ async def create_vector_tables_explicit(pool) -> dict:
                         chunk_text  CLOB,
                         source_file VARCHAR2(500),
                         page_num    NUMBER,
-                        embedding   VECTOR(768, FLOAT32)
+                        embedding   VECTOR
                     )
                 """)
                 created.append("DOC_CHUNKS")
@@ -747,7 +1132,7 @@ async def create_vector_tables_explicit(pool) -> dict:
     chunk_text  CLOB,
     source_file VARCHAR2(500),
     page_num    NUMBER,
-    embedding   VECTOR(768, FLOAT32)
+    embedding   VECTOR
 )""")
     sql_list.append("""CREATE VECTOR INDEX doc_chunks_hnsw_idx
 ON doc_chunks(embedding)
@@ -791,7 +1176,7 @@ async def query_table_data(pool, table_name: str = "DOC_CHUNKS", limit: int = 50
         sql = """SELECT chunk_id, doc_id,
        DBMS_LOB.SUBSTR(chunk_text, 80) AS chunk_text,
        source_file, page_num,
-       CASE WHEN embedding IS NOT NULL THEN 'VECTOR(768)' ELSE NULL END AS embedding
+       CASE WHEN embedding IS NOT NULL THEN 'VECTOR' ELSE NULL END AS embedding
 FROM doc_chunks
 FETCH FIRST :lmt ROWS ONLY"""
         sql_display = sql.replace(":lmt", str(limit))
@@ -922,3 +1307,149 @@ FETCH FIRST 5 ROWS ONLY"""
             "plan_lines": [],
             "error": str(e),
         }
+
+
+# === Vector 2D Visualization (Simple PCA) ===
+
+def _query_centric_2d(vectors, query_idx):
+    """쿼리 벡터를 중심으로 한 2D 투영.
+    X축 = 쿼리와의 코사인 유사도 (가까울수록 오른쪽)
+    Y축 = 잔차 벡터의 1차 주성분 (의미적 다양성)
+    """
+    import math
+
+    n = len(vectors)
+    if n == 0 or query_idx is None or query_idx >= n:
+        return []
+
+    dim = len(vectors[0])
+    qvec = vectors[query_idx]
+    q_norm = math.sqrt(sum(x * x for x in qvec)) or 1e-10
+
+    # 1단계: 코사인 유사도(X축) + 잔차 벡터 계산
+    cos_sims = []
+    residuals = []
+    for i in range(n):
+        v = vectors[i]
+        v_norm = math.sqrt(sum(x * x for x in v)) or 1e-10
+        dot = sum(qvec[j] * v[j] for j in range(dim))
+        cos_sim = dot / (q_norm * v_norm)
+        cos_sims.append(cos_sim)
+
+        # 쿼리 방향 성분 제거 → 잔차
+        proj_scale = dot / (q_norm * q_norm)
+        residual = [v[j] - proj_scale * qvec[j] for j in range(dim)]
+        residuals.append(residual)
+
+    # 2단계: 잔차 벡터들의 1차 주성분 (power iteration)
+    import random
+    random.seed(42)
+    pc = [random.gauss(0, 1) for _ in range(dim)]
+    norm = math.sqrt(sum(x * x for x in pc)) or 1e-10
+    pc = [x / norm for x in pc]
+
+    for _ in range(20):
+        new_pc = [0.0] * dim
+        for res in residuals:
+            dot = sum(res[j] * pc[j] for j in range(dim))
+            for j in range(dim):
+                new_pc[j] += dot * res[j]
+        norm = math.sqrt(sum(x * x for x in new_pc)) or 1e-10
+        pc = [x / norm for x in new_pc]
+
+    # 3단계: 잔차를 주성분에 투영 → Y값
+    y_vals = []
+    for res in residuals:
+        y = sum(res[j] * pc[j] for j in range(dim))
+        y_vals.append(y)
+
+    # 4단계: 결과 조립
+    result = []
+    for i in range(n):
+        result.append([round(cos_sims[i], 4), round(y_vals[i], 4)])
+
+    return result
+
+
+async def get_vector_visualization(pool, query: str, matched_chunk_ids: list = None, max_points: int = 200) -> dict:
+    """청크 임베딩을 2D로 축소하여 시각화 데이터를 반환한다."""
+    # 1. 모든 청크의 임베딩을 조회 (최대 max_points개)
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"""
+                SELECT chunk_id, source_file, page_num, embedding
+                FROM doc_chunks
+                WHERE embedding IS NOT NULL
+                FETCH FIRST :max_points ROWS ONLY
+            """, {"max_points": max_points})
+            rows = await cursor.fetchall()
+
+    if not rows:
+        return {"error": "임베딩된 청크가 없습니다.", "points": []}
+
+    chunk_ids = []
+    source_files = []
+    page_nums = []
+    vectors = []
+
+    for row in rows:
+        chunk_ids.append(row[0])
+        source_files.append(row[1])
+        page_nums.append(row[2])
+        # oracledb VECTOR → list
+        vec = row[3]
+        if isinstance(vec, (list, tuple)):
+            vectors.append(list(vec))
+        elif hasattr(vec, '__iter__'):
+            vectors.append([float(x) for x in vec])
+        else:
+            continue
+
+    # 2. 쿼리 임베딩 생성
+    query_vec = await get_embedding(pool, query)
+    if query_vec is not None:
+        if isinstance(query_vec, (list, tuple)):
+            query_vec_list = list(query_vec)
+        elif hasattr(query_vec, '__iter__'):
+            query_vec_list = [float(x) for x in query_vec]
+        else:
+            query_vec_list = None
+    else:
+        query_vec_list = None
+
+    # 3. 쿼리 벡터를 포함하여 PCA
+    all_vectors = vectors[:]
+    query_idx = None
+    if query_vec_list and len(query_vec_list) == len(vectors[0]):
+        query_idx = len(all_vectors)
+        all_vectors.append(query_vec_list)
+
+    if query_idx is None:
+        return {"error": "쿼리 임베딩을 생성할 수 없습니다.", "points": []}
+
+    coords_2d = _query_centric_2d(all_vectors, query_idx)
+
+    # 4. 결과 조립
+    points = []
+    for i in range(len(vectors)):
+        is_matched = bool(matched_chunk_ids) and chunk_ids[i] in matched_chunk_ids
+        points.append({
+            "chunk_id": chunk_ids[i],
+            "source_file": source_files[i],
+            "page_num": page_nums[i],
+            "x": coords_2d[i][0],
+            "y": coords_2d[i][1],
+            "matched": is_matched,
+        })
+
+    query_point = {
+        "x": coords_2d[query_idx][0],  # 코사인 유사도 1.0 (자기 자신)
+        "y": coords_2d[query_idx][1],   # 잔차 0
+        "label": query,
+    }
+
+    return {
+        "points": points,
+        "query_point": query_point,
+        "total_chunks": len(points),
+    }

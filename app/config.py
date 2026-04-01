@@ -17,10 +17,24 @@ class Settings:
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
 
     # Vector Embedding 설정
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "minilm_l12_v2")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "MULTI_MINILM_L12_V2")
     EMBEDDING_SOURCE: str = os.getenv("EMBEDDING_SOURCE", "database")  # "database" or "external"
     EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "")
     EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "")
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "768"))  # 벡터 차원 (외부 API: 768, ONNX 384 등)
+
+    # LLM 채팅 설정 (AWR 분석, RAG 답변 생성용)
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "google")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+    GOOGLE_MODEL: str = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+    XAI_API_KEY: str = os.getenv("XAI_API_KEY", "")
+    XAI_MODEL: str = os.getenv("XAI_MODEL", "grok-3")
 
 
 settings = Settings()
