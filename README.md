@@ -86,7 +86,7 @@ python main.py
 ### 6. 브라우저에서 접속
 
 ```
-http://localhost:8000
+http://localhost:8247
 ```
 
 ## DB 사전 설정

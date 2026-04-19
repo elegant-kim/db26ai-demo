@@ -14,7 +14,7 @@ class Settings:
     SELECT_AI_PROFILE: str = os.getenv("SELECT_AI_PROFILE", "")  # 빈 값이면 DB에서 동적 결정
 
     APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
-    APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
+    APP_PORT: int = int(os.getenv("APP_PORT", "8247"))
 
     # Vector Embedding 설정
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "MULTI_MINILM_L12_V2")

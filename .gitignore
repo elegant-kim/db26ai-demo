@@ -13,3 +13,6 @@ build/
 *.swo
 *~
 .DS_Store
+.claude/
+db26ai.log
+db26ai.pid

@@ -23,7 +23,7 @@ cp .env.example .env  # DB 접속정보 및 API 키 설정
 
 # Run (파일 변경 시 자동 리로드)
 python main.py
-# → http://localhost:8000
+# → http://localhost:8247
 ```
 
 빌드 불필요 — Vue 3, Chart.js는 CDN에서 로드.
@@ -181,7 +181,7 @@ SELECT_AI_PROFILE=
 
 # App
 APP_HOST=0.0.0.0
-APP_PORT=8000
+APP_PORT=8247
 
 # Vector Embedding
 EMBEDDING_SOURCE=database              # "database" (ONNX) 또는 "external"
