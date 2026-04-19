@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  db26ai-demo 서버 자동 시작 (launchd user agent)
+
+  설치:
+    ./deploy/install-launchd.sh
+
+  제거:
+    ./deploy/uninstall-launchd.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.db26ai.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>/Users/seunghyunkim/Dev/db26ai-demo/db26ai-demo/venv/bin/python</string>
+        <string>main.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/seunghyunkim/Dev/db26ai-demo/db26ai-demo</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/seunghyunkim/Dev/db26ai-demo/db26ai-demo/db26ai.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/seunghyunkim/Dev/db26ai-demo/db26ai-demo/db26ai.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>LANG</key>
+        <string>ko_KR.UTF-8</string>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
