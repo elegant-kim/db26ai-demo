@@ -65,12 +65,26 @@
 Step 4.5의 `DBMS_STATS.GATHER_TABLE_STATS`가 실제로 실행된 시각이다. 데이터 행 수도 온전하고,
 `.env`가 이미 신규 DSN을 가리키며, 이후 5개월간 keepalive가 정상 동작했다.
 
-### 1.3 이관 후속 미완 2건
+### 1.3 이관 후속 상태 — **v0.1의 오판을 정정 (2026-09-04, Phase 1 실측)**
 
-| 미완 | 근거 | 영향 |
-|---|---|---|
-| **ONNX 모델 재로드** (42번 Step 4.4) | `/api/health` → `onnx_models: []` | DB 내장 임베딩 데모 경로 사망. `.env`가 `EMBEDDING_SOURCE=external`(gemini-embedding-001)로 우회된 채 굳음 — CLAUDE.md 기본값(`database`)과 불일치 |
-| **Vector Store 재적재** | `DOCUMENTS`/`DOC_CHUNKS` `num_rows=null`, `last_analyzed=null` (빈 테이블) | Vector Search 탭이 지금 열면 비어 있음 |
+v0.1은 `/api/health`의 `onnx_models: []` 를 근거로 "ONNX 재로드 미완"이라 판단했다.
+**틀렸다.** 실제 DB에는 ONNX 모델이 2개 있고, `/api/health` 쪽이 버그였다.
+
+| 항목 | v0.1 판단 | **실측 결과** | 근거 |
+|---|---|---|---|
+| ONNX 모델 재로드 | ❌ 미완 | ✅ **완료** — `MULTILINGUAL_E5_SMALL`(2026-04-14 08:48:58, 이관 창 안) · `MULTILINGUAL_E5_BASE`(2026-04-20 06:42:37, 마지막 커밋 이후) | `GET /api/vector/onnx-models` |
+| Vector Store 재적재 | ❌ 미완 | ❌ **미완 유지** — `DOCUMENTS`/`DOC_CHUNKS` 빈 상태 | `GET /api/vector/index-info` → `total_chunks: 0` |
+| `/api/ask` 500 | ⚠ 상시 장애 의심 | ✅ **정상** — 4개 action(showsql·narrate·explainsql·runsql) 전부 200. `runsql`이 `고객_수: 55500` 반환 | Phase 1 스모크 |
+
+**새로 발견한 버그 (수정 완료):** `/api/health`가 5개월간 `onnx_models`를 거짓 보고.
+`get_onnx_models()`는 **list**를 반환하는데(`vector_search.py:801`) `routes.py:332`가
+`.get("models")`로 dict 취급 → `AttributeError` → 바로 아래 `except Exception: pass`가
+**조용히 삼킴** → 초기값 `[]` 그대로 응답. HTTP 200이라 아무도 몰랐다.
+
+> **교훈 (→ `docs/개발노하우.md` 2-2에 기록할 것):** investhub의 *"success가 정상을 뜻하지
+> 않는다"* 가 이 저장소에서도 재현됐다. **bare `except: pass`는 실패를 없애는 게 아니라
+> 숨긴다.** 최소한 로그는 남겨야 한다 — 발화하지 않는 실패는 없는 실패와 같다.
+> `/api/health` 안에 같은 패턴이 **4곳 더** 있다(§1.4 D9).
 
 ### 1.4 해소해야 할 부채 8건
 
@@ -83,6 +97,7 @@ Step 4.5의 `DBMS_STATS.GATHER_TABLE_STATS`가 실제로 실행된 시각이다.
 | D5 | 미커밋 `app/graph.py` (+50/−30, PGQ 복합키·예시쿼리 교정) | `git diff` | 중간 |
 | D6 | 최근 `/api/ask` 500 (재시도 흔적 없음) | `db26ai.log:1197` | 중간 |
 | D7 | `.claude/launch.json` 포트가 8000 (실제 8247) | `launch.json` vs 커밋 214d1d0 | 낮음 |
+| D9 | **`/api/health` 안 bare `except: pass` 4곳 잔존** — ONNX 건과 동일한 침묵 실패 위험 (schema·db_version·profiles·vector_index) | `routes.py` | 중간 |
 | D8 | 홈 디렉터리 `elegant`→`seunghyunkim` 변경 잔재 — `settings.local.json` 허용목록 다수 사경로, worktree prunable, 허용목록에 Google 키 평문 | `git worktree list`, `settings.local.json` | 낮음 |
 
 ### 1.5 코드 규모
@@ -171,14 +186,15 @@ Step 4.5의 `DBMS_STATS.GATHER_TABLE_STATS`가 실제로 실행된 시각이다.
 
 | ID | 작업 | 산출물 | 권고 모델 | 공수 |
 |---|---|---|---|---|
-| 1-1 | 6탭 스모크 — 탭별 대표 API 호출, 결과를 표로 정리 | 스모크 결과표 (→ L3 문서 재료) | **Opus 5** | 40분 |
-| 1-2 | `/api/ask` 500 원인 규명 및 수정 | 수정 + 재현 절차 기록 | **Opus 5** → *3회 이상 헛돌면 **Fable 5.1*** | 30분~2시간 |
+| 1-1 | ~~6탭 스모크~~ **완료** — 16개 엔드포인트 전부 HTTP 200 | 스모크 결과표 (→ L3 문서 재료) | **Opus 5** ✅ | *완료* |
+| 1-2 | ~~`/api/ask` 500 원인 규명~~ **완료** — 4개 action 전부 정상. 로그의 500은 재현 불가(외부 LLM 일시 실패 추정). Fable 전환 불필요 | 스모크 결과표 | **Opus 5** ✅ | *완료* |
 | 1-3 | 미커밋 `app/graph.py` 검증 후 커밋 or 되돌리기 판단 | 커밋 1건 | **Opus 5** | 30분 |
 | 1-4 | `.claude/launch.json` 포트 8000→8247 | 설정 | **Opus 5 (fast)** | 5분 |
-| 1-5 | **ONNX 모델 재로드** (42번 Step 4.4 재실행) | DB에 ONNX 모델 1종 | **Opus 5** | 40분 |
+| 1-5 | ~~ONNX 모델 재로드~~ → **`/api/health` ONNX 거짓보고 버그 수정** (실제 모델은 2종 존재) | `routes.py` 수정 | **Opus 5** ✅ | *완료* |
 | 1-6 | **PDF 1~2개 재적재** — 업로드 파이프라인 전 구간 검증 | DOCUMENTS/DOC_CHUNKS 데이터 | **Opus 5** | 30분 |
 | 1-7 | 임베딩 모드 정합성 결정 — `.env` `external` 유지 vs `database` 복귀, CLAUDE.md와 일치시킴 | 결정 기록 | **Opus 5** | 20분 |
 | 1-8 | `app/awr_analyzer.py`(구버전 517줄) 사용 여부 확인 → 미사용이면 삭제 | 정리 | **Opus 5** | 20분 |
+| 1-9 | **(신설)** `/api/health` 잔여 bare `except: pass` 4곳에 로깅 추가 (D9) | `routes.py` | **Opus 5** | 20분 |
 
 **완료 판정:** 6탭 전부 스모크 통과 · ONNX 모델 1종 로드됨 · 벡터 검색이 실제 결과 반환
 
@@ -407,4 +423,5 @@ Phase 0 (보안)  →  Phase 1 (재가동)  →  Phase 2 (문서골격) ⭐
 | 날짜 | 버전 | 내용 |
 |---|---|---|
 | 2026-09-04 | v0.1 | 최초 작성 — 소스 전수조사 + DB 실측 + investhub 대조 기반 |
+| 2026-09-04 | v0.3 | **Phase 0 완료 · Phase 1 착수 실측 반영** — §1.3의 "ONNX 재로드 미완" 오판 정정(실제 2종 존재, `/api/health` 버그였음). `/api/ask` 정상 확인으로 1-2 조건부 Fable 해제. D9(bare except 4곳) 신설 → 작업 1-9 추가 |
 | 2026-09-04 | v0.2 | **UI 충실도 우선 방침 반영** — 모델 배분 기준을 비용 최소화 → 기준수립·시각품질 중심으로 개정. Fable 2→8건(5-0·5-1·5-4·5-5 승격, 4-2·6-3 신설). 0-6 키 로테이션을 선택으로 강등(유출 없음 확인). 요약표 단위 명시 |

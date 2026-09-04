@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 import time
@@ -48,6 +49,8 @@ from app.vector_search import (
     query_explain_plan,
     get_vector_visualization,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -326,12 +329,15 @@ async def health():
             pass
 
         # ONNX 모델 목록
+        # get_onnx_models()는 dict가 아니라 list를 반환한다(vector_search.py:801).
+        # 2026-09-04 이전에는 .get("models")를 호출해 AttributeError가 났고, 아래 except가
+        # 조용히 삼켜서 /health가 5개월간 onnx_models=[] 로 거짓 보고했다(실제로는 2개 존재).
+        # 예외를 삼키더라도 로그는 남긴다 — 발화하지 않는 실패는 없는 실패와 같다.
         try:
             from app.vector_search import get_onnx_models
-            onnx_result = await get_onnx_models(pool)
-            onnx_models = onnx_result.get("models", [])
-        except Exception:
-            pass
+            onnx_models = await get_onnx_models(pool)
+        except Exception as e:
+            logger.warning("[health] ONNX 모델 목록 조회 실패: %s", e)
 
         # 벡터 인덱스 상태
         try:
