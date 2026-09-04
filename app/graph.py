@@ -22,7 +22,7 @@ VERTEX TABLES (
         PROPERTIES (prod_id, prod_name, prod_category, prod_list_price)
 )
 EDGE TABLES (
-    admin.sales KEY (rowid)
+    admin.sales KEY (prod_id, cust_id, time_id, channel_id, promo_id)
         SOURCE KEY (cust_id) REFERENCES customers (cust_id)
         DESTINATION KEY (prod_id) REFERENCES products (prod_id)
         PROPERTIES (amount_sold, quantity_sold, time_id)
@@ -62,54 +62,82 @@ async def drop_property_graph(pool) -> dict:
 
 COMPARE_QUERIES = [
     {
-        "label": "특정 고객이 구매한 제품 목록",
+        "label": "고객 524가 구매한 제품 목록",
         "sql": """SELECT p.prod_name, p.prod_category, s.amount_sold
 FROM admin.sales s
 JOIN admin.products p ON s.prod_id = p.prod_id
-JOIN admin.customers c ON s.cust_id = c.cust_id
-WHERE c.cust_id = (SELECT MIN(cust_id) FROM admin.customers)
+WHERE s.cust_id = 524
+ORDER BY s.amount_sold DESC
 FETCH FIRST 10 ROWS ONLY""",
         "pgq": """SELECT product_name, category, amount
 FROM GRAPH_TABLE (sales_graph
     MATCH (c IS customers) -[s IS sales]-> (p IS products)
-    WHERE c.cust_id = (SELECT MIN(cust_id) FROM admin.customers)
-    COLUMNS (p.prod_name AS product_name, p.prod_category AS category, s.amount_sold AS amount)
+    WHERE c.cust_id = 524
+    COLUMNS (p.prod_name AS product_name,
+             p.prod_category AS category,
+             s.amount_sold AS amount)
 )
+ORDER BY amount DESC
 FETCH FIRST 10 ROWS ONLY""",
     },
     {
-        "label": "도시별 구매 제품 카테고리 통계",
-        "sql": """SELECT c.cust_city, p.prod_category, COUNT(*) AS purchase_count, SUM(s.amount_sold) AS total_amount
+        "label": "제품별 구매 고객 수 및 총 매출 Top-10",
+        "sql": """SELECT p.prod_name, p.prod_category,
+       COUNT(DISTINCT s.cust_id) AS customer_count,
+       SUM(s.amount_sold) AS total_amount
 FROM admin.sales s
-JOIN admin.customers c ON s.cust_id = c.cust_id
 JOIN admin.products p ON s.prod_id = p.prod_id
-GROUP BY c.cust_city, p.prod_category
+GROUP BY p.prod_name, p.prod_category
 ORDER BY total_amount DESC
 FETCH FIRST 10 ROWS ONLY""",
-        "pgq": """SELECT city, category, purchase_count, total_amount
+        # SQL/PGQ 에서는 GRAPH_TABLE() 의 COLUMNS 절 안에 집계함수를 쓸 수 없다
+        # (ORA-49011: A group function inside GRAPH_TABLE() must have a group reference).
+        # 정석은 그래프에서 원시 행을 투영하고 집계는 바깥 쿼리에서 하는 것이다.
+        "pgq": """SELECT product_name, category,
+       COUNT(DISTINCT cust_id) AS customer_count,
+       SUM(amount) AS total_amount
 FROM GRAPH_TABLE (sales_graph
     MATCH (c IS customers) -[s IS sales]-> (p IS products)
-    COLUMNS (c.cust_city AS city, p.prod_category AS category,
-             COUNT(*) AS purchase_count, SUM(s.amount_sold) AS total_amount)
+    COLUMNS (p.prod_name AS product_name,
+             p.prod_category AS category,
+             c.cust_id AS cust_id,
+             s.amount_sold AS amount)
 )
+GROUP BY product_name, category
 ORDER BY total_amount DESC
 FETCH FIRST 10 ROWS ONLY""",
     },
     {
-        "label": "같은 제품을 산 고객 쌍 (추천 시스템 기초)",
-        "sql": """SELECT DISTINCT c1.cust_first_name AS customer1, c2.cust_first_name AS customer2, p.prod_name
+        "label": "고객 524와 같은 제품을 산 고객 (추천 시스템 기초)",
+        # 2026-09-04 실측으로 두 가지를 고쳤다.
+        #  ① ORDER BY 부재: SQL 과 PGQ 가 거대한 결과에서 서로 다른 10행을 집어와
+        #     "같은 결과"라는 이 탭의 주장이 화면에서 깨졌다. → 고객 ID 로 결정적 정렬
+        #     (이름은 중복이라 정렬키로 부족).
+        #  ② 전체 고객 쌍(제품 13 구매자 2,492명 → 약 310만 쌍) 정렬은 PGQ 14초.
+        #     씨앗 고객 하나에서 출발하도록 바꿔 165ms 로 단축(85배). 2-hop 패턴
+        #     (고객→제품←고객)이라는 추천 원리는 그대로이고 오히려 더 분명해진다.
+        #     씨앗을 524 로 둔 것은 위 첫 번째 쿼리와 맞추기 위함.
+        "sql": """SELECT DISTINCT c2.cust_id AS cust_id2,
+       c2.cust_first_name AS customer2,
+       p.prod_name AS shared_product
 FROM admin.sales s1
-JOIN admin.sales s2 ON s1.prod_id = s2.prod_id AND s1.cust_id < s2.cust_id
-JOIN admin.customers c1 ON s1.cust_id = c1.cust_id
+JOIN admin.sales s2 ON s1.prod_id = s2.prod_id
+     AND s2.cust_id <> s1.cust_id
 JOIN admin.customers c2 ON s2.cust_id = c2.cust_id
 JOIN admin.products p ON s1.prod_id = p.prod_id
+WHERE s1.cust_id = 524
+ORDER BY cust_id2, shared_product
 FETCH FIRST 10 ROWS ONLY""",
-        "pgq": """SELECT customer1, customer2, product
+        "pgq": """SELECT DISTINCT cust_id2, customer2, shared_product
 FROM GRAPH_TABLE (sales_graph
-    MATCH (c1 IS customers) -[s1 IS sales]-> (p IS products) <-[s2 IS sales]- (c2 IS customers)
-    WHERE c1.cust_id < c2.cust_id
-    COLUMNS (c1.cust_first_name AS customer1, c2.cust_first_name AS customer2, p.prod_name AS product)
+    MATCH (c1 IS customers) -[s1 IS sales]-> (p IS products)
+          <-[s2 IS sales]- (c2 IS customers)
+    WHERE c1.cust_id = 524 AND c2.cust_id <> 524
+    COLUMNS (c2.cust_id AS cust_id2,
+             c2.cust_first_name AS customer2,
+             p.prod_name AS shared_product)
 )
+ORDER BY cust_id2, shared_product
 FETCH FIRST 10 ROWS ONLY""",
     },
 ]
@@ -172,35 +200,42 @@ async def compare_sql_vs_pgq(pool, query_index: int = 0) -> dict:
 
 PATTERN_QUERIES = [
     {
-        "label": "고객 → 제품 구매 관계 탐색",
+        "label": "고객 → 제품 구매 관계 (MATCH 패턴)",
         "sql": """SELECT customer, product, category, amount
 FROM GRAPH_TABLE (sales_graph
     MATCH (c IS customers) -[s IS sales]-> (p IS products)
-    COLUMNS (c.cust_first_name || ' ' || c.cust_last_name AS customer,
-             p.prod_name AS product, p.prod_category AS category,
+    WHERE c.cust_id = 524
+    COLUMNS (c.cust_first_name AS customer,
+             p.prod_name AS product,
+             p.prod_category AS category,
              s.amount_sold AS amount)
-)
-FETCH FIRST 20 ROWS ONLY""",
-    },
-    {
-        "label": "고가 제품(>500) 구매 고객과 도시",
-        "sql": """SELECT customer, city, product, amount
-FROM GRAPH_TABLE (sales_graph
-    MATCH (c IS customers) -[s IS sales]-> (p IS products)
-    WHERE s.amount_sold > 500
-    COLUMNS (c.cust_first_name AS customer, c.cust_city AS city,
-             p.prod_name AS product, s.amount_sold AS amount)
 )
 ORDER BY amount DESC
 FETCH FIRST 20 ROWS ONLY""",
     },
     {
-        "label": "같은 제품을 산 고객 네트워크",
+        "label": "고가 제품(>1000) 구매 고객과 도시",
+        "sql": """SELECT customer, city, product, amount
+FROM GRAPH_TABLE (sales_graph
+    MATCH (c IS customers) -[s IS sales]-> (p IS products)
+    WHERE s.amount_sold > 1000
+    COLUMNS (c.cust_first_name AS customer,
+             c.cust_city AS city,
+             p.prod_name AS product,
+             s.amount_sold AS amount)
+)
+ORDER BY amount DESC
+FETCH FIRST 20 ROWS ONLY""",
+    },
+    {
+        "label": "제품 13을 매개로 연결된 고객 쌍",
         "sql": """SELECT customer1, customer2, shared_product
 FROM GRAPH_TABLE (sales_graph
-    MATCH (c1 IS customers) -[s1 IS sales]-> (p IS products) <-[s2 IS sales]- (c2 IS customers)
-    WHERE c1.cust_id < c2.cust_id
-    COLUMNS (c1.cust_first_name AS customer1, c2.cust_first_name AS customer2,
+    MATCH (c1 IS customers) -[s1 IS sales]-> (p IS products)
+          <-[s2 IS sales]- (c2 IS customers)
+    WHERE p.prod_id = 13 AND c1.cust_id < c2.cust_id
+    COLUMNS (c1.cust_first_name AS customer1,
+             c2.cust_first_name AS customer2,
              p.prod_name AS shared_product)
 )
 FETCH FIRST 20 ROWS ONLY""",
