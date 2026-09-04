@@ -17,6 +17,7 @@ from app.awr_analyzer_v2 import (
     parse_awr_html_v2,
 )
 from app.database import check_connection, get_pool
+from app.feature_registry import grouped as grouped_features
 from app.guide_docs import list_docs as list_guide_docs
 from app.guide_docs import read_doc as read_guide_doc
 from app.llm_client import get_available_providers
@@ -1542,3 +1543,14 @@ async def guide_doc(key: str):
             content={"success": False, "error": f"문서를 찾을 수 없습니다: {key}"},
         )
     return {"success": True, **d}
+
+
+@router.get("/guide/features")
+async def guide_features():
+    """기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py)."""
+    groups = grouped_features()
+    return {
+        "success": True,
+        "groups": groups,
+        "total": sum(len(g["items"]) for g in groups),
+    }

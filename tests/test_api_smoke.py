@@ -167,3 +167,21 @@ class TestGuideDocs:
     @pytest.mark.parametrize("key", ["../../.env", "nosuch", "..%2F..%2F.env"])
     def test_화이트리스트_밖은_404(self, client, key):
         assert client.get(f"/api/guide/docs/{key}").status_code == 404
+
+
+class TestFeatureRegistry:
+    """기능 지도 — 탭 라벨이 화면과 어긋나면 사람이 기능을 못 찾는다."""
+
+    def test_6탭_전부_기능이_있다(self, client):
+        d = client.get("/api/guide/features").json()
+        assert d["success"] is True
+        assert d["total"] >= 30
+        assert len(d["groups"]) == 6
+        for g in d["groups"]:
+            assert g["items"], f"{g['tab_label']} 에 기능이 하나도 없다"
+
+    def test_모든_항목이_필수_필드를_갖는다(self, client):
+        for g in client.get("/api/guide/features").json()["groups"]:
+            for it in g["items"]:
+                for f in ("name", "desc", "how", "path", "keyword"):
+                    assert it.get(f), f"{it.get('name')} 의 {f} 가 비었다"
