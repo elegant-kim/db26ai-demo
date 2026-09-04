@@ -1,3 +1,5 @@
+import asyncio
+
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -7,7 +9,7 @@ from app.config import settings
 from app.database import init_pool, close_pool, get_pool
 from app.routes import router as api_router
 from app.scheduler import init_scheduler, shutdown_scheduler
-from app.vector_search import init_vector_tables
+from app.vector_search import init_vector_tables, warm_embedding_pool
 
 app = FastAPI(title="Oracle AI Database 26ai 데모")
 
@@ -31,6 +33,23 @@ async def startup():
                 print("✓ Vector Search 테이블이 초기화되었습니다.")
             except Exception as e:
                 print(f"⚠ Vector Search 테이블 초기화 실패 (무시됨): {e}")
+
+        # 커넥션 풀 워밍 — ONNX 모델은 커넥션마다 최초 1회 로드에 수 초가 걸린다.
+        # 서버 기동을 막지 않도록 백그라운드 태스크로 돌린다(사용자가 첫 클릭을
+        # 하기 전에 끝난다). 자세한 배경은 warm_embedding_pool docstring 참조.
+        if pool is not None:
+            async def _warm():
+                try:
+                    r = await warm_embedding_pool(pool)
+                    if r.get("skipped"):
+                        print(f"· 커넥션 풀 워밍 생략: {r['skipped']}")
+                    else:
+                        print(f"✓ 커넥션 풀 워밍 완료: {r['warmed']}/{r['target']}개 "
+                              f"({r['model']}, {r['elapsed_ms']}ms)")
+                except Exception as e:
+                    print(f"⚠ 커넥션 풀 워밍 실패 (무시됨): {e}")
+
+            asyncio.create_task(_warm())
 
         # ADB Keepalive 스케줄러 시작 (주 1회 SELECT 1 핑)
         try:

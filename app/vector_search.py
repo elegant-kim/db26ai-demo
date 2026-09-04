@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -208,6 +209,65 @@ async def get_embedding(pool, text: str) -> list:
         return await get_embedding_from_db(pool, text, settings.EMBEDDING_MODEL)
     else:
         return await get_embedding_external(text)
+
+
+async def warm_embedding_pool(pool) -> dict:
+    """풀의 모든 커넥션에 ONNX 임베딩 모델을 미리 로드한다(커넥션 풀 워밍).
+
+    배경(2026-09-04 실측): DB 내장 ONNX 임베딩은 **커넥션마다** 모델을 최초 1회
+    로드하며 그 비용이 크다 — MULTILINGUAL_E5_BASE 5.2초, E5_SMALL 1.1초.
+    같은 커넥션의 두 번째 호출부터는 20~40ms 다. 풀이 min=1/max=5 라 데모 도중
+    새 커넥션이 배정될 때마다 5초짜리 멈춤이 산발적으로 나타났다.
+
+    커넥션을 **동시에** 잡아야 각각이 예열된다. 순차로 acquire/release 하면 같은
+    커넥션이 재사용되어 하나만 달궈진다.
+
+    외부 API 임베딩 모드에서는 할 일이 없으므로 건너뛴다.
+    """
+    if settings.EMBEDDING_SOURCE != "database":
+        return {"warmed": 0, "skipped": "외부 API 임베딩 모드 — 워밍 불필요"}
+
+    safe_model = settings.EMBEDDING_MODEL.replace("'", "").replace('"', '').replace(';', '')
+    sql = f"SELECT VECTOR_EMBEDDING({safe_model} USING :t AS data) FROM dual"
+    target = getattr(pool, "max", 5) or 5
+
+    conns, errors, warmed = [], [], 0
+    started = time.time()
+    try:
+        for _ in range(target):
+            try:
+                conns.append(await pool.acquire())
+            except Exception as e:
+                errors.append(str(e).splitlines()[0][:120])
+                break
+
+        async def _warm(conn):
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql, {"t": "warmup"})
+                await cursor.fetchone()
+
+        for r in await asyncio.gather(*(_warm(c) for c in conns), return_exceptions=True):
+            if isinstance(r, BaseException):
+                errors.append(str(r).splitlines()[0][:120])
+            else:
+                warmed += 1
+    finally:
+        for c in conns:
+            try:
+                await pool.release(c)
+            except Exception:
+                pass
+
+    result = {
+        "warmed": warmed,
+        "target": target,
+        "model": settings.EMBEDDING_MODEL,
+        "elapsed_ms": int((time.time() - started) * 1000),
+    }
+    if errors:
+        result["errors"] = errors[:3]
+        logger.warning("[warmup] 커넥션 %d/%d 예열 실패: %s", target - warmed, target, errors[0])
+    return result
 
 
 # === Document Upload Pipeline ===
@@ -421,11 +481,15 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
     start = time.time()
 
     if settings.EMBEDDING_SOURCE == "database":
-        # DB 내 임베딩 모델 사용
+        # DB 내 임베딩 모델 사용.
+        # VECTOR_EMBEDDING 은 반드시 스칼라 서브쿼리 (SELECT ... FROM dual) 로 감싼다.
+        # 인라인으로 두면 행마다 재평가되어 79청크에 5.4초가 걸렸다(2026-09-04 실측).
+        # 감싸면 Oracle 이 1회만 평가한다 → 0.05초. hybrid_search 와 동일한 이유.
         sql = f"""
             SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding,
-                       VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data),
+                       (SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data)
+                        FROM dual),
                        COSINE) AS distance
             FROM doc_chunks
             WHERE embedding IS NOT NULL
@@ -434,7 +498,8 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
         """
         sql_executed = f"""SELECT chunk_id, chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding,
-           VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data),
+           (SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data)
+            FROM dual),
            COSINE) AS distance
 FROM doc_chunks
 WHERE embedding IS NOT NULL
