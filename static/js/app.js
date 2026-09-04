@@ -2162,6 +2162,116 @@ const app = createApp({
         }
 
         // Markdown → HTML 렌더링 (표, 굵은체, 코드, 리스트, ⚠️ 강조)
+        // ===== 매뉴얼 탭 (계획서 3-8) =====
+        // 백엔드는 /api/guide/docs (화이트리스트 문서) 와 /api/guide/features (기능 지도).
+        const manualView = ref('features');
+        const manualGuides = ref([]);
+        const manualDocs = ref([]);
+        const manualFeatures = ref([]);
+        const manualFeatureTotal = ref(0);
+        const manualDoc = ref(null);
+        const manualDocLoading = ref(false);
+        let manualLoaded = false;
+
+        async function loadManual() {
+            if (manualLoaded) return;
+            try {
+                const [docsRes, featRes] = await Promise.all([
+                    fetch('/api/guide/docs'),
+                    fetch('/api/guide/features'),
+                ]);
+                const d = await docsRes.json();
+                const f = await featRes.json();
+                manualGuides.value = d.guides || [];
+                manualDocs.value = d.docs || [];
+                manualFeatures.value = f.groups || [];
+                manualFeatureTotal.value = f.total || 0;
+                manualLoaded = true;
+            } catch (e) {
+                showToast('매뉴얼을 불러오지 못했습니다: ' + e.message, 'error');
+            }
+        }
+
+        async function openDoc(key) {
+            manualView.value = key;
+            manualDoc.value = null;
+            manualDocLoading.value = true;
+            try {
+                const res = await fetch('/api/guide/docs/' + encodeURIComponent(key));
+                const d = await res.json();
+                if (!d.success) throw new Error(d.error || '문서를 찾을 수 없습니다.');
+                manualDoc.value = d;
+            } catch (e) {
+                showToast(e.message, 'error');
+                manualView.value = 'features';
+            } finally {
+                manualDocLoading.value = false;
+            }
+        }
+
+        // 문서 전용 마크다운 렌더러.
+        // renderMarkdown() 을 재사용하지 않는 이유: 그쪽은 HTML 이스케이프를 하지 않는데,
+        // 가이드 문서에는 `<스크립트>` 같은 자리표시자가 많아 태그로 해석되어 깨진다.
+        // AWR 렌더링에 영향을 주지 않도록 별도로 둔다 (Phase 5 SPA 이식 때 통합).
+        function renderDoc(text) {
+            if (!text) return '';
+            // 1) 먼저 전부 이스케이프 — 이후 우리가 만든 태그만 살아남는다
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // 2) 코드 블록
+            const blocks = [];
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function (m, lang, code) {
+                blocks.push('<pre class="awr-code"><code>' + code + '</code></pre>');
+                return '\u0000BLOCK' + (blocks.length - 1) + '\u0000';
+            });
+
+            // 3) 표
+            html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.*\|\n?)*)/gm, function (m, head, sep, body) {
+                const headers = head.split('|').slice(1, -1);
+                const rows = body.trim().split('\n').filter(Boolean).map(r => r.split('|').slice(1, -1));
+                let t = '<div class="table-wrapper"><table class="result-table"><thead><tr>';
+                headers.forEach(h => { t += '<th>' + h.trim() + '</th>'; });
+                t += '</tr></thead><tbody>';
+                rows.forEach(r => {
+                    t += '<tr>';
+                    r.forEach(c => { t += '<td>' + c.trim() + '</td>'; });
+                    t += '</tr>';
+                });
+                return t + '</tbody></table></div>';
+            });
+
+            // 4) 헤딩 (줄 시작 기준)
+            html = html.replace(/^#### (.+)$/gm, '<h5 class="awr-h5">$1</h5>');
+            html = html.replace(/^### (.+)$/gm, '<h4 class="awr-h4">$1</h4>');
+            html = html.replace(/^## (.+)$/gm, '<h3 class="awr-h3">$1</h3>');
+            html = html.replace(/^# (.+)$/gm, '<h2 class="manual-h1">$1</h2>');
+
+            // 5) 인용문 · 구분선
+            html = html.replace(/^&gt; ?(.*)$/gm, '<blockquote class="manual-quote">$1</blockquote>');
+            html = html.replace(/^---+$/gm, '<hr class="manual-hr">');
+
+            // 6) 인라인 서식
+            html = html.replace(/`([^`\n]+)`/g, '<code class="awr-inline-code">$1</code>');
+            html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/^- (.+)$/gm, '<div class="manual-li">• $1</div>');
+            html = html.replace(/^(\d+)\. (.+)$/gm, '<div class="manual-li">$1. $2</div>');
+
+            // 7) 남은 줄바꿈 → 문단 (이미 블록태그가 된 줄은 건드리지 않는다)
+            html = html.split('\n').map(function (line) {
+                const t = line.trim();
+                if (!t) return '';
+                if (/^<(h2|h3|h4|h5|div|table|pre|blockquote|hr)/.test(t)) return t;
+                return '<p class="manual-p">' + t + '</p>';
+            }).join('\n');
+
+            // 8) 코드블록 복원
+            html = html.replace(/\u0000BLOCK(\d+)\u0000/g, function (m, i) { return blocks[+i]; });
+            return html;
+        }
+
         function renderMarkdown(text) {
             if (!text) return '';
             let html = text;
@@ -2759,6 +2869,9 @@ const app = createApp({
             removeAwrTab,
             sendAwrFollowup,
             renderMarkdown,
+            manualView, manualGuides, manualDocs, manualFeatures,
+            manualFeatureTotal, manualDoc, manualDocLoading,
+            loadManual, openDoc, renderDoc,
         };
     },
 });

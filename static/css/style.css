@@ -2953,3 +2953,41 @@ html, body {
     line-height: 1.5;
 }
 
+
+/* ===== 매뉴얼 탭 (2026-09-04, 계획서 3-8) ===== */
+
+.manual-na { color: var(--text-muted, #999); font-size: 0.85em; }
+
+.manual-group { margin-bottom: 20px; }
+.manual-count {
+    display: inline-block; margin-left: 8px; padding: 1px 8px;
+    background: var(--oracle-red, #C74634); color: #fff;
+    border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+}
+.manual-how { color: #555; font-size: 0.92em; }
+
+/* 문서 뷰어 — 긴 마크다운을 읽기 편한 폭·행간으로 */
+.manual-doc {
+    line-height: 1.7;
+    max-width: 900px;
+}
+.manual-doc .manual-h1 {
+    margin: 0 0 16px; padding-bottom: 10px;
+    border-bottom: 2px solid var(--oracle-red, #C74634);
+    font-size: 1.45rem; color: #222;
+}
+.manual-doc .awr-h3 { margin: 26px 0 10px; font-size: 1.15rem; color: var(--oracle-red, #C74634); }
+.manual-doc .awr-h4 { margin: 18px 0 8px; font-size: 1.02rem; color: #333; }
+.manual-doc .awr-h5 { margin: 14px 0 6px; font-size: 0.95rem; color: #444; }
+.manual-doc .manual-p { margin: 8px 0; color: #333; }
+.manual-doc .manual-li { margin: 4px 0 4px 14px; color: #333; }
+.manual-doc .manual-quote {
+    margin: 10px 0; padding: 10px 14px;
+    border-left: 3px solid var(--oracle-red, #C74634);
+    background: #fdf7f6; color: #444;
+}
+.manual-doc .manual-hr { margin: 26px 0; border: 0; border-top: 1px solid #e5e5e5; }
+.manual-doc .table-wrapper { margin: 12px 0; }
+.manual-doc table { font-size: 0.9rem; }
+.manual-doc pre.awr-code { margin: 12px 0; }
+.manual-doc code.awr-inline-code { word-break: break-word; }

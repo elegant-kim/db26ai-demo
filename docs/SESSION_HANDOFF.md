@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-04 (Phase 3 진행 중 중단) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-04 (Phase 3 완료) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -106,21 +106,24 @@ vector 95ms · keyword 49ms · hybrid 0.1초대 · compare 39~69ms.
 scripts/check-secrets.sh                # 커밋 전 필수
 ```
 
-## 4-2. ⏸ Phase 3 중단 지점 (여기서 이어서 시작할 것)
+## 4-2. ✅ Phase 3 완료 — 인앱 매뉴얼
 
-**완료**: 3-1 문서 리졸버 · 3-2 매뉴얼 API · 3-3 기능 레지스트리(34개)
-**남음**:
+**앱에 7번째 탭 「매뉴얼」이 생겼다.** 이제 소스 폴더를 뒤지지 않고 화면에서 문서를 읽는다.
 
-| ID | 작업 | 비고 |
-|---|---|---|
-| 3-4 | `docs/guides/01_사용자_가이드.md` | `docs/FEATURES.md`(397줄)를 모태로 확장. API 가 `01*` prefix 로 찾는다 |
-| 3-5 | `docs/guides/02_운영_가이드.md` | 기동·배포·백업·DB 접속 |
-| 3-6 | `docs/guides/03_트러블슈팅.md` | 증상→원인→조치. 오늘 고친 8건이 재료 |
-| 3-7 | `docs/guides/04_데모_시연_가이드.md` | 발표용 시나리오 |
-| 3-8 | 레거시 UI 에 「매뉴얼」 탭 | `/api/guide/docs` + `/api/guide/features` 를 그리면 된다. **`?v=74` → `75` 올릴 것** |
+| ID | 산출물 |
+|---|---|
+| 3-1·3-2 | `app/guide_docs.py` 화이트리스트 리졸버 + `/api/guide/docs[/{key}]` |
+| 3-3 | `app/feature_registry.py` 6탭 **34개 기능 카탈로그** + `/api/guide/features` |
+| 3-4~3-7 | `docs/guides/` 4종 (사용자 296줄 · 운영 230 · 트러블슈팅 254 · 데모시연 147) |
+| 3-8 | 레거시 UI 「매뉴얼」 탭 — 기능 지도 + 문서 뷰어 (`?v=75`) |
 
-> 가이드 4종은 **파일만 만들면 API 가 자동으로 집는다**(번호 prefix glob).
-> 지금은 `available: false` 로 나온다. 화이트리스트는 `routes.py: _GUIDE_WHITELIST`.
+**새 가이드를 추가하려면**: `docs/guides/` 에 `NN_제목.md` 로 넣고
+`routes.py: _GUIDE_WHITELIST` 에 한 줄 추가. 번호 prefix glob 이라 코드 변경은 그 한 줄뿐이다.
+**새 기능을 만들면** `app/feature_registry.py` 에 한 줄 추가한다.
+
+> `renderDoc()`(app.js)은 `renderMarkdown()`과 별개다 — 가이드에 `<스크립트>` 같은
+> 자리표시자가 많아 **HTML 이스케이프가 필요**한데, AWR 렌더링에 영향을 주지 않으려고
+> 분리했다. **Phase 5 SPA 이식 때 통합 대상.**
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
@@ -140,7 +143,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
 | 4 | **프론트 8,338줄 단일파일** → Vue 3 + TS + Vite SPA 이식 (계획서 Phase 4·5, 7세션) | `docs/ROADMAP.md` |
-| 5 | **인앱 매뉴얼 진행 중** — API·레지스트리 완료, 가이드 4종·UI 탭 남음 (위 4-2) | `docs/ROADMAP.md` |
+| ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 
 ## 7. 새 세션 첫 단계 권장
