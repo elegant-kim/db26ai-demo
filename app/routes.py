@@ -292,8 +292,8 @@ async def health():
         pool = await get_pool()
         try:
             schema = await get_current_schema(pool)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[health] 스키마 조회 실패: %s", e)
 
         # DB 버전
         try:
@@ -303,15 +303,15 @@ async def health():
                     row = await cur.fetchone()
                     if row:
                         db_version = row[0]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[health] DB 버전 조회 실패: %s", e)
 
         # 프로필 수
         try:
             result = await list_profiles(pool)
             profile_count = len(result)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[health] AI 프로필 조회 실패: %s", e)
 
         # 문서/청크/임베딩 수
         try:
@@ -325,8 +325,8 @@ async def health():
                     row = await cur.fetchone()
                     chunk_count = row[0] if row else 0
                     embedded_count = row[1] if row and row[1] else 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[health] 문서/청크 수 조회 실패: %s", e)
 
         # ONNX 모델 목록
         # get_onnx_models()는 dict가 아니라 list를 반환한다(vector_search.py:801).
@@ -350,8 +350,8 @@ async def health():
                     rows = await cur.fetchall()
                     if rows:
                         vector_index_status = [{"name": r[0], "status": r[1]} for r in rows]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[health] 벡터 인덱스 상태 조회 실패: %s", e)
 
     from app.config import settings
     return {
