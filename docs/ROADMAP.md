@@ -97,10 +97,34 @@ v0.1은 `/api/health`의 `onnx_models: []` 를 근거로 "ONNX 재로드 미완"
 | D5 | 미커밋 `app/graph.py` (+50/−30, PGQ 복합키·예시쿼리 교정) | `git diff` | 중간 |
 | D6 | 최근 `/api/ask` 500 (재시도 흔적 없음) | `db26ai.log:1197` | 중간 |
 | D7 | `.claude/launch.json` 포트가 8000 (실제 8247) | `launch.json` vs 커밋 214d1d0 | 낮음 |
+| D11 | **API 응답 구조가 엔드포인트마다 제각각** — 결과 배열 키가 `data`(execute-sql) / `chunks`(vector/search) / `sql_data`·`pgq_data`(graph/compare) / `models`(onnx) 로 통일돼 있지 않다. 이번 세션에 저(Claude)조차 3번 잘못 읽었다 → SPA 이식(Phase 5) 때 정규화 대상 | `routes.py` 전반 | 중간 |
+| D10 | **Oracle Text 인덱스 부재 → 키워드·하이브리드 검색 저하** (아래 §1.5 참조) | `doc_chunks` | **높음(데모 품질)** |
 | D9 | **`/api/health` 안 bare `except: pass` 4곳 잔존** — ONNX 건과 동일한 침묵 실패 위험 (schema·db_version·profiles·vector_index) | `routes.py` | 중간 |
 | D8 | 홈 디렉터리 `elegant`→`seunghyunkim` 변경 잔재 — `settings.local.json` 허용목록 다수 사경로, worktree prunable, 허용목록에 Google 키 평문 | `git worktree list`, `settings.local.json` | 낮음 |
 
-### 1.5 코드 규모
+### 1.5 D10 상세 — 키워드·하이브리드 검색이 저하 모드로 동작 중
+
+Phase 1 실측 결과, 4가지 검색 모드 중 **2개가 문서화된 스펙대로 동작하지 않는다.**
+
+| 모드 | 상태 | 실측 |
+|---|---|---|
+| 의미 검색 (vector) | ✅ 정상 | 3건, sim 0.91, RAG 답변 267자 |
+| **키워드 (keyword)** | ⚠ **저하** — `CONTAINS`/`SCORE` 대신 `LIKE '%…%'` 폴백 | '인덱스' 3건 **9,880ms** · 'SQL' 3건 4,614ms · 구(句) 질의는 0건 |
+| **하이브리드 (hybrid)** | ⚠ **저하** — CONTAINS 미사용, 사실상 vector-only + LIKE | `sql_executed` 에 CONTAINS 없음 |
+| 비교 (compare) | ✅ 구조 정상 | keyword/vector 양측 반환 |
+
+**원인:** `doc_chunks(chunk_text)` 에 Oracle Text(`CTXSYS.CONTEXT`) 인덱스가 없다.
+`user_indexes` 에 LOB 2· PK 1· VECTOR 1 뿐. CLAUDE.md 가 기술한 폴백 경로대로
+동작 중이지만, **CLOB 전체 스캔 + `LOWER()` 라 9.9초**가 걸리고 구 질의는 전멸한다.
+
+**영향:** 이 앱의 핵심 데모 서사가 *"키워드 검색 vs 의미 검색 비교"* 인데,
+키워드 쪽이 느리고 약해서 **비교 자체가 공정하지 않다.** 26ai 하이브리드 검색
+기능도 실제로는 시연되지 않는다.
+
+**조치안:** `CTXSYS.CONTEXT` 인덱스 생성 (접근 권한 확인 완료 — `all_objects` 조회 1건).
+신규 문서 적재 시 동기화 정책(`SYNC (ON COMMIT)` 등)도 함께 결정 필요.
+
+### 1.6 코드 규모
 
 | 영역 | 파일 | 줄 수 |
 |---|---|---|
@@ -192,6 +216,7 @@ v0.1은 `/api/health`의 `onnx_models: []` 를 근거로 "ONNX 재로드 미완"
 | 1-4 | `.claude/launch.json` 포트 8000→8247 | 설정 | **Opus 5 (fast)** | 5분 |
 | 1-5 | ~~ONNX 모델 재로드~~ → **`/api/health` ONNX 거짓보고 버그 수정** (실제 모델은 2종 존재) | `routes.py` 수정 | **Opus 5** ✅ | *완료* |
 | 1-6 | **PDF 1~2개 재적재** — 업로드 파이프라인 전 구간 검증 | DOCUMENTS/DOC_CHUNKS 데이터 | **Opus 5** | 30분 |
+| 1-6 | ~~PDF 재적재~~ **완료** — `SQL작성가이드.pdf` 27쪽 → 79청크, 전 구간 10.7초 (추출 3.1s · DBMS_VECTOR_CHAIN 청킹 1.4s · 임베딩+저장 6.2s · 인덱싱 0.03s) | DOCUMENTS/DOC_CHUNKS 적재 | **Opus 5** ✅ | *완료* |
 | 1-7 | 임베딩 모드 정합성 결정 — `.env` `external` 유지 vs `database` 복귀, CLAUDE.md와 일치시킴 | 결정 기록 | **Opus 5** | 20분 |
 | 1-8 | `app/awr_analyzer.py`(구버전 517줄) 사용 여부 확인 → 미사용이면 삭제 | 정리 | **Opus 5** | 20분 |
 | 1-9 | **(신설)** `/api/health` 잔여 bare `except: pass` 4곳에 로깅 추가 (D9) | `routes.py` | **Opus 5** | 20분 |
@@ -423,5 +448,6 @@ Phase 0 (보안)  →  Phase 1 (재가동)  →  Phase 2 (문서골격) ⭐
 | 날짜 | 버전 | 내용 |
 |---|---|---|
 | 2026-09-04 | v0.1 | 최초 작성 — 소스 전수조사 + DB 실측 + investhub 대조 기반 |
+| 2026-09-04 | v0.4 | **Phase 1 대부분 완료** — 1-1·1-2·1-3·1-4·1-5·1-6·1-8·1-9 완료, 커밋 4건. D10(Oracle Text 인덱스 부재 → 키워드·하이브리드 저하) 및 D11(API 응답 구조 불일치) 신설. ONNX 임베딩 속도 측정 정정: 콜드스타트 제외 시 E5_SMALL 14ms / E5_BASE 44ms (앞선 "6배" 비교는 콜드스타트 값이었음) |
 | 2026-09-04 | v0.3 | **Phase 0 완료 · Phase 1 착수 실측 반영** — §1.3의 "ONNX 재로드 미완" 오판 정정(실제 2종 존재, `/api/health` 버그였음). `/api/ask` 정상 확인으로 1-2 조건부 Fable 해제. D9(bare except 4곳) 신설 → 작업 1-9 추가 |
 | 2026-09-04 | v0.2 | **UI 충실도 우선 방침 반영** — 모델 배분 기준을 비용 최소화 → 기준수립·시각품질 중심으로 개정. Fable 2→8건(5-0·5-1·5-4·5-5 승격, 4-2·6-3 신설). 0-6 키 로테이션을 선택으로 강등(유출 없음 확인). 요약표 단위 명시 |
