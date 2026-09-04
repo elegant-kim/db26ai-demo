@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 
@@ -209,6 +210,74 @@ async def get_embedding(pool, text: str) -> list:
         return await get_embedding_from_db(pool, text, settings.EMBEDDING_MODEL)
     else:
         return await get_embedding_external(text)
+
+
+# === Oracle Text 질의 변환 ===
+
+# Oracle Text 예약 연산자. 자연어 문장을 그대로 CONTAINS 에 넣으면 '?' 등이
+# 연산자로 해석되어 ORA-29902 로 터진다(2026-09-04 실측).
+_CTX_RESERVED = re.compile(r'[,&|~;><%_$!{}()\[\]*?"\\+=:@#^\'`/\-]')
+
+# 질문 어투 등 검색에 기여하지 않는 어절
+_CTX_STOPWORDS = {
+    "어떻게", "무엇", "무엇을", "왜", "어디", "언제", "하나요", "되나요", "합니까",
+    "인가요", "입니까", "그리고", "그러나", "또는", "대해", "대한", "위해", "위한",
+    "이란", "라는", "있나요", "알려줘", "알려주세요", "설명해줘",
+}
+
+# 한글 조사·흔한 용언 어미 (긴 것부터). WORLD_LEXER 는 어절을 통째로 토큰화하므로
+# "인덱스"(11건)와 "인덱스를"(2건)이 서로 다른 토큰이 된다 → 어간만 남기고 우측 절단한다.
+_CTX_SUFFIXES = [
+    "하려면", "으로써", "으로서", "에서는", "에게서", "적으로", "해야", "하는", "하고",
+    "되는", "려면", "으로", "에서", "에게", "한테", "부터", "까지", "처럼", "보다",
+    "라도", "이나", "을", "를", "이", "가", "은", "는", "에", "의", "와", "과",
+    "도", "만", "로", "야", "여", "적",
+]
+
+_HANGUL = re.compile(r'[가-힣]')
+
+
+def _ctx_stem(token: str) -> str:
+    """어절에서 한글 조사·어미를 떼어 어간을 남긴다."""
+    m = re.match(r'^([A-Za-z0-9._]+)[가-힣]+$', token)   # "SQL을" → "SQL"
+    if m:
+        return m.group(1)
+    if not _HANGUL.search(token):
+        return token
+    for suf in _CTX_SUFFIXES:
+        if token.endswith(suf) and len(token) - len(suf) >= 2:
+            return token[: len(token) - len(suf)]
+    return token
+
+
+def to_contains_query(query: str) -> str | None:
+    """자연어 질의를 Oracle Text CONTAINS 구문(ACCUM)으로 변환한다.
+
+    2026-09-04 신설. 그전에는 사용자 문장을 CONTAINS 에 그대로 넣어,
+    "인덱스를 효율적으로 사용하려면 … 하나요?" 같은 자연어 질문이 ORA-29902 로
+    터지고 LIKE 로 폴백되어 **하이브리드가 조용히 벡터 전용으로 퇴화**했다.
+    화면에서 실제로 질문해 보고서야 드러난 결함이다.
+
+    변환 예: "인덱스를 효율적으로 사용하려면 어떻게 SQL을 작성해야 하나요?"
+          → "인덱스%, 효율적%, 사용%, SQL, 작성%"   (쉼표 = ACCUM, 누적 점수)
+
+    쉼표(ACCUM)를 쓰는 이유: AND 로 묶으면 한 단어만 없어도 0건이 된다. 하이브리드의
+    키워드 성분은 필터가 아니라 **점수**여야 하므로 누적 점수가 맞다.
+    반환값이 None 이면 쓸 만한 토큰이 없다는 뜻이니 호출부는 LIKE 로 폴백한다.
+    """
+    if not query:
+        return None
+    tokens = [t for t in _CTX_RESERVED.sub(' ', query).split()
+              if len(t) >= 2 and t not in _CTX_STOPWORDS]
+    terms, seen = [], set()
+    for tok in tokens:
+        stem = _ctx_stem(tok)
+        if len(stem) < 2 or stem in seen:
+            continue
+        seen.add(stem)
+        # 한글 어간은 우측 절단으로 남은 활용형을 흡수한다. 영문·숫자는 그대로.
+        terms.append(stem + "%" if _HANGUL.search(stem) else stem)
+    return ", ".join(terms) if terms else None
 
 
 async def warm_embedding_pool(pool) -> dict:
@@ -565,8 +634,12 @@ async def keyword_search(pool, query: str, top_k: int = 5) -> dict:
 
     # CONTAINS 사용 시도, 실패하면 LIKE로 대체
     keyword = f"%{query}%"
+    # 자연어 문장을 그대로 넣으면 ORA-29902 로 터진다 → ACCUM 구문으로 변환
+    ctx_query = to_contains_query(query)
 
     try:
+        if ctx_query is None:
+            raise ValueError("CONTAINS 로 변환할 토큰이 없습니다.")
         # Oracle Text CONTAINS 시도
         sql_contains = """
             SELECT chunk_text, source_file, page_num, SCORE(1) AS relevance
@@ -575,18 +648,21 @@ async def keyword_search(pool, query: str, top_k: int = 5) -> dict:
             ORDER BY relevance DESC
             FETCH FIRST :top_k ROWS ONLY
         """
-        sql_executed = f"""SELECT chunk_text, source_file, page_num, SCORE(1) AS relevance
+        sql_executed = f"""-- 질의 변환(ACCUM): '{query}'
+--            → '{ctx_query}'
+SELECT chunk_text, source_file, page_num, SCORE(1) AS relevance
 FROM doc_chunks
-WHERE CONTAINS(chunk_text, '{query}', 1) > 0
+WHERE CONTAINS(chunk_text, '{ctx_query}', 1) > 0
 ORDER BY relevance DESC
 FETCH FIRST {top_k} ROWS ONLY"""
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute(sql_contains, {"query": query, "top_k": top_k})
+                await cursor.execute(sql_contains, {"query": ctx_query, "top_k": top_k})
                 rows = await cursor.fetchall()
 
-    except Exception:
+    except Exception as e:
+        logger.warning("[keyword] CONTAINS 실패 → LIKE 폴백: %s", str(e).splitlines()[0][:150])
         # CONTAINS 실패 시 LIKE로 대체
         sql_like = """
             SELECT chunk_text, source_file, page_num, 0 AS relevance
@@ -650,6 +726,9 @@ async def hybrid_search(pool, query: str, top_k: int = 5, vector_weight: float =
     """
     start = time.time()
     keyword_weight = round(1 - vector_weight, 2)
+    # 자연어 문장을 그대로 CONTAINS 에 넣으면 ORA-29902 → ACCUM 구문으로 변환.
+    # None 이면 쓸 만한 토큰이 없다는 뜻이니 곧바로 LIKE 로 간다.
+    ctx_query = to_contains_query(query)
 
     # ── 임베딩 소스별 "질의 벡터" 표현식과 바인드 준비 ──
     if settings.EMBEDDING_SOURCE == "database":
@@ -674,8 +753,9 @@ async def hybrid_search(pool, query: str, top_k: int = 5, vector_weight: float =
                 "           WHERE CONTAINS(chunk_text, :kw, 1) > 0) k ON k.chunk_id = c.chunk_id"
             )
             kw_expr = "NVL(k.kw_score, 0)"
-            kw_binds = {"kw": query}
-            note = "-- 키워드: Oracle Text CONTAINS + SCORE (doc_chunks_text_idx)"
+            kw_binds = {"kw": ctx_query}
+            note = (f"-- 키워드: Oracle Text CONTAINS + SCORE (doc_chunks_text_idx)\n"
+                    f"-- 질의 변환(ACCUM): '{query}' → '{ctx_query}'")
         else:
             kw_join = ""
             kw_expr = "CASE WHEN LOWER(c.chunk_text) LIKE LOWER(:kw) THEN 100 ELSE 0 END"
@@ -713,11 +793,13 @@ FETCH FIRST {top_k} ROWS ONLY"""
                 await cursor.execute(sql, binds)
                 return await cursor.fetchall()
 
-    keyword_mode = "contains"
+    keyword_mode = "contains" if ctx_query else "like"
     sql, binds, sql_display = build(keyword_mode)
     try:
         rows = await run(sql, binds)
     except Exception as e:
+        if keyword_mode == "like":
+            raise
         logger.warning("[hybrid] CONTAINS 실패 → LIKE 폴백: %s", str(e).splitlines()[0][:160])
         keyword_mode = "like"
         sql, binds, sql_display = build(keyword_mode)
