@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-04 · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-04 (Phase 3 진행 중 중단) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -81,6 +81,47 @@ vector 95ms · keyword 49ms · hybrid 0.1초대 · compare 39~69ms.
 **관통하는 패턴**: 고친 버그 4개가 전부 **"실패를 삼키고 성공이라 보고"**하는 코드였다.
 `docs/개발노하우.md` 3.1절에 표로 정리했다.
 
+## 4-1. 이어서 한 일 (Phase 2 · X-1 · Phase 3 일부)
+
+| 커밋 | 내용 |
+|---|---|
+| `f2ec83d` `28ff138` | 문서 체계 L1·L2·L3 구축 + 시크릿 게이트를 **실제로 막도록** 수정 |
+| `292e7a5` | `docs/README.md` 인덱스 · 폴더 체계 · changelog |
+| `a7f742a` | `design/` 4종 (개요·아키텍처·**API 명세 53개**·DB 설계) + 라우트 docstring 20개 |
+| `4fee5ae` | **pytest·ruff 도입** + Select AI 프로필 세션 의존 버그 수정 |
+| `4c33db3` | 인앱 매뉴얼 API (화이트리스트 리졸버) |
+| `a40bbc4` | 기능 레지스트리 34개 + 기능 지도 API |
+
+**pytest 가 곧바로 진짜 버그를 둘 잡았다.** 특히 로그에 남아 있던 간헐적 500 의 정체가
+`ORA-20046` 이었다 — `profile_name` 을 비워 `GENERATE` 를 부르면 Oracle 이 **세션 프로필**로
+폴백하는데 `SET_PROFILE` 은 세션 단위이고 커넥션 풀은 요청마다 다른 세션을 준다.
+**커넥션 풀 워밍으로 커넥션이 5개가 되면서 발생 확률이 오히려 올라갔다.**
+`resolve_profile()` 로 항상 이름을 명시해 해결.
+
+### 검증 명령 (이제 존재한다)
+
+```bash
+./venv/bin/python -m pytest tests/ -q   # 45 passed (서버 없으면 통합 자동 skip)
+./venv/bin/ruff check .                 # All checks passed
+scripts/check-secrets.sh                # 커밋 전 필수
+```
+
+## 4-2. ⏸ Phase 3 중단 지점 (여기서 이어서 시작할 것)
+
+**완료**: 3-1 문서 리졸버 · 3-2 매뉴얼 API · 3-3 기능 레지스트리(34개)
+**남음**:
+
+| ID | 작업 | 비고 |
+|---|---|---|
+| 3-4 | `docs/guides/01_사용자_가이드.md` | `docs/FEATURES.md`(397줄)를 모태로 확장. API 가 `01*` prefix 로 찾는다 |
+| 3-5 | `docs/guides/02_운영_가이드.md` | 기동·배포·백업·DB 접속 |
+| 3-6 | `docs/guides/03_트러블슈팅.md` | 증상→원인→조치. 오늘 고친 8건이 재료 |
+| 3-7 | `docs/guides/04_데모_시연_가이드.md` | 발표용 시나리오 |
+| 3-8 | 레거시 UI 에 「매뉴얼」 탭 | `/api/guide/docs` + `/api/guide/features` 를 그리면 된다. **`?v=74` → `75` 올릴 것** |
+
+> 가이드 4종은 **파일만 만들면 API 가 자동으로 집는다**(번호 prefix glob).
+> 지금은 `available: false` 로 나온다. 화이트리스트는 `routes.py: _GUIDE_WHITELIST`.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -96,10 +137,10 @@ vector 95ms · keyword 49ms · hybrid 0.1초대 · compare 39~69ms.
 | # | 내용 | 근거 |
 |---|---|---|
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
-| 2 | **테스트·린트가 없다** (D4). pytest 스모크 + ruff 도입이 계획서 X-1 | `docs/ROADMAP.md` |
+| ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
 | 4 | **프론트 8,338줄 단일파일** → Vue 3 + TS + Vite SPA 이식 (계획서 Phase 4·5, 7세션) | `docs/ROADMAP.md` |
-| 5 | **인앱 매뉴얼 미구현** (계획서 Phase 3) — `docs/guides/` + 화이트리스트 API + 매뉴얼 탭 | `docs/ROADMAP.md` |
+| 5 | **인앱 매뉴얼 진행 중** — API·레지스트리 완료, 가이드 4종·UI 탭 남음 (위 4-2) | `docs/ROADMAP.md` |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 
 ## 7. 새 세션 첫 단계 권장
