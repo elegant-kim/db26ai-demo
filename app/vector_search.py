@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 import time
@@ -7,6 +8,8 @@ import oracledb
 
 from app.config import settings
 from app.select_ai import _lob_to_str
+
+logger = logging.getLogger(__name__)
 
 
 def _vec_to_str(vec: list) -> str:
@@ -278,13 +281,19 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         # Step 4: 임베딩 생성 + DB 저장  (가장 오래 걸림 — 청크별 진행률 전달)
         step_start_embed = time.time()
         total_chunks = len(all_chunks)
+        # embed_count = 임베딩이 실제로 저장된 청크 수. 2026-09-04 이전에는 실패해도
+        # 무조건 +1 해서, 임베딩이 전부 NULL 인데도 "79개 완료"로 보고했다
+        # (원인은 ORA-51932 — HNSW 인덱스 차원 불일치였는데 except 가 삼켰다).
         embed_count = 0
+        no_embed_count = 0
+        first_embed_error = None
         await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "running",
                              "detail": f"0/{total_chunks}", "progress": 0})
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 for idx, chunk_info in enumerate(all_chunks):
+                    stored_with_embedding = False
                     try:
                         embedding = await get_embedding(pool, chunk_info["text"])
                         if embedding is not None:
@@ -298,7 +307,11 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                                 "page_num": chunk_info["page_num"],
                                 "embedding": _vec_to_str(embedding),
                             })
+                            stored_with_embedding = True
                         else:
+                            if first_embed_error is None:
+                                first_embed_error = "임베딩 생성이 None을 반환했습니다."
+                                logger.warning("[upload] %s", first_embed_error)
                             await cursor.execute("""
                                 INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
                                 VALUES (:doc_id, :chunk_text, :source_file, :page_num)
@@ -308,7 +321,13 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                                 "source_file": filename,
                                 "page_num": chunk_info["page_num"],
                             })
-                    except Exception:
+                    except Exception as e:
+                        # 임베딩 없이라도 본문은 남긴다(키워드 검색은 가능). 다만
+                        # 실패를 조용히 넘기지 않는다 — 첫 예외를 로그와 응답에 싣는다.
+                        if first_embed_error is None:
+                            first_embed_error = str(e).splitlines()[0][:200]
+                            logger.warning("[upload] 임베딩 저장 실패(이후 동일 오류는 생략): %s",
+                                           first_embed_error)
                         await cursor.execute("""
                             INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
                             VALUES (:doc_id, :chunk_text, :source_file, :page_num)
@@ -318,7 +337,10 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                             "source_file": filename,
                             "page_num": chunk_info["page_num"],
                         })
-                    embed_count += 1
+                    if stored_with_embedding:
+                        embed_count += 1
+                    else:
+                        no_embed_count += 1
                     # 매 청크마다 또는 적절한 간격으로 진행률 전달
                     if total_chunks <= 20 or (idx + 1) % max(1, total_chunks // 20) == 0 or idx == total_chunks - 1:
                         pct = int((idx + 1) / total_chunks * 100)
@@ -334,8 +356,13 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         else:
             embed_sql = f"-- 외부 API ({settings.EMBEDDING_MODEL}) 사용"
         pipeline.append({"step": "임베딩 & 저장", "sql": embed_sql, "duration_ms": step_ms_embed})
+        embed_detail = f"{embed_count}개 완료"
+        if no_embed_count:
+            embed_detail += f" / 임베딩 실패 {no_embed_count}개 — {first_embed_error}"
         await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "done",
-                             "detail": f"{embed_count}개 완료",
+                             "detail": embed_detail,
+                             "embedded": embed_count, "not_embedded": no_embed_count,
+                             "error": first_embed_error,
                              "duration_ms": step_ms_embed})
 
         # Step 5: 인덱싱 완료
@@ -347,7 +374,7 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                     UPDATE documents
                     SET status = 'indexed', chunks_count = :cnt
                     WHERE doc_id = :doc_id
-                """, {"cnt": embed_count, "doc_id": doc_id})
+                """, {"cnt": embed_count + no_embed_count, "doc_id": doc_id})
                 await conn.commit()
 
         step_ms_idx = int((time.time() - step_start_idx) * 1000)
@@ -358,11 +385,18 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
             "success": True,
             "filename": filename,
             "doc_id": doc_id,
-            "chunks_count": embed_count,
+            "chunks_count": embed_count + no_embed_count,
+            "embedded_count": embed_count,
+            "not_embedded_count": no_embed_count,
             "pages_count": len(pages),
             "pipeline": pipeline,
             "total_ms": total_ms,
         }
+        if no_embed_count:
+            result["warning"] = (
+                f"{no_embed_count}개 청크가 임베딩 없이 저장되어 의미 검색에서 제외됩니다. "
+                f"첫 오류: {first_embed_error}"
+            )
         await emit("done", result)
         return result
 
@@ -537,90 +571,92 @@ async def compare_search(pool, query: str, top_k: int = 5) -> dict:
 
 
 async def hybrid_search(pool, query: str, top_k: int = 5, vector_weight: float = 0.7) -> dict:
-    """하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합.
+    """하이브리드 검색: 키워드 점수 + 벡터 유사도를 단일 SQL에서 결합한다 (Oracle 26ai).
 
-    Oracle 26ai의 핵심 기능으로, 단일 SQL에서 키워드 매칭과 벡터 유사도를 결합하여
-    두 방식의 장점을 모두 활용한다. Oracle Text 인덱스 불필요.
+    hybrid_score = vector_weight × vector_similarity + (1 - vector_weight) × keyword_score/100
 
-    hybrid_score = vector_weight × vector_similarity + (1 - vector_weight) × keyword_match(0 or 1)
+    키워드 점수는 Oracle Text 의 CONTAINS/SCORE 를 우선 사용하고, Text 인덱스가 없거나
+    질의 구문이 맞지 않으면 LIKE 로 폴백한다(2026-09-04 신설 — 그전에는 CONTAINS 를
+    아예 시도하지 않고 LIKE 만 썼다. CLAUDE.md 기술과 코드가 갈라져 있었다).
+
+    SCORE(n) 은 같은 문장의 WHERE 에 CONTAINS(..., n) 이 있어야 쓸 수 있는데, WHERE 에
+    두면 키워드 미매칭 청크가 걸러져 "벡터 후보 전체를 키워드로 가점"이라는 하이브리드
+    의미가 깨진다. 그래서 CONTAINS 는 LEFT JOIN 서브쿼리로 분리하고 NVL 로 0 을 채운다.
     """
     start = time.time()
     keyword_weight = round(1 - vector_weight, 2)
 
+    # ── 임베딩 소스별 "질의 벡터" 표현식과 바인드 준비 ──
     if settings.EMBEDDING_SOURCE == "database":
-        sql = f"""
-            SELECT chunk_id, chunk_text, source_file, page_num,
-                   VECTOR_DISTANCE(embedding,
-                       VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query AS data),
-                       COSINE) AS vec_distance,
-                   CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword) THEN 100 ELSE 0 END AS keyword_score
-            FROM doc_chunks
-            WHERE embedding IS NOT NULL
-            ORDER BY (
-                {vector_weight} * (1 - VECTOR_DISTANCE(embedding,
-                    VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :query2 AS data),
-                    COSINE))
-                + {keyword_weight} * CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword2) THEN 1 ELSE 0 END
-            ) DESC
-            FETCH FIRST :top_k ROWS ONLY
-        """
-        keyword_pattern = f"%{query}%"
-        bind_params = {
-            "query": query, "query2": query,
-            "keyword": keyword_pattern, "keyword2": keyword_pattern,
-            "top_k": top_k,
-        }
-
-        sql_display = f"""-- 하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합
--- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_match
-SELECT chunk_id, chunk_text, source_file, page_num,
-       VECTOR_DISTANCE(embedding,
-           VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data),
-           COSINE) AS vec_distance,
-       CASE WHEN LOWER(chunk_text) LIKE LOWER('%{query}%') THEN 100 ELSE 0 END AS keyword_score
-FROM doc_chunks
-WHERE embedding IS NOT NULL
-ORDER BY ({vector_weight} * (1 - vec_distance)
-        + {keyword_weight} * CASE WHEN keyword_match THEN 1 ELSE 0 END) DESC
-FETCH FIRST {top_k} ROWS ONLY"""
-
+        # VECTOR_EMBEDDING 을 스칼라 서브쿼리로 감싸는 것이 핵심이다(2026-09-04 실측).
+        # 인라인으로 두면 하이브리드의 복합 ORDER BY 때문에 행마다 재평가되어
+        # 79청크에 11.3초가 걸렸다. (SELECT ... FROM dual) 로 감싸면 Oracle 이
+        # 스칼라 서브쿼리 캐싱으로 1회만 평가한다 → 0.11초. 약 100배.
+        qvec_sql = f"(SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :qtext AS data) FROM dual)"
+        qvec_display = f"(SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data) FROM dual)"
+        qvec_binds = {"qtext": query}
     else:
         query_vector = await get_embedding_external(query)
-        query_vec_str = _vec_to_str(query_vector)
+        qvec_sql = "TO_VECTOR(:qvec)"
+        qvec_display = "TO_VECTOR(<query_vector>)"
+        qvec_binds = {"qvec": _vec_to_str(query_vector)}
+
+    def build(keyword_mode: str):
+        """keyword_mode: 'contains' | 'like' → (sql, binds, display)"""
+        if keyword_mode == "contains":
+            kw_join = (
+                "LEFT JOIN (SELECT chunk_id, SCORE(1) AS kw_score FROM doc_chunks\n"
+                "           WHERE CONTAINS(chunk_text, :kw, 1) > 0) k ON k.chunk_id = c.chunk_id"
+            )
+            kw_expr = "NVL(k.kw_score, 0)"
+            kw_binds = {"kw": query}
+            note = "-- 키워드: Oracle Text CONTAINS + SCORE (doc_chunks_text_idx)"
+        else:
+            kw_join = ""
+            kw_expr = "CASE WHEN LOWER(c.chunk_text) LIKE LOWER(:kw) THEN 100 ELSE 0 END"
+            kw_binds = {"kw": f"%{query}%"}
+            note = "-- 키워드: LIKE 폴백 (Oracle Text 인덱스 없음/질의 부적합)"
+
         sql = f"""
-            SELECT chunk_id, chunk_text, source_file, page_num,
-                   VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector), COSINE) AS vec_distance,
-                   CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword) THEN 100 ELSE 0 END AS keyword_score
-            FROM doc_chunks
-            WHERE embedding IS NOT NULL
-            ORDER BY (
-                {vector_weight} * (1 - VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector2), COSINE))
-                + {keyword_weight} * CASE WHEN LOWER(chunk_text) LIKE LOWER(:keyword2) THEN 1 ELSE 0 END
-            ) DESC
+            SELECT c.chunk_id, c.chunk_text, c.source_file, c.page_num,
+                   VECTOR_DISTANCE(c.embedding, {qvec_sql}, COSINE) AS vec_distance,
+                   {kw_expr} AS keyword_score
+            FROM doc_chunks c
+            {kw_join}
+            WHERE c.embedding IS NOT NULL
+            ORDER BY ({vector_weight} * (1 - VECTOR_DISTANCE(c.embedding, {qvec_sql}, COSINE))
+                    + {keyword_weight} * {kw_expr} / 100) DESC
             FETCH FIRST :top_k ROWS ONLY
         """
-        keyword_pattern = f"%{query}%"
-        bind_params = {
-            "query_vector": query_vec_str, "query_vector2": query_vec_str,
-            "keyword": keyword_pattern, "keyword2": keyword_pattern,
-            "top_k": top_k,
-        }
-
-        sql_display = f"""-- 하이브리드 검색: LIKE (키워드) + VECTOR_DISTANCE (의미) 결합
--- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_match
-SELECT chunk_id, chunk_text, source_file, page_num,
-       VECTOR_DISTANCE(embedding, TO_VECTOR(<query_vector>), COSINE) AS vec_distance,
-       CASE WHEN LOWER(chunk_text) LIKE LOWER('%{query}%') THEN 100 ELSE 0 END AS keyword_score
-FROM doc_chunks
-WHERE embedding IS NOT NULL
-ORDER BY ({vector_weight} * (1 - vec_distance)
-        + {keyword_weight} * CASE WHEN keyword_match THEN 1 ELSE 0 END) DESC
+        binds = {**qvec_binds, **kw_binds, "top_k": top_k}
+        display = f"""-- 하이브리드 검색 (Oracle 26ai): 단일 SQL 에서 키워드 + 벡터 결합
+-- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_score/100
+{note}
+SELECT c.chunk_id, c.chunk_text, c.source_file, c.page_num,
+       VECTOR_DISTANCE(c.embedding, {qvec_display}, COSINE) AS vec_distance,
+       {kw_expr.replace(':kw', repr(query))} AS keyword_score
+FROM doc_chunks c
+{kw_join.replace(':kw', repr(query))}
+WHERE c.embedding IS NOT NULL
+ORDER BY ({vector_weight} * (1 - vec_distance) + {keyword_weight} * keyword_score/100) DESC
 FETCH FIRST {top_k} ROWS ONLY"""
+        return sql, binds, display
 
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute(sql, bind_params)
-            rows = await cursor.fetchall()
+    async def run(sql, binds):
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(sql, binds)
+                return await cursor.fetchall()
+
+    keyword_mode = "contains"
+    sql, binds, sql_display = build(keyword_mode)
+    try:
+        rows = await run(sql, binds)
+    except Exception as e:
+        logger.warning("[hybrid] CONTAINS 실패 → LIKE 폴백: %s", str(e).splitlines()[0][:160])
+        keyword_mode = "like"
+        sql, binds, sql_display = build(keyword_mode)
+        rows = await run(sql, binds)
 
     chunks = []
     for row in rows:
@@ -628,8 +664,7 @@ FETCH FIRST {top_k} ROWS ONLY"""
         vec_distance = row[4] if row[4] else 0
         keyword_score_raw = row[5] if row[5] else 0
         vec_similarity = 1 - vec_distance
-        kw_normalized = keyword_score_raw / 100
-        hybrid_score = vector_weight * vec_similarity + keyword_weight * kw_normalized
+        hybrid_score = vector_weight * vec_similarity + keyword_weight * (keyword_score_raw / 100)
         chunks.append({
             "chunk_id": row[0],
             "chunk_text": chunk_text,
@@ -640,15 +675,14 @@ FETCH FIRST {top_k} ROWS ONLY"""
             "hybrid_score": round(hybrid_score, 4),
         })
 
-    elapsed = int((time.time() - start) * 1000)
-
     return {
         "chunks": chunks,
         "match_count": len(chunks),
         "sql_executed": sql_display,
-        "elapsed_ms": elapsed,
+        "elapsed_ms": int((time.time() - start) * 1000),
         "vector_weight": vector_weight,
         "keyword_weight": keyword_weight,
+        "keyword_mode": keyword_mode,
     }
 
 
