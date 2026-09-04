@@ -18,6 +18,9 @@ db26ai.log
 db26ai.pid
 
 # ── 시크릿 격리 (2026-09-04) ──
+# .env 단일 패턴은 .env.bak.20260904 같은 파생 파일을 못 막는다 (실제로 만들어 놓고 걸렸다).
+.env.*
+!.env.example
 # 이 저장소는 GitHub 공개(PUBLIC)다. 자격증명이 들어간 원본 SQL·설정은 절대 추적하지 않는다.
 sql/setup/_private/
 *_private.sql
