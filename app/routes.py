@@ -17,6 +17,8 @@ from app.awr_analyzer_v2 import (
     parse_awr_html_v2,
 )
 from app.database import check_connection, get_pool
+from app.guide_docs import list_docs as list_guide_docs
+from app.guide_docs import read_doc as read_guide_doc
 from app.llm_client import get_available_providers
 from app.select_ai import (
     apply_annotations,
@@ -1492,3 +1494,51 @@ document.addEventListener('DOMContentLoaded', function() {{
                 html += scroll_script
 
     return HTMLResponse(html, media_type="text/html; charset=utf-8")
+
+
+# === 인앱 매뉴얼 (「매뉴얼」 탭) ===
+#
+# docs/ 의 마크다운을 앱 화면에서 바로 읽게 한다(계획서 3-1·3-2).
+# 소스 폴더를 뒤지지 않아도 되게 하는 것이 목적이며, 특히 몇 달 뒤에 다시 열었을 때
+# "이 앱이 지금 어떤 상태인가"를 화면에서 확인할 수 있어야 한다.
+#
+# 화이트리스트에 없는 key 는 절대 열지 않는다. 새 가이드를 만들면 여기 한 줄 추가해야
+# 화면에 뜬다 — docs/README.md 에도 같이 적을 것.
+
+_GUIDE_WHITELIST = {
+    "user-guide":      ("01", "사용자 가이드", "6탭 전 기능의 사용법과 취지"),
+    "ops-guide":       ("02", "운영 가이드", "기동·배포·백업·DB 접속"),
+    "troubleshooting": ("03", "트러블슈팅", "증상 → 원인 → 조치"),
+    "demo-guide":      ("04", "데모 시연 가이드", "발표용 시연 시나리오와 준비 체크리스트"),
+}
+
+# docs/ 최상위에 있는 문서(가이드가 아니라 현황·계획 문서)
+_ROOT_DOC_WHITELIST = {
+    "handoff":  ("SESSION_HANDOFF", "현재 상태", "환경 실측 스냅샷 · 직전 세션 · 열린 과제"),
+    "features": ("FEATURES", "기능 설명서", "6탭 기능 상세 (2026-04 작성)"),
+    "roadmap":  ("ROADMAP", "업데이트 계획서", "Phase 0~6 · 작업별 권고 모델·공수"),
+}
+
+
+@router.get("/guide/docs")
+async def guide_doc_list():
+    """앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서)."""
+    return {
+        "success": True,
+        "guides": list_guide_docs(_GUIDE_WHITELIST, "guides"),
+        "docs": list_guide_docs(_ROOT_DOC_WHITELIST, ""),
+    }
+
+
+@router.get("/guide/docs/{key}")
+async def guide_doc(key: str):
+    """단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만)."""
+    d = read_guide_doc(_GUIDE_WHITELIST, key, "guides")
+    if d is None:
+        d = read_guide_doc(_ROOT_DOC_WHITELIST, key, "")
+    if d is None:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": f"문서를 찾을 수 없습니다: {key}"},
+        )
+    return {"success": True, **d}

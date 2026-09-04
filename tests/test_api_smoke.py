@@ -148,3 +148,22 @@ class TestDuality:
         name = views[0].get("view_name") or views[0].get("VIEW_NAME")
         d = client.post("/api/duality/compare", json={"view_name": name, "limit": 3}).json()
         assert d.get("success") is not False
+
+
+class TestGuideDocs:
+    """인앱 매뉴얼 API — 화이트리스트 밖은 절대 열리면 안 된다."""
+
+    def test_목록에_가이드와_현황문서가_모두_있다(self, client):
+        d = client.get("/api/guide/docs").json()
+        assert d["success"] is True
+        assert d["guides"] and d["docs"]
+        assert any(x["available"] for x in d["docs"]), "현황 문서가 하나도 안 열린다"
+
+    def test_현황문서_원문이_열린다(self, client):
+        d = client.get("/api/guide/docs/handoff").json()
+        assert d["success"] is True
+        assert len(d["content"]) > 100
+
+    @pytest.mark.parametrize("key", ["../../.env", "nosuch", "..%2F..%2F.env"])
+    def test_화이트리스트_밖은_404(self, client, key):
+        assert client.get(f"/api/guide/docs/{key}").status_code == 404
