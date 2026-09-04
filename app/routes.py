@@ -89,6 +89,7 @@ class EmbeddingInfoRequest(BaseModel):
 
 @router.post("/ask")
 async def ask(req: AskRequest):
+    """Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat)."""
     if req.action not in VALID_ACTIONS:
         return JSONResponse(
             status_code=400,
@@ -139,6 +140,7 @@ async def ask(req: AskRequest):
 
 @router.get("/profiles")
 async def profiles():
+    """등록된 AI 프로필 목록을 조회한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(
@@ -278,6 +280,7 @@ async def execute_sql_endpoint(req: ExecuteSqlRequest):
 
 @router.get("/health")
 async def health():
+    """DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다."""
     connected = await check_connection()
     schema = None
     db_version = None
@@ -775,6 +778,7 @@ class DualityCrudRequest(BaseModel):
 
 @router.post("/duality/create-views")
 async def duality_create():
+    """SH 스키마 기반 JSON Relational Duality View 들을 생성한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -787,6 +791,7 @@ async def duality_create():
 
 @router.post("/duality/drop-views")
 async def duality_drop():
+    """Duality View 들을 삭제한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -799,6 +804,7 @@ async def duality_drop():
 
 @router.get("/duality/views")
 async def duality_list():
+    """현재 존재하는 Duality View 목록을 조회한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -811,6 +817,7 @@ async def duality_list():
 
 @router.post("/duality/compare")
 async def duality_compare(req: DualityCompareRequest):
+    """같은 데이터를 관계형 SQL JOIN 과 Duality View JSON 으로 각각 조회해 비교한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -836,6 +843,7 @@ async def duality_list_docs(req: DualityCrudRequest):
 
 @router.post("/duality/doc")
 async def duality_fetch_doc(req: DualityCrudRequest):
+    """Duality View 의 단일 JSON 문서를 조회한다 (ETag 포함)."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -848,6 +856,7 @@ async def duality_fetch_doc(req: DualityCrudRequest):
 
 @router.post("/duality/doc/update")
 async def duality_update_doc(req: DualityCrudRequest):
+    """Duality View 의 JSON 문서를 수정한다 — 관계형 테이블에 그대로 반영된다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -860,6 +869,7 @@ async def duality_update_doc(req: DualityCrudRequest):
 
 @router.post("/duality/etag-simulation")
 async def duality_etag():
+    """ETag 낙관적 동시성 제어를 시뮬레이션한다 (동시 수정 충돌 재현)."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -872,6 +882,7 @@ async def duality_etag():
 
 @router.get("/duality/recent-queries")
 async def duality_recent_sql():
+    """V$SQL 에서 Duality View 관련 최근 실행 쿼리를 조회한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -900,6 +911,7 @@ class GraphQueryRequest(BaseModel):
 
 @router.post("/graph/create")
 async def graph_create():
+    """SH 스키마(CUSTOMERS·PRODUCTS·SALES) 기반 SQL Property Graph 를 생성한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -912,6 +924,7 @@ async def graph_create():
 
 @router.post("/graph/drop")
 async def graph_drop():
+    """Property Graph 를 삭제한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -924,11 +937,13 @@ async def graph_drop():
 
 @router.get("/graph/queries")
 async def graph_queries():
+    """비교 쿼리·패턴 쿼리 목록을 반환한다 (정본은 graph.py 의 COMPARE_QUERIES/PATTERN_QUERIES)."""
     return {"success": True, "compare": get_compare_queries(), "pattern": get_pattern_queries()}
 
 
 @router.post("/graph/compare")
 async def graph_compare(req: GraphQueryRequest):
+    """같은 질문을 기존 SQL JOIN 과 SQL/PGQ 로 각각 실행해 결과·소요시간을 비교한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -941,6 +956,7 @@ async def graph_compare(req: GraphQueryRequest):
 
 @router.post("/graph/pattern")
 async def graph_pattern(req: GraphQueryRequest):
+    """SQL/PGQ MATCH 패턴 질의를 실행한다 (관계 탐색)."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -953,6 +969,7 @@ async def graph_pattern(req: GraphQueryRequest):
 
 @router.get("/graph/recent-queries")
 async def graph_recent():
+    """V$SQL 에서 GRAPH_TABLE 관련 최근 실행 쿼리를 조회한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -967,6 +984,7 @@ async def graph_recent():
 
 @router.post("/productivity/lockfree")
 async def prod_lockfree():
+    """26ai Lock-Free Reservations 를 시뮬레이션한다 (동시 예약 시 잠금 경합 없이 처리)."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -979,6 +997,7 @@ async def prod_lockfree():
 
 @router.post("/productivity/priority-tx")
 async def prod_priority():
+    """26ai Priority Transactions 를 시뮬레이션한다 (우선순위 트랜잭션이 낮은 순위를 선점)."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
@@ -991,6 +1010,7 @@ async def prod_priority():
 
 @router.get("/productivity/recent-queries")
 async def prod_recent():
+    """V$SQL 에서 개발생산성 시뮬레이션 관련 최근 실행 쿼리를 조회한다."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(status_code=503, content={"success": False, "error": "DB 연결 없음"})
