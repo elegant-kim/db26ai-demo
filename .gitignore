@@ -16,3 +16,14 @@ build/
 .claude/
 db26ai.log
 db26ai.pid
+
+# ── 시크릿 격리 (2026-09-04) ──
+# 이 저장소는 GitHub 공개(PUBLIC)다. 자격증명이 들어간 원본 SQL·설정은 절대 추적하지 않는다.
+sql/setup/_private/
+*_private.sql
+*_secret.sql
+docs/*.sql
+Wallet_*/
+*.pem
+*.p12
+*.jks
