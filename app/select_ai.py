@@ -1,4 +1,5 @@
 import json
+
 import oracledb
 
 
@@ -9,8 +10,47 @@ async def _lob_to_str(value):
     return value
 
 
+_DEFAULT_PROFILE_CACHE: str | None = None
+
+
+async def resolve_profile(pool, profile_name: str) -> str:
+    """빈 profile_name 을 실제 프로필 이름으로 해석한다.
+
+    2026-09-04 신설. `DBMS_CLOUD_AI.GENERATE` 에 빈 profile_name 을 넘기면 Oracle 이
+    **세션 프로필**로 폴백하는데, `SET_PROFILE` 은 세션 단위이고 커넥션 풀은 요청마다
+    다른 세션을 줄 수 있다. 그래서 `/api/set-profile` 을 호출해 둬도 다른 커넥션이
+    배정되면 `ORA-20046: AI profile is not enabled in the session` 이 났다.
+    로그에 남아 있던 간헐적 500 의 정체이며, 커넥션 풀 워밍으로 커넥션이 5개가 되면서
+    발생 확률이 오히려 올라갔다.
+
+    해석 순서: 인자 → `.env` 의 SELECT_AI_PROFILE → DB 의 첫 ENABLED 프로필(캐시).
+    이렇게 항상 이름을 명시하면 세션 상태에 의존하지 않는다.
+    """
+    global _DEFAULT_PROFILE_CACHE
+
+    if profile_name:
+        return profile_name
+
+    from app.config import settings
+    if settings.SELECT_AI_PROFILE:
+        return settings.SELECT_AI_PROFILE
+
+    if _DEFAULT_PROFILE_CACHE:
+        return _DEFAULT_PROFILE_CACHE
+
+    profiles = await list_profiles(pool)
+    for p in profiles:
+        name = p.get("profile_name") or p.get("PROFILE_NAME")
+        status = (p.get("status") or p.get("STATUS") or "").upper()
+        if name and status in ("", "ENABLED"):
+            _DEFAULT_PROFILE_CACHE = name
+            return name
+    return ""
+
+
 async def ask_select_ai(pool, prompt: str, action: str, profile_name: str) -> str:
     """Select AI에 자연어 질문을 전달하고 결과를 반환한다."""
+    profile_name = await resolve_profile(pool, profile_name)
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             sql = """
@@ -290,7 +330,7 @@ async def get_schema_info(pool, profile_name: str) -> dict:
                         })
 
                     # 행 수 조회
-                    await cursor.execute(f"""
+                    await cursor.execute("""
                         SELECT num_rows FROM all_tables
                         WHERE owner = :owner AND table_name = :tname
                     """, {"owner": owner, "tname": name})

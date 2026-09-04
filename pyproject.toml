@@ -1,0 +1,30 @@
+[project]
+name = "db26ai-demo"
+version = "0.1.0"
+description = "Oracle AI Database 26ai 기능 데모 애플리케이션"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "integration: 구동 중인 서버(:8247)와 실제 DB가 필요한 테스트. 서버가 없으면 자동 skip",
+]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = ["venv", ".venv", "static", "templates", "sql"]
+
+[tool.ruff.lint]
+# E501(줄 길이)은 line-length 로 처리, 한국어 주석이 많아 관대하게 둔다.
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",   # 줄 길이 — 한국어 주석·SQL 리터럴이 많다
+    "B008",   # FastAPI 의 Depends()/File() 기본값 패턴
+    "E402",   # 지연 import (순환 참조 회피용)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

@@ -9,7 +9,6 @@ from html.parser import HTMLParser
 
 from app.llm_client import call_llm, call_llm_json
 
-
 # ── 섹션 제목 → 카테고리 매핑 (23개 섹션) ─────────────────────
 
 SECTION_TITLES = [
@@ -286,7 +285,7 @@ def parse_awr_html_v2(html_content: str) -> dict:
 
     # 2) 스냅샷 정보 보충 (Report Header에 없는 경우)
     if "snapshot_info" not in sections:
-        for title, category in SNAPSHOT_PATTERNS:
+        for title, _category in SNAPSHOT_PATTERNS:
             pos = _find_section_pos(html_lower, title)
             if pos >= 0:
                 tables = _extract_tables_at(html_content, pos, max_tables=2)

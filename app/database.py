@@ -1,4 +1,5 @@
 import oracledb
+
 from app.config import settings
 
 pool = None

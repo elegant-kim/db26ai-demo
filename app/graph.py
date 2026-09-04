@@ -6,11 +6,9 @@ SQL Property Graph 관리 모듈 (SQL/PGQ)
 - 최근 쿼리 조회
 """
 
-import json
 import time
 
 from app.select_ai import _lob_to_str
-
 
 # === Property Graph DDL ===
 

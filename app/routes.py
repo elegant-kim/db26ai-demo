@@ -1,53 +1,60 @@
+import asyncio
 import json
 import logging
 import os
 import tempfile
 import time
 
-import asyncio
-from fastapi import APIRouter, Form, Request, UploadFile, File
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.database import get_pool, check_connection
-from app.select_ai import (
-    ask_select_ai, list_profiles, set_profile, get_profile_attributes,
-    execute_raw_sql, get_current_schema, get_schema_info, get_explain_plan,
-    get_annotations, apply_annotations, remove_annotations,
-)
 from app.awr_analyzer_v2 import (
-    parse_awr_html_v2,
+    analyze_awr_v2,
     build_analysis_prompt_v2,
     build_followup_prompt_v2,
-    analyze_awr_v2,
     followup_question_v2,
+    parse_awr_html_v2,
 )
+from app.database import check_connection, get_pool
 from app.llm_client import get_available_providers
+from app.select_ai import (
+    apply_annotations,
+    ask_select_ai,
+    execute_raw_sql,
+    get_current_schema,
+    get_explain_plan,
+    get_profile_attributes,
+    get_schema_info,
+    list_profiles,
+    remove_annotations,
+    set_profile,
+)
 from app.vector_search import (
-    upload_document,
-    vector_search,
-    keyword_search,
     compare_search,
-    hybrid_search,
-    generate_rag_answer,
-    list_documents,
+    create_vector_tables_explicit,
     delete_document,
-    get_index_info,
+    drop_onnx_model,
+    drop_vector_tables,
+    generate_rag_answer,
     get_embedding_info,
+    get_index_info,
+    get_onnx_model_detail,
     get_onnx_models,
+    get_vector_visualization,
+    hybrid_search,
+    keyword_search,
+    list_documents,
     load_onnx_model,
     load_onnx_model_cloud,
-    drop_onnx_model,
-    test_onnx_model,
-    get_onnx_model_detail,
-    drop_vector_tables,
-    create_vector_tables_explicit,
-    query_table_definition,
-    query_table_data,
-    query_table_indexes,
-    query_recent_sql,
     query_explain_plan,
-    get_vector_visualization,
+    query_recent_sql,
+    query_table_data,
+    query_table_definition,
+    query_table_indexes,
+    test_onnx_model,
+    upload_document,
+    vector_search,
 )
 
 logger = logging.getLogger(__name__)
@@ -390,7 +397,7 @@ async def vector_upload(file: UploadFile = File(...)):
     if len(content) > MAX_UPLOAD_SIZE:
         return JSONResponse(
             status_code=400,
-            content={"success": False, "error": f"파일 크기가 10MB를 초과합니다."},
+            content={"success": False, "error": "파일 크기가 10MB를 초과합니다."},
         )
 
     if not file.filename.lower().endswith(".pdf"):
@@ -759,9 +766,15 @@ async def vector_visualize(req: VectorVisRequest):
 # === JSON Relational Duality Endpoints ===
 
 from app.duality import (
-    create_duality_views, drop_duality_views, list_duality_views,
-    compare_relational_vs_json, list_duality_docs, fetch_duality_doc, update_duality_doc,
-    simulate_etag_conflict, query_duality_recent_sql,
+    compare_relational_vs_json,
+    create_duality_views,
+    drop_duality_views,
+    fetch_duality_doc,
+    list_duality_docs,
+    list_duality_views,
+    query_duality_recent_sql,
+    simulate_etag_conflict,
+    update_duality_doc,
 )
 
 
@@ -896,12 +909,18 @@ async def duality_recent_sql():
 # === Property Graph Endpoints ===
 
 from app.graph import (
-    create_property_graph, drop_property_graph, compare_sql_vs_pgq,
-    run_pattern_query, query_graph_recent_sql,
-    get_compare_queries, get_pattern_queries,
+    compare_sql_vs_pgq,
+    create_property_graph,
+    drop_property_graph,
+    get_compare_queries,
+    get_pattern_queries,
+    query_graph_recent_sql,
+    run_pattern_query,
 )
 from app.productivity import (
-    simulate_lock_free, simulate_priority_tx, query_prod_recent_sql,
+    query_prod_recent_sql,
+    simulate_lock_free,
+    simulate_priority_tx,
 )
 
 
@@ -1426,11 +1445,11 @@ async def awr_source_html_v2(session_id: str, section: str = ""):
         section_lower = section.lower()
         anchor_id = "awr_highlight_target"
         highlight_css = (
-            f'<style>#awr_highlight_target {{ '
-            f'outline: 3px solid #f59e0b !important; '
-            f'outline-offset: 4px !important; '
-            f'background-color: #fff3cd !important; '
-            f'}}</style>'
+            '<style>#awr_highlight_target { '
+            'outline: 3px solid #f59e0b !important; '
+            'outline-offset: 4px !important; '
+            'background-color: #fff3cd !important; '
+            '}</style>'
         )
 
         search_pos = html.lower().find(section_lower)

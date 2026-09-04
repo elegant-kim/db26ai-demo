@@ -41,6 +41,14 @@ launchctl kickstart -k gui/$(id -u)/com.db26ai.server
 curl -s http://localhost:8247/api/health
 ```
 
+```bash
+# 검증 (X-1, 2026-09-04 도입)
+pip install -r requirements-dev.txt
+./venv/bin/python -m pytest tests/ -q     # 단위 + 통합(서버 없으면 자동 skip)
+./venv/bin/ruff check .                   # 린트
+scripts/check-secrets.sh                  # 커밋 전 시크릿 게이트
+```
+
 빌드 불필요 — Vue 3, Chart.js는 CDN에서 로드.
 로그는 `db26ai.log` (gitignore 대상).
 

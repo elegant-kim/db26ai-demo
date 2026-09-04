@@ -1,9 +1,7 @@
 import asyncio
 import json
 import logging
-import os
 import re
-import tempfile
 import time
 
 import oracledb
@@ -177,8 +175,8 @@ async def get_embedding_from_db(pool, text: str, model_name: str) -> list:
 
 async def get_embedding_external(text: str) -> list:
     """외부 API를 사용하여 임베딩을 생성한다."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     api_url = settings.EMBEDDING_API_URL
     api_key = settings.EMBEDDING_API_KEY
@@ -201,7 +199,7 @@ async def get_embedding_external(text: str) -> list:
             data = json.loads(resp.read().decode("utf-8"))
             return data["data"][0]["embedding"]
     except Exception as e:
-        raise RuntimeError(f"외부 임베딩 API 호출 실패: {e}")
+        raise RuntimeError(f"외부 임베딩 API 호출 실패: {e}") from e
 
 
 async def get_embedding(pool, text: str) -> list:
@@ -224,6 +222,10 @@ _CTX_STOPWORDS = {
     "인가요", "입니까", "그리고", "그러나", "또는", "대해", "대한", "위해", "위한",
     "이란", "라는", "있나요", "알려줘", "알려주세요", "설명해줘",
 }
+
+# 의문사로 시작하는 어절은 활용형이 무한하다("무엇인가요"·"어떤가요"·"어떻습니까"…).
+# 목록으로는 다 못 막아서 접두사로 거른다.
+_CTX_INTERROGATIVE = ("무엇", "무슨", "어떻", "어떤", "어느", "얼마", "언제", "어디", "누가", "누구", "왜")
 
 # 한글 조사·흔한 용언 어미 (긴 것부터). WORLD_LEXER 는 어절을 통째로 토큰화하므로
 # "인덱스"(11건)와 "인덱스를"(2건)이 서로 다른 토큰이 된다 → 어간만 남기고 우측 절단한다.
@@ -268,11 +270,14 @@ def to_contains_query(query: str) -> str | None:
     if not query:
         return None
     tokens = [t for t in _CTX_RESERVED.sub(' ', query).split()
-              if len(t) >= 2 and t not in _CTX_STOPWORDS]
+              if len(t) >= 2
+              and t not in _CTX_STOPWORDS
+              and not t.startswith(_CTX_INTERROGATIVE)]
     terms, seen = [], set()
     for tok in tokens:
         stem = _ctx_stem(tok)
-        if len(stem) < 2 or stem in seen:
+        # 어간으로 줄인 뒤에도 불용어일 수 있다 ("하나요" → "하나")
+        if len(stem) < 2 or stem in seen or stem in _CTX_STOPWORDS:
             continue
         seen.add(stem)
         # 한글 어간은 우측 절단으로 남은 활용형을 흡수한다. 영문·숫자는 그대로.
@@ -579,7 +584,6 @@ FETCH FIRST {top_k} ROWS ONLY"""
             async with conn.cursor() as cursor:
                 await cursor.execute(sql, {"query": query, "top_k": top_k})
                 rows = await cursor.fetchall()
-                columns = [col[0] for col in cursor.description]
     else:
         # 외부 임베딩 사용
         query_vector = await get_embedding_external(query)
@@ -604,7 +608,6 @@ FETCH FIRST {top_k} ROWS ONLY"""
             async with conn.cursor() as cursor:
                 await cursor.execute(sql, {"query_vector": query_vec_str, "top_k": top_k})
                 rows = await cursor.fetchall()
-                columns = [col[0] for col in cursor.description]
 
     chunks = []
     for row in rows:
@@ -1345,7 +1348,7 @@ ORDER BY COLUMN_ID"""
                 await cursor.execute(sql, {"table_name": table_name.upper()})
                 columns = [col[0] for col in cursor.description]
                 rows = await cursor.fetchall()
-                data = [dict(zip(columns, row)) for row in rows]
+                data = [dict(zip(columns, row, strict=True)) for row in rows]
         return {"sql_executed": sql_display, "columns": columns, "data": data, "row_count": len(data)}
     except Exception as e:
         return {"sql_executed": sql_display, "columns": [], "data": [], "row_count": 0, "error": str(e)}
@@ -1407,7 +1410,7 @@ ORDER BY i.INDEX_NAME, c.COLUMN_POSITION"""
                 await cursor.execute(sql, {"table_name": table_name.upper()})
                 columns = [col[0] for col in cursor.description]
                 rows = await cursor.fetchall()
-                data = [dict(zip(columns, row)) for row in rows]
+                data = [dict(zip(columns, row, strict=True)) for row in rows]
         return {"sql_executed": sql_display, "columns": columns, "data": data, "row_count": len(data)}
     except Exception as e:
         return {"sql_executed": sql_display, "columns": [], "data": [], "row_count": 0, "error": str(e)}
@@ -1557,7 +1560,7 @@ async def get_vector_visualization(pool, query: str, matched_chunk_ids: list = N
     # 1. 모든 청크의 임베딩을 조회 (최대 max_points개)
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute(f"""
+            await cursor.execute("""
                 SELECT chunk_id, source_file, page_num, embedding
                 FROM doc_chunks
                 WHERE embedding IS NOT NULL

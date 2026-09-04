@@ -5,11 +5,8 @@
 - 최근 쿼리 조회
 """
 
-import json
-import time
 
 from app.select_ai import _lob_to_str
-
 
 # === Lock-Free Reservations ===
 
@@ -18,7 +15,6 @@ async def simulate_lock_free(pool) -> dict:
     RESERVABLE 컬럼이 있는 계좌 테이블에서 동시 차감을 시연한다.
     """
     steps = []
-    table_created = False
 
     try:
         # Step 1: 데모 테이블 생성
@@ -35,7 +31,6 @@ async def simulate_lock_free(pool) -> dict:
                     await cursor.execute(
                         "INSERT INTO demo_lockfree_account VALUES (1, 'Demo Account', 500)")
                     await conn.commit()
-            table_created = True
             steps.append({
                 "description": "데모 테이블 생성 — balance=500, RESERVABLE 컬럼 + CHECK(balance >= 0)",
                 "sql": create_sql,
@@ -49,7 +44,6 @@ async def simulate_lock_free(pool) -> dict:
                         await cursor.execute(
                             "UPDATE demo_lockfree_account SET balance = 500 WHERE account_id = 1")
                         await conn.commit()
-                table_created = True
                 steps.append({
                     "description": "기존 데모 테이블 초기화 — balance=500으로 리셋",
                     "sql": "UPDATE demo_lockfree_account SET balance = 500 WHERE account_id = 1",
@@ -102,7 +96,7 @@ async def simulate_lock_free(pool) -> dict:
                         "sql": update_c_sql,
                         "success": True,
                     })
-                except Exception as e:
+                except Exception:
                     steps.append({
                         "description": "Session C: 300 차감 시도 — CHECK 제약 위반! 잔액 부족 (500 - 200(A예약) - 100(B) - 300 = -100 < 0)",
                         "sql": update_c_sql,
@@ -250,7 +244,6 @@ ORDER BY last_active_time DESC NULLS LAST
 FETCH FIRST 10 ROWS ONLY"""
 
     try:
-        start = time.time()
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(sql)

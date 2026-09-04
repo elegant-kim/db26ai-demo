@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.database import init_pool, close_pool, get_pool
+from app.database import close_pool, get_pool, init_pool
 from app.routes import router as api_router
 from app.scheduler import init_scheduler, shutdown_scheduler
 from app.vector_search import init_vector_tables, warm_embedding_pool
