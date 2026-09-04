@@ -185,3 +185,13 @@ class TestFeatureRegistry:
             for it in g["items"]:
                 for f in ("name", "desc", "how", "path", "keyword"):
                     assert it.get(f), f"{it.get('name')} 의 {f} 가 비었다"
+
+    def test_작성된_가이드는_available_이_되고_열린다(self, client):
+        """파일만 만들면 API 가 번호 prefix glob 으로 자동으로 집는다(코드 변경 불필요)."""
+        guides = client.get("/api/guide/docs").json()["guides"]
+        avail = [g for g in guides if g["available"]]
+        assert avail, "작성된 가이드가 하나도 없다"
+        for g in avail:
+            d = client.get(f"/api/guide/docs/{g['key']}").json()
+            assert d["success"] is True
+            assert len(d["content"]) > 500, f"{g['key']} 내용이 너무 짧다"
