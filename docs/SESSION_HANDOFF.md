@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5 완료 — 7페이지 전부 새 화면 + ⌘K. 남은 것은 Phase 6 레거시 삭제·검수) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 6-1·6-2·6-4 완료 — 레거시 삭제, SPA 단일 서빙, 문서 동기화. 남은 것: 6-3 UI 검수 · 6-5 · 6-6) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -293,7 +293,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **5-7 을 시작할 때 (매뉴얼 + ⌘K, 계획서상 Opus — 사용자가 Fable 로 이어가는 것도 허용)**: `Manual.vue` 서브탭 3(기능 지도 `/api/guide/features` · 사용 설명서 `DocViewer`(md-body) · 현재 상태·계획),
 `CommandPalette`(⌘K, 데이터는 `/api/guide/features`), 헤더 `?` = `/manual`(확인 포인트 ⑤). 레지스트리 `tab_label` 과 헤더 짧은 라벨 정리(§4-4 미결). 그 뒤 Phase 6(레거시 삭제·문서 동기화·UI 검수).
 
-## 4-11. ✅ Phase 5-7 완료 (2026-09-05, Fable 5.1) — Phase 5 끝. 다음은 Phase 6 (레거시 삭제 · 검수)
+## 4-11. ✅ Phase 5-7 완료 (2026-09-05, Fable 5.1) — Phase 5 끝
 
 **7페이지가 전부 새 화면이다. `/legacy` 는 이제 아무 메뉴에서도 열리지 않는다** (Phase 6-1 에서 파일째 삭제).
 
@@ -309,13 +309,25 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **Phase 6 착수 순서**: 6-1 레거시 3파일(`templates/index.html`·`static/js/app.js`·`static/css/style.css`) + `/legacy` 라우트 + `main.py` 의 dist 폴백 + `LegacyStub`·`legacyUrl`·`migrated` 플래그 삭제 →
 6-2 (routes.py 분리는 이미 끝) → 6-3 UI 검수(★ Fable: 6탭 캡처를 06 §10 다섯 분류로 재점검, 다크 캡처 갱신) → 6-4 문서 동기화(CLAUDE.md 프론트 절·개발노하우 §4·가이드 01·README) → 배포 스크립트 점검.
 
+## 4-12. ✅ Phase 6-1 · 6-2 · 6-4 완료 (2026-09-05, Fable 5.1) — 레거시 삭제, SPA 단일 서빙
+
+| 한 것 | 내용 |
+|---|---|
+| 6-1 레거시 삭제 | `templates/index.html`(2,724줄) · `static/js/app.js`(2,890) · `static/css/style.css`(3,000) 삭제. `main.py` 에서 `/legacy`·`/static`·Jinja2·dist 폴백 제거 → 비-API 경로는 전부 `web/dist/index.html`, dist 없으면 503 JSON. `requirements.txt` 에서 jinja2 제거 |
+| 프론트 정리 | `menu.ts` 의 `migrated`·`legacyTab`·`legacyUrl` 삭제, `LegacyStub.vue` 삭제, TopNav·MobileDrawer·AppShell·StatusChips 는 항상 라우터. `homePath()` = `/nl2sql` |
+| 테스트 | `TestServing` 을 SPA 단일 서빙 기준 4개로 교체(`/`·딥링크·`/legacy`(SPA 셸)·미정의 API 404). 전체 통과 |
+| 6-2 | 이미 5-1~5-6 에서 탭별 분리 완료 — `routes.py` 는 공통 5개 |
+| 6-4 문서 동기화 | CLAUDE.md 프론트 절(공존 서술·캐시버스팅 규칙 삭제) · 개발노하우 §2 표·§4 도입부 · 가이드 01 §0 「화면 구성」을 새 화면 기준으로 다시 그림 · 02 레거시 절 삭제 · 03/04 「사이드바」 표현 정정 |
+
+**남은 것**: 6-3 UI 검수(★ Fable — `captures/final_<tab>_{light,dark}.png` 14장을 06 §10 다섯 분류로 점검) · 6-5 이 문서 최종 스냅샷 · 6-6 7탭 회귀 스모크.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
   force-push 해도 회수 불가 — 유일한 수습은 키 로테이션.
 - **`except: pass` 금지.** 삼켜야 해도 `logger.warning` 은 남긴다. 성공 카운트는 실제 성공분만.
 - **`VECTOR_EMBEDDING` 은 항상 `(SELECT ... FROM dual)` 스칼라 서브쿼리로 감싼다** (100배).
-- **레거시 프론트 파일 수정 시 `?v=N` 증가.** 현재 v=76. (SPA `web/` 는 빌드 해시라 해당 없음)
+- **프론트를 고치면 `npm run build` + 재기동.** (Vite 해시 파일명이라 캐시버스팅 버전은 없다)
 - **검증이 끝난 변경은 묻지 말고 커밋·푸시.** 작게 자주.
 - 확인을 구하는 것: 시크릿 수정, `push --force`, `DROP TABLE`/조건 없는 `DELETE`.
 
@@ -326,7 +338,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **런타임 임베딩 전환의 HNSW 차원 함정** — 새 화면(5-6)은 인덱스 모델 ≠ 현재 모델이면 **경고 배너**를 띄우고 소스 전환 때 초기화를 묻는다. 자동 인덱스 재생성은 아직 없다(백엔드) | `개발노하우.md` 3.2 · `stores/vector.ts` `dimensionWarning` |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식** — Phase 5 완료(7페이지 + ⌘K). Phase 6(레거시 삭제·UI 검수·문서 동기화) 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식** — Phase 5 완료 + 6-1/6-2/6-4 완료(레거시 삭제). 6-3 UI 검수·6-5·6-6 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (2026-09-05 실측: `Object not found - bearer://api.groq.com/openai/v1/chat/completions`). DB 의 `GROQ_CRED` 자격증명 또는 네트워크 ACL 문제로 보인다 — 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 |

@@ -8,7 +8,7 @@ import Toast from './Toast.vue'
 import CommandPalette from './CommandPalette.vue'
 import { HelpCircle, Search } from 'lucide-vue-next'
 import { useGuideStore } from '@/stores/guide'
-import { menuById, legacyUrl } from '@/lib/menu'
+import { menuById } from '@/lib/menu'
 import { useHealth } from '@/composables/useHealth'
 import { useRouter } from 'vue-router'
 
@@ -17,12 +17,8 @@ const router = useRouter()
 const guide = useGuideStore()
 const drawerOpen = ref(false)
 
-// 헤더 ? = 매뉴얼. 이식 전에는 레거시 매뉴얼 탭으로 전체 이동 (설계서 05 §5.2)
-function goManual() {
-  const m = menuById('manual')
-  if (m.migrated) router.push(m.path)
-  else window.location.href = legacyUrl(m)
-}
+// 헤더 ? = 매뉴얼 (확인 포인트 ⑤)
+function goManual() { router.push(menuById('manual').path) }
 </script>
 
 <template>

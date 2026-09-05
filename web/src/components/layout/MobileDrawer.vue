@@ -2,7 +2,7 @@
 import { watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { X as XIcon } from 'lucide-vue-next'
-import { MENUS, legacyUrl, type MenuDef } from '@/lib/menu'
+import { MENUS, type MenuDef } from '@/lib/menu'
 
 defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -12,8 +12,7 @@ const router = useRouter()
 watch(() => route.path, () => emit('close'))
 
 function go(m: MenuDef) {
-  if (m.migrated) router.push(m.path)
-  else window.location.href = legacyUrl(m)
+  router.push(m.path)
   emit('close')
 }
 </script>

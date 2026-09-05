@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { MENUS, homePath } from '@/lib/menu'
 
-// 페이지는 lazy — 탭별 chunk. 아직 이식 전인 페이지는 LegacyStub 으로 /legacy#tab 안내만 한다.
+// 페이지는 lazy — 탭별 chunk.
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: () => homePath() },
   { path: '/nl2sql', component: () => import('@/pages/Nl2sql.vue'), meta: { menu: 'nl2sql' } },

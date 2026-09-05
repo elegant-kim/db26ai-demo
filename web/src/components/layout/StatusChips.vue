@@ -6,7 +6,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSystemStore } from '@/stores/system'
-import { menuById, legacyUrl } from '@/lib/menu'
+import { menuById } from '@/lib/menu'
 import { fmtNum } from '@/lib/format'
 
 const system = useSystemStore()
@@ -19,8 +19,7 @@ const indexOk = computed(() => (system.health?.vector_index_status || []).some((
 
 function goStatus() {
   const m = menuById('manual')
-  if (m.migrated) router.push({ path: m.path, query: { sub: 'status' } })
-  else window.location.href = legacyUrl(m)
+  router.push({ path: m.path, query: { sub: 'status' } })
 }
 </script>
 

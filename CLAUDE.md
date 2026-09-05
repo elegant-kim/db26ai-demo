@@ -61,8 +61,8 @@ npm run build                             # undef-check + vue-tsc + vite → web
 scripts/deploy.sh
 ```
 
-**서빙 규칙**: `/` = SPA(`web/dist`), `/legacy` = 기존 화면, `web/dist` 가 없으면 `/` 도 레거시로 폴백(=롤백).
-아직 이식 전인 탭은 새 화면 메뉴에서 `/legacy#<tab>` 으로 나간다. 레거시 3파일은 Phase 6 까지 남는다.
+**서빙 규칙**: `/` 와 모든 비-API 경로 = `web/dist/index.html`(history 라우팅), `/assets` = 빌드 산출물, 미정의 `/api/*` = JSON 404.
+`web/dist` 가 없으면 503 JSON — `cd web && npm run build`. 레거시(templates·static)는 Phase 6-1(2026-09-05)에 삭제됐다.
 로그는 `db26ai.log` (gitignore 대상).
 
 ## Architecture
@@ -92,13 +92,13 @@ scripts/deploy.sh
 
 > `app/awr_analyzer.py`(구버전)는 2026-09-04 삭제됨. V2가 유일한 정본.
 
-### Frontend — 두 벌이 공존한다 (SPA 이식 중, 2026-09-05~)
+### Frontend — `web/` (Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia, 2026-09-05 이식 완료)
 
-**새 화면 `web/`** (Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia) — 구조는 `docs/design/05`, 시각 규칙은 `06` 이 정본
+구조는 `docs/design/05`, 시각 규칙은 `06` 이 정본. 탭마다 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts` 셋으로 조립한다(`docs/SESSION_HANDOFF.md` §4-5)
 
 | 경로 | 역할 |
 |---|---|
-| `web/src/lib/menu.ts` | 상단 메뉴 정본 — 순서·라벨·아이콘·**`migrated` 플래그**(탭을 이식하면 true 로) |
+| `web/src/lib/menu.ts` | 상단 메뉴 정본 — 순서·짧은 라벨·페이지 제목·아이콘·경로 |
 | `web/src/styles/tokens.css` | 팔레트·간격·타이포 토큰. **컴포넌트에 hex 금지** |
 | `web/src/lib/normalize.ts` | D11 어댑터 — 응답 배열 키 불일치를 흡수. 키 이름을 아는 유일한 곳 |
 | `web/src/lib/sqlHighlight.ts` | Oracle SQL 토크나이저 (레거시 `highlightOracleSQL` 이식) |
@@ -114,8 +114,6 @@ scripts/deploy.sh
 | `web/src/lib/annotations.ts` | SH Display Annotation 세트 정본 (app.js 에서 이전, 5-5) |
 | `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
 
-**레거시** (Phase 6 에서 삭제 예정) — `templates/index.html`(2,724줄) · `static/js/app.js`(2,890) · `static/css/style.css`(3,000).
-Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 연다(SPA 공존용 shim).
 
 ### 운영 파일
 
@@ -339,10 +337,9 @@ Oracle LOB 값은 `await _lob_to_str(val)` 변환 필수. `hasattr(row[0], 'read
 (ONNX 거짓보고 5개월, 임베딩 전량 NULL을 "성공"으로 보고 등).
 예외를 삼켜야 하는 자리라도 **`logger.warning`은 반드시 남긴다.**
 
-### Cache Busting — 이식 기간에는 규칙이 둘이다
-- **레거시** 3파일을 고치면 `style.css?v=N`·`app.js?v=N` 을 올린다. **현재 v=76.**
-- **SPA(`web/`)** 는 Vite 해시 파일명이라 버전 관리가 없다. 대신 **빌드 후 재기동**(`scripts/deploy.sh`).
-  배포 직후 옛 chunk 404 는 `main.ts` 의 stale-chunk 자동 새로고침이 흡수한다.
+### 프론트 배포 = 빌드 + 재기동
+SPA(`web/`)는 Vite 해시 파일명이라 캐시버스팅 버전이 없다. `npm run build` 뒤 `scripts/deploy.sh` 또는 kickstart.
+배포 직후 옛 chunk 404 는 `main.ts` 의 stale-chunk 자동 새로고침이 흡수한다.
 
 ### SSE 스트리밍
 **PDF 업로드만** `StreamingResponse` + `text/event-stream` 이다(프론트는 `fetch` + `ReadableStream`).
@@ -360,7 +357,7 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
 - 프로필 이름에 'SH' 포함 시 SH 스키마용 예시 질문/Annotation 세트 적용 (`web/src/lib/annotations.ts` · `lib/nl2sql.ts`)
 - 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
-- AWR 결과 탭과 벡터 검색 세션 탭은 동일한 CSS 클래스 (`awr-result-tabs`/`awr-result-tab`) 공유
+- AWR 결과 탭과 벡터 검색 세션 탭은 같은 `SessionTabs` 컴포넌트를 쓴다
 - 저장소는 **GitHub 공개(PUBLIC)** — 커밋 전 시크릿 검사 필수 (`docs/개발노하우.md` 참조)
 
 @docs/개발노하우.md
