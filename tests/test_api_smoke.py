@@ -160,13 +160,40 @@ class TestProductivity:
 
 
 class TestDuality:
-    def test_관계형과_JSON_이_모두_반환된다(self, client):
+    """③ Duality — 2026-09-05 실측: 관계형 쪽 SAMPLE 문법 오류(ORA-03049)와 ETag 시뮬 4단계 중단·원복 실패가
+    모두 HTTP 200 뒤에 숨어 있었다. 데모의 주장(같은 행 비교 · DB 가 ETag 로 거부 · 원복)을 고정한다."""
+
+    def _view(self, client):
         views = (client.get("/api/duality/views").json() or {}).get("views") or []
         if not views:
             pytest.skip("Duality View 가 없다")
-        name = views[0].get("view_name") or views[0].get("VIEW_NAME")
+        return views[0].get("name") or views[0].get("view_name")
+
+    def test_관계형과_JSON_이_같은_행을_돌려준다(self, client):
+        name = self._view(client)
         d = client.post("/api/duality/compare", json={"view_name": name, "limit": 3}).json()
-        assert d.get("success") is not False
+        assert d.get("success"), d
+        assert not d.get("relational_error"), d.get("relational_error")
+        assert not d.get("json_error"), d.get("json_error")
+        rel, docs = d["relational_data"], d["json_data"]
+        assert len(rel) == len(docs) == 3
+        pk = d["relational_columns"][0]
+        assert [str(r[pk]) for r in rel] == [str(x["_id"]) for x in docs], "양쪽이 같은 엔티티를 같은 순서로 보여줘야 비교다"
+        assert all("_metadata" in x and x["_metadata"].get("etag") for x in docs), "문서마다 ETag 가 실려 와야 한다"
+
+    def test_etag_시뮬은_DB가_거부하고_원복한다(self, client):
+        self._view(client)
+        d = client.post("/api/duality/etag-simulation").json()
+        assert d.get("success") and not d.get("error"), d.get("error")
+        steps = d["steps"]
+        assert len(steps) == 5, [s["description"] for s in steps]
+        assert steps[2]["success"] is True
+        assert steps[3]["success"] is False and "ORA-42699" in steps[3]["description"], "4단계는 DB 의 ETag 검사로 거부돼야 한다"
+        assert steps[4]["success"] is True and "원복" in steps[4]["description"]
+        # 원복 확인 — SH 표준 신용한도 밖의 값이 남으면 시뮬이 데이터를 오염시킨 것
+        q = "SELECT COUNT(*) N FROM admin.customers WHERE cust_credit_limit NOT IN (1500,3000,5000,7000,9000,10000,11000,15000)"
+        r = client.post("/api/execute-sql", json={"sql": q}).json()
+        assert r.get("success") and r["data"][0]["N"] == 0, r
 
 
 class TestGuideDocs:

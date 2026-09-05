@@ -7,10 +7,13 @@ JSON Relational Duality View 관리 모듈
 """
 
 import json
+import logging
 import time
 from decimal import Decimal
 
 from app.select_ai import _lob_to_str
+
+logger = logging.getLogger(__name__)
 
 
 def _json_serializer(obj):
@@ -147,23 +150,27 @@ ORDER BY view_name"""
 async def compare_relational_vs_json(pool, view_name: str, limit: int = 5) -> dict:
     """관계형 SQL JOIN과 Duality View JSON을 나란히 비교한다."""
 
-    # 뷰 이름에 따라 관계형 SQL 결정
+    # 두 쪽이 "같은 행"을 보여줘야 비교가 된다 (개발노하우 §4). 그래서 양쪽 다 _id(PK) 오름차순 + FETCH FIRST.
+    # 2026-09-05 이전: 양쪽에 SAMPLE(5) — 관계형 쪽은 별칭 뒤에 SAMPLE 을 둬 ORA-03049 로 5개월간 깨져 있었고,
+    # JSON 쪽은 매번 다른 무작위 행이라 애초에 비교가 불가능했다 (레거시 UI 가 오류를 삼켰다).
+    limit = max(1, min(int(limit), 50))
     if "CUSTOMER" in view_name.upper():
         relational_sql = f"""SELECT c.cust_id, c.cust_first_name, c.cust_last_name,
        c.cust_city, c.cust_income_level, c.cust_credit_limit
 FROM admin.customers c
-SAMPLE(5)
+ORDER BY c.cust_id
 FETCH FIRST {limit} ROWS ONLY"""
     elif "PRODUCT" in view_name.upper():
         relational_sql = f"""SELECT p.prod_id, p.prod_name, p.prod_category,
        p.prod_list_price, p.prod_min_price
 FROM admin.products p
-WHERE ROWNUM <= {limit}
-ORDER BY p.prod_id"""
+ORDER BY p.prod_id
+FETCH FIRST {limit} ROWS ONLY"""
     else:
-        relational_sql = f"SELECT * FROM {view_name} WHERE ROWNUM <= {limit}"
+        relational_sql = f"SELECT * FROM {view_name} ORDER BY 1 FETCH FIRST {limit} ROWS ONLY"
 
-    json_sql = f"""SELECT data FROM {view_name} SAMPLE(5)
+    json_sql = f"""SELECT data FROM {view_name}
+ORDER BY JSON_VALUE(data, '$._id' RETURNING NUMBER)
 FETCH FIRST {limit} ROWS ONLY"""
 
     result = {}
@@ -390,101 +397,87 @@ async def simulate_etag_conflict(pool, view_name: str = None) -> dict:
             "success": True,
         })
 
-        # Step 3: User A가 먼저 수정 (성공)
-        # creditLimit을 1 증가시키는 수정
-        modified_doc = dict(original_doc)
-        old_credit = modified_doc.get("creditLimit", 0)
-        if isinstance(old_credit, Decimal):
-            modified_doc["creditLimit"] = old_credit + 1
-        else:
-            modified_doc["creditLimit"] = (old_credit or 0) + 1
-
+        # Step 3: User A 가 먼저 수정 — 문서에 실린 _metadata.etag(E1) 가 현재와 같으므로 DB 가 통과시키고 새 ETag 를 발급
+        old_credit = original_sanitized.get("creditLimit", 0) or 0
+        modified_doc = dict(original_sanitized)
+        modified_doc["creditLimit"] = old_credit + 1
         sql_update = f"UPDATE {view_name} SET data = :doc WHERE JSON_VALUE(data, '$._id') = :doc_id"
-        modified_json = json.dumps(_sanitize_duality_doc(modified_doc), ensure_ascii=False)
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute(sql_update, {"doc": modified_json, "doc_id": str(doc_id)})
-                rows_affected_a = cursor.rowcount
+                await cursor.execute(sql_update, {"doc": json.dumps(modified_doc, ensure_ascii=False), "doc_id": str(doc_id)})
                 await conn.commit()
-
-        # 새 ETag 확인
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(f"SELECT data FROM {view_name} WHERE JSON_VALUE(data, '$._id') = :doc_id", {"doc_id": str(doc_id)})
                 row = await cursor.fetchone()
                 new_etag = _extract_etag(row[0]) if row else "N/A"
-                updated_doc = row[0] if row else None
 
         steps.append({
-            "description": f"User A가 creditLimit을 {old_credit}→{modified_doc['creditLimit']}로 수정 — 성공! 새 ETag 발급됨",
+            "description": f"User A 가 creditLimit 을 {old_credit}→{old_credit + 1} 로 수정 — 성공. 문서에 실린 ETag 가 현재와 같아 DB 가 통과시키고 새 ETag 를 발급했다",
             "etag": new_etag[:16] + "...",
-            "sql": f"UPDATE {view_name} SET data = :modified_doc WHERE JSON_VALUE(data, '$._id') = '{doc_id}'",
+            "sql": f"UPDATE {view_name} SET data = :doc_with_old_etag WHERE JSON_VALUE(data, '$._id') = '{doc_id}'",
             "success": True,
         })
 
-        # Step 4: User B가 기존 ETag로 수정 시도
-        # User B는 원본 문서(기존 ETag 포함)를 수정하여 PUT
-        modified_doc_b = dict(original_doc)
-        modified_doc_b["creditLimit"] = (old_credit or 0) + 999
-        modified_json_b = json.dumps(_sanitize_duality_doc(modified_doc_b), ensure_ascii=False)
-
-        # User B의 UPDATE — ETag가 이미 바뀌었으므로 데이터가 다름
-        # Duality View에서는 문서 내용 기반으로 충돌을 감지
-        # 여기서는 WHERE 조건으로 기존 etag를 명시적으로 체크하여 시뮬레이션
+        # Step 4: User B 가 옛 ETag(E1) 를 그대로 실은 문서로 수정 시도 → DB 가 ORA-42699 로 거부한다.
+        # 2026-09-05 이전에는 WHERE 절로 흉내 냈고 진짜 검사는 원복 단계에서 터져 시뮬레이션이 4단계에서 끊겼다.
+        modified_doc_b = dict(original_sanitized)   # _metadata.etag = E1 (구버전)
+        modified_doc_b["creditLimit"] = old_credit + 999
+        b_error = None
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                # 기존 creditLimit 값으로 WHERE 조건 → 이미 변경되었으므로 0건 매칭
-                sql_update_b = f"""UPDATE {view_name} SET data = :doc
-WHERE JSON_VALUE(data, '$._id') = :doc_id
-  AND JSON_VALUE(data, '$.creditLimit') = :old_credit"""
-                await cursor.execute(sql_update_b, {
-                    "doc": modified_json_b,
-                    "doc_id": str(doc_id),
-                    "old_credit": str(old_credit),
-                })
-                rows_affected_b = cursor.rowcount
-                if rows_affected_b > 0:
-                    await conn.rollback()  # 혹시 성공했으면 롤백
-                else:
+                try:
+                    await cursor.execute(sql_update, {"doc": json.dumps(modified_doc_b, ensure_ascii=False), "doc_id": str(doc_id)})
+                    b_rows = cursor.rowcount
+                    await conn.rollback()   # 여기 오면 검사가 안 된 것 — 되돌리고 그대로 보고한다
+                except Exception as e:      # noqa: BLE001 — ORA-42699 가 기대값
+                    b_error = str(e)
+                    b_rows = 0
                     await conn.rollback()
-
+        if b_error and "ORA-42699" in b_error:
+            desc = "User B 가 같은 문서를 옛 ETag 그대로 수정 시도 — DB 가 거부했다 (ORA-42699: ETag 불일치). Lost Update 방지"
+        elif b_error:
+            desc = f"User B 의 수정이 실패했다 — {b_error.splitlines()[0][:120]}"
+        else:
+            desc = f"⚠ User B 의 수정이 통과됐다({b_rows}행) — ETag 검사가 동작하지 않았다. 롤백함"
         steps.append({
-            "description": f"User B가 기존 데이터(creditLimit={old_credit})로 수정 시도 — 실패! 이미 User A가 수정하여 데이터 불일치 (Lost Update 방지)",
+            "description": desc,
             "etag": etag_a[:16] + "... (구버전)",
-            "sql": sql_update_b,
+            "sql": f"UPDATE {view_name} SET data = :doc_with_old_etag WHERE JSON_VALUE(data, '$._id') = '{doc_id}'\n-- → {(b_error or '').splitlines()[0] if b_error else '(거부되지 않음)'}",
             "success": False,
         })
 
-        # Step 5: 원복
-        original_json = json.dumps(_sanitize_duality_doc(original_doc), ensure_ascii=False)
+        # Step 5: 원복 — _metadata 를 뺀 문서로 UPDATE 하면 ETag 검사를 건너뛴다 (원복은 "마지막 쓰기"가 맞다)
+        restore_doc = {k: v for k, v in original_sanitized.items() if k != "_metadata"}
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute(sql_update, {"doc": original_json, "doc_id": str(doc_id)})
+                await cursor.execute(sql_update, {"doc": json.dumps(restore_doc, ensure_ascii=False), "doc_id": str(doc_id)})
                 await conn.commit()
 
         steps.append({
-            "description": f"시뮬레이션 완료 — 원본 데이터(creditLimit={old_credit})로 원복 완료",
+            "description": f"시뮬레이션 완료 — 원본(creditLimit={old_credit})으로 원복. _metadata 없이 UPDATE 하면 ETag 검사를 생략한다",
             "etag": None,
-            "sql": f"UPDATE {view_name} SET data = :original_doc WHERE JSON_VALUE(data, '$._id') = '{doc_id}' -- 원복",
+            "sql": f"UPDATE {view_name} SET data = :doc_without_metadata WHERE JSON_VALUE(data, '$._id') = '{doc_id}' -- 원복",
             "success": True,
         })
 
     except Exception as e:
-        # 에러 발생 시에도 원복 시도
+        logger.warning("ETag 시뮬레이션 실패: %s", e)
+        # 에러가 나도 원복은 시도한다 — _metadata 를 빼야 ETag 검사에 안 걸린다
         try:
-            if 'original_doc' in locals() and 'doc_id' in locals():
-                original_json = json.dumps(_sanitize_duality_doc(original_doc), ensure_ascii=False)
+            if "original_sanitized" in locals() and "doc_id" in locals():
+                restore_doc = {k: v for k, v in original_sanitized.items() if k != "_metadata"}
                 async with pool.acquire() as conn:
                     async with conn.cursor() as cursor:
                         await cursor.execute(
                             f"UPDATE {view_name} SET data = :doc WHERE JSON_VALUE(data, '$._id') = :doc_id",
-                            {"doc": original_json, "doc_id": str(doc_id)},
+                            {"doc": json.dumps(restore_doc, ensure_ascii=False), "doc_id": str(doc_id)},
                         )
                         await conn.commit()
                 steps.append({"description": "에러 발생 — 원본 데이터로 원복 완료", "etag": None, "success": True})
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.warning("ETag 시뮬레이션 원복 실패 (데이터가 수정된 채 남았을 수 있다): %s", e2)
         return {"error": str(e), "steps": steps}
 
     return {"steps": steps}

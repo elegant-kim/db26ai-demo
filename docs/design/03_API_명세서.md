@@ -29,7 +29,7 @@
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
 | `GET` | `/api/health` | — | DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다. | `app/routes.py:292` |
-| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:918` |
+| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:777` |
 
 ## ① NL2SQL (Select AI)
 
@@ -72,28 +72,28 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routes.py:933` |
-| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routes.py:946` |
-| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routes.py:981` |
-| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routes.py:1057` |
-| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routes.py:1116` |
-| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routes.py:1004` |
-| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routes.py:1096` |
-| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routes.py:1146` |
+| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routes.py:792` |
+| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routes.py:805` |
+| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routes.py:840` |
+| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routes.py:916` |
+| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routes.py:975` |
+| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routes.py:863` |
+| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routes.py:955` |
+| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routes.py:1005` |
 
 ## ③ JSON Relational Duality
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/duality/compare` | DualityCompareRequest | 같은 데이터를 관계형 SQL JOIN 과 Duality View JSON 으로 각각 조회해 비교한다. | `app/routes.py:835` |
-| `POST` | `/api/duality/create-views` | — | SH 스키마 기반 JSON Relational Duality View 들을 생성한다. | `app/routes.py:796` |
-| `POST` | `/api/duality/doc` | DualityCrudRequest | Duality View 의 단일 JSON 문서를 조회한다 (ETag 포함). | `app/routes.py:861` |
-| `POST` | `/api/duality/doc/update` | DualityCrudRequest | Duality View 의 JSON 문서를 수정한다 — 관계형 테이블에 그대로 반영된다. | `app/routes.py:874` |
-| `POST` | `/api/duality/docs` | DualityCrudRequest | Duality View 문서 목록 (ID + 요약) 조회 | `app/routes.py:848` |
-| `POST` | `/api/duality/drop-views` | — | Duality View 들을 삭제한다. | `app/routes.py:809` |
-| `POST` | `/api/duality/etag-simulation` | — | ETag 낙관적 동시성 제어를 시뮬레이션한다 (동시 수정 충돌 재현). | `app/routes.py:887` |
-| `GET` | `/api/duality/recent-queries` | — | V$SQL 에서 Duality View 관련 최근 실행 쿼리를 조회한다. | `app/routes.py:900` |
-| `GET` | `/api/duality/views` | — | 현재 존재하는 Duality View 목록을 조회한다. | `app/routes.py:822` |
+| `POST` | `/api/duality/compare` | DualityCompareRequest | 같은 데이터를 관계형 SQL JOIN 과 Duality View JSON 으로 각각 조회해 비교한다. | `app/routers/duality.py:77` |
+| `POST` | `/api/duality/create-views` | — | SH 스키마 기반 JSON Relational Duality View 들을 생성한다. | `app/routers/duality.py:38` |
+| `POST` | `/api/duality/doc` | DualityCrudRequest | Duality View 의 단일 JSON 문서를 조회한다 (ETag 포함). | `app/routers/duality.py:103` |
+| `POST` | `/api/duality/doc/update` | DualityCrudRequest | Duality View 의 JSON 문서를 수정한다 — 관계형 테이블에 그대로 반영된다. | `app/routers/duality.py:116` |
+| `POST` | `/api/duality/docs` | DualityCrudRequest | Duality View 문서 목록 (ID + 요약) 조회 | `app/routers/duality.py:90` |
+| `POST` | `/api/duality/drop-views` | — | Duality View 들을 삭제한다. | `app/routers/duality.py:51` |
+| `POST` | `/api/duality/etag-simulation` | — | ETag 낙관적 동시성 제어를 시뮬레이션한다 (동시 수정 충돌 재현). | `app/routers/duality.py:129` |
+| `GET` | `/api/duality/recent-queries` | — | V$SQL 에서 Duality View 관련 최근 실행 쿼리를 조회한다. | `app/routers/duality.py:142` |
+| `GET` | `/api/duality/views` | — | 현재 존재하는 Duality View 목록을 조회한다. | `app/routers/duality.py:64` |
 
 ## ④ Property Graph
 
@@ -118,17 +118,17 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/awr/analyze` | multipart 파일 | AWR HTML 파일 업로드 → 파싱 (23개 섹션) → LLM 분석 (8개 섹션 보고서) | `app/routes.py:1178` |
-| `POST` | `/api/awr/followup` | AWRFollowupRequest | AWR 분석 결과에 대한 후속 질문 | `app/routes.py:1264` |
-| `GET` | `/api/awr/source/{session_id}` | — | AWR HTML 원문 보기 | `app/routes.py:1299` |
+| `POST` | `/api/awr/analyze` | multipart 파일 | AWR HTML 파일 업로드 → 파싱 (23개 섹션) → LLM 분석 (8개 섹션 보고서) | `app/routes.py:1037` |
+| `POST` | `/api/awr/followup` | AWRFollowupRequest | AWR 분석 결과에 대한 후속 질문 | `app/routes.py:1123` |
+| `GET` | `/api/awr/source/{session_id}` | — | AWR HTML 원문 보기 | `app/routes.py:1158` |
 
 ## 매뉴얼
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:1391` |
-| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:1401` |
-| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:1415` |
+| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:1250` |
+| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:1260` |
+| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:1274` |
 
 ---
 
