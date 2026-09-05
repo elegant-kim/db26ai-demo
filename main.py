@@ -12,6 +12,7 @@ from app.database import close_pool, get_pool, init_pool
 from app.routers import awr as awr_router
 from app.routers import duality as duality_router
 from app.routers import graph as graph_router
+from app.routers import nl2sql as nl2sql_router
 from app.routers import productivity as productivity_router
 from app.routes import router as api_router
 from app.scheduler import init_scheduler, shutdown_scheduler
@@ -38,6 +39,7 @@ app.include_router(graph_router.router)   # 탭을 이식할 때마다 하나씩
 app.include_router(productivity_router.router)
 app.include_router(duality_router.router)
 app.include_router(awr_router.router)
+app.include_router(nl2sql_router.router)
 
 
 @app.on_event("startup")

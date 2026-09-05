@@ -28,58 +28,58 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/health` | — | DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다. | `app/routes.py:285` |
-| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:767` |
+| `GET` | `/api/health` | — | DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다. | `app/routes.py:68` |
+| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:550` |
 
 ## ① NL2SQL (Select AI)
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routes.py:189` |
-| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routes.py:94` |
-| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행 | `app/routes.py:260` |
-| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routes.py:239` |
-| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routes.py:145` |
-| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routes.py:204` |
-| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routes.py:220` |
-| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routes.py:165` |
+| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:138` |
+| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:43` |
+| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행 | `app/routers/nl2sql.py:209` |
+| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:188` |
+| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:94` |
+| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:153` |
+| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:169` |
+| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:114` |
 
 ## ② AI Vector Search — 검색·문서
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/vector/documents` | — | 업로드된 문서 목록 조회 | `app/routes.py:511` |
-| `DELETE` | `/api/vector/documents/{doc_id}` | — | 특정 문서 및 관련 청크 삭제 | `app/routes.py:531` |
-| `POST` | `/api/vector/embedding-info` | EmbeddingInfoRequest | 질문 텍스트의 임베딩 과정 정보 반환 | `app/routes.py:571` |
-| `POST` | `/api/vector/explain-plan` | — | 벡터 검색 SQL의 실행 계획 조회 | `app/routes.py:718` |
-| `GET` | `/api/vector/index-info` | — | 벡터 인덱스 메타데이터 조회 | `app/routes.py:551` |
-| `GET` | `/api/vector/recent-queries` | — | V$SQL에서 최근 벡터 관련 쿼리 조회 | `app/routes.py:698` |
-| `POST` | `/api/vector/search` | VectorSearchRequest | 벡터 유사도 검색 / 키워드 검색 / 비교 검색 | `app/routes.py:449` |
-| `POST` | `/api/vector/upload` | multipart 파일 | PDF 파일 업로드 -> SSE 스트리밍으로 실시간 진행 상황 전달 | `app/routes.py:383` |
-| `POST` | `/api/vector/visualize` | VectorVisRequest | 청크 임베딩을 2D PCA로 축소하여 시각화 데이터 반환 | `app/routes.py:743` |
+| `GET` | `/api/vector/documents` | — | 업로드된 문서 목록 조회 | `app/routes.py:294` |
+| `DELETE` | `/api/vector/documents/{doc_id}` | — | 특정 문서 및 관련 청크 삭제 | `app/routes.py:314` |
+| `POST` | `/api/vector/embedding-info` | EmbeddingInfoRequest | 질문 텍스트의 임베딩 과정 정보 반환 | `app/routes.py:354` |
+| `POST` | `/api/vector/explain-plan` | — | 벡터 검색 SQL의 실행 계획 조회 | `app/routes.py:501` |
+| `GET` | `/api/vector/index-info` | — | 벡터 인덱스 메타데이터 조회 | `app/routes.py:334` |
+| `GET` | `/api/vector/recent-queries` | — | V$SQL에서 최근 벡터 관련 쿼리 조회 | `app/routes.py:481` |
+| `POST` | `/api/vector/search` | VectorSearchRequest | 벡터 유사도 검색 / 키워드 검색 / 비교 검색 | `app/routes.py:232` |
+| `POST` | `/api/vector/upload` | multipart 파일 | PDF 파일 업로드 -> SSE 스트리밍으로 실시간 진행 상황 전달 | `app/routes.py:166` |
+| `POST` | `/api/vector/visualize` | VectorVisRequest | 청크 임베딩을 2D PCA로 축소하여 시각화 데이터 반환 | `app/routes.py:526` |
 
 ## ② AI Vector Search — 테이블 관리
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/vector/create-tables` | — | Vector Store 테이블 생성/연결 | `app/routes.py:613` |
-| `POST` | `/api/vector/drop-tables` | — | Vector Store 테이블 삭제 | `app/routes.py:593` |
-| `POST` | `/api/vector/table-data` | TableQueryRequest | 테이블 데이터 조회 | `app/routes.py:658` |
-| `POST` | `/api/vector/table-definition` | TableQueryRequest | 테이블 컬럼 정의 조회 | `app/routes.py:638` |
-| `POST` | `/api/vector/table-indexes` | TableQueryRequest | 테이블 인덱스 조회 | `app/routes.py:678` |
+| `POST` | `/api/vector/create-tables` | — | Vector Store 테이블 생성/연결 | `app/routes.py:396` |
+| `POST` | `/api/vector/drop-tables` | — | Vector Store 테이블 삭제 | `app/routes.py:376` |
+| `POST` | `/api/vector/table-data` | TableQueryRequest | 테이블 데이터 조회 | `app/routes.py:441` |
+| `POST` | `/api/vector/table-definition` | TableQueryRequest | 테이블 컬럼 정의 조회 | `app/routes.py:421` |
+| `POST` | `/api/vector/table-indexes` | TableQueryRequest | 테이블 인덱스 조회 | `app/routes.py:461` |
 
 ## ② 임베딩 · ONNX 모델
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routes.py:782` |
-| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routes.py:795` |
-| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routes.py:830` |
-| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routes.py:906` |
-| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routes.py:965` |
-| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routes.py:853` |
-| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routes.py:945` |
-| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routes.py:995` |
+| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routes.py:565` |
+| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routes.py:578` |
+| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routes.py:613` |
+| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routes.py:689` |
+| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routes.py:748` |
+| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routes.py:636` |
+| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routes.py:728` |
+| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routes.py:778` |
 
 ## ③ JSON Relational Duality
 
@@ -126,9 +126,9 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:1040` |
-| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:1050` |
-| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:1064` |
+| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:823` |
+| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:833` |
+| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:847` |
 
 ---
 

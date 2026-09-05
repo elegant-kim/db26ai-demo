@@ -20,6 +20,7 @@ from app.awr_analyzer_v2 import (
 router = APIRouter(prefix="/api/awr", tags=["awr"])
 
 MAX_AWR_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
+MAX_FOLLOWUP_CHARS = 40_000  # 후속 답변 상한 — 정상 답변은 2~6천 자
 
 
 _awr_cache: dict = {}
@@ -138,6 +139,9 @@ async def awr_followup(req: AWRFollowupRequest):
         answer = await followup_question_v2(prompt, provider=llm_provider)
         elapsed_ms = int((time.time() - start) * 1000)
 
+        # 2026-09-05 실측: 918,828자짜리 답변이 와서 화면이 굳었다(마크다운 렌더). LLM 이상 출력 방어 — 상한 + 안내.
+        if len(answer) > MAX_FOLLOWUP_CHARS:
+            answer = answer[:MAX_FOLLOWUP_CHARS] + f"\n\n> ⚠ 답변이 비정상적으로 길어({len(answer):,}자) 앞 {MAX_FOLLOWUP_CHARS:,}자만 표시합니다. 질문을 좁혀 다시 물어보세요."
         return {
             "success": True,
             "answer": answer,
