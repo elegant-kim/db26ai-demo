@@ -29,7 +29,7 @@
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
 | `GET` | `/api/health` | — | DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다. | `app/routes.py:292` |
-| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:964` |
+| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:918` |
 
 ## ① NL2SQL (Select AI)
 
@@ -72,14 +72,14 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routes.py:979` |
-| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routes.py:992` |
-| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routes.py:1027` |
-| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routes.py:1103` |
-| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routes.py:1162` |
-| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routes.py:1050` |
-| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routes.py:1142` |
-| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routes.py:1192` |
+| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routes.py:933` |
+| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routes.py:946` |
+| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routes.py:981` |
+| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routes.py:1057` |
+| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routes.py:1116` |
+| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routes.py:1004` |
+| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routes.py:1096` |
+| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routes.py:1146` |
 
 ## ③ JSON Relational Duality
 
@@ -110,25 +110,25 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/productivity/lockfree` | — | 26ai Lock-Free Reservations 를 시뮬레이션한다 (동시 예약 시 잠금 경합 없이 처리). | `app/routes.py:920` |
-| `POST` | `/api/productivity/priority-tx` | — | 26ai Priority Transactions 를 시뮬레이션한다 (우선순위 트랜잭션이 낮은 순위를 선점). | `app/routes.py:933` |
-| `GET` | `/api/productivity/recent-queries` | — | V$SQL 에서 개발생산성 시뮬레이션 관련 최근 실행 쿼리를 조회한다. | `app/routes.py:946` |
+| `POST` | `/api/productivity/lockfree` | — | 26ai Lock-Free Reservations 를 시뮬레이션한다 (동시 예약 시 잠금 경합 없이 처리). | `app/routers/productivity.py:20` |
+| `POST` | `/api/productivity/priority-tx` | — | 26ai Priority Transactions 를 시뮬레이션한다 (우선순위 트랜잭션이 낮은 순위를 선점). | `app/routers/productivity.py:33` |
+| `GET` | `/api/productivity/recent-queries` | — | V$SQL 에서 개발생산성 시뮬레이션 관련 최근 실행 쿼리를 조회한다. | `app/routers/productivity.py:46` |
 
 ## ⑥ 기타 부가 기능 (AWR)
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/awr/analyze` | multipart 파일 | AWR HTML 파일 업로드 → 파싱 (23개 섹션) → LLM 분석 (8개 섹션 보고서) | `app/routes.py:1224` |
-| `POST` | `/api/awr/followup` | AWRFollowupRequest | AWR 분석 결과에 대한 후속 질문 | `app/routes.py:1310` |
-| `GET` | `/api/awr/source/{session_id}` | — | AWR HTML 원문 보기 | `app/routes.py:1345` |
+| `POST` | `/api/awr/analyze` | multipart 파일 | AWR HTML 파일 업로드 → 파싱 (23개 섹션) → LLM 분석 (8개 섹션 보고서) | `app/routes.py:1178` |
+| `POST` | `/api/awr/followup` | AWRFollowupRequest | AWR 분석 결과에 대한 후속 질문 | `app/routes.py:1264` |
+| `GET` | `/api/awr/source/{session_id}` | — | AWR HTML 원문 보기 | `app/routes.py:1299` |
 
 ## 매뉴얼
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:1437` |
-| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:1447` |
-| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:1461` |
+| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:1391` |
+| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:1401` |
+| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:1415` |
 
 ---
 

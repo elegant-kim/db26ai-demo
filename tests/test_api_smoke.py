@@ -140,6 +140,25 @@ class TestPropertyGraph:
             assert not d.get("error"), f"[{i}] {d.get('error')}"
 
 
+class TestProductivity:
+    """⑤ 개발생산성 — 시뮬레이션의 '서사'가 곧 데모의 주장이므로 단계별 성공/실패를 고정한다."""
+
+    def test_lockfree_는_동시_차감이_되고_CHECK_로만_거부된다(self, client):
+        d = client.post("/api/productivity/lockfree").json()
+        assert d.get("success"), d
+        steps = d["steps"]
+        assert len(steps) >= 5, steps
+        assert steps[2]["success"] is True, "Session B 의 동시 차감이 성공해야 Lock-Free 다"
+        assert steps[3]["success"] is False, "Session C(300) 는 CHECK(balance >= 0) 로 거부돼야 한다"
+        assert "400" in steps[4]["description"], "A 롤백 후 최종 잔액은 400 (500 - 100)"
+
+    def test_priority_tx_는_6단계를_모두_돌려준다(self, client):
+        d = client.post("/api/productivity/priority-tx").json()
+        assert d.get("success"), d
+        assert len(d["steps"]) == 6
+        assert all("description" in s for s in d["steps"])
+
+
 class TestDuality:
     def test_관계형과_JSON_이_모두_반환된다(self, client):
         views = (client.get("/api/duality/views").json() or {}).get("views") or []
