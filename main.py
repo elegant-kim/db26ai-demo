@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.database import close_pool, get_pool, init_pool
+from app.routers import graph as graph_router
 from app.routes import router as api_router
 from app.scheduler import init_scheduler, shutdown_scheduler
 from app.vector_search import init_vector_tables, warm_embedding_pool
@@ -30,6 +31,7 @@ if (DIST / "assets").is_dir():
 templates = Jinja2Templates(directory="templates")
 
 app.include_router(api_router)
+app.include_router(graph_router.router)   # 탭을 이식할 때마다 하나씩 늘어난다 (설계서 05 §7)
 
 
 @app.on_event("startup")
