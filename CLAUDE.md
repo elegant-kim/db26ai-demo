@@ -73,7 +73,8 @@ scripts/deploy.sh
 | `app/config.py` | 40 | `.env` → Settings 클래스 (DB, 임베딩, LLM 설정) |
 | `app/database.py` | 56 | oracledb 비동기 커넥션 풀 (min=1, max=5, 120초 타임아웃) |
 | `app/select_ai.py` | 463 | Select AI 핵심: `DBMS_CLOUD_AI.GENERATE`, 프로필 관리, raw SQL 실행, 스키마 정보, Annotation, EXPLAIN PLAN |
-| `app/routes.py` | ~1,450 | **모든 API 엔드포인트** (`/api` prefix) — 6탭 전부 |
+| `app/routes.py` | ~1,470 | API 엔드포인트 (`/api` prefix) — **탭을 이식할 때마다 `app/routers/<tab>.py` 로 빠져나간다** (D8) |
+| `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | 531 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교, 문서 CRUD, ETag 동시성 시뮬레이션 |
 | `app/graph.py` | 315 | SQL/PGQ Property Graph 생성/삭제, SQL vs PGQ 비교 쿼리 3종, 패턴 질의 3종 |
@@ -98,6 +99,8 @@ scripts/deploy.sh
 | `web/src/components/demo/` | db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader |
 | `web/src/components/layout/` | AppShell·TopNav·StatusChips(헤더 상태칩 = 옛 사이드바 시스템 상태)·ThemeToggle·Toast |
 | `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
+| `web/src/pages/graph/` · `stores/graph.ts` · `lib/graph.ts` | **이식 1호 탭(5-1)** — 탭 조립 규칙의 기준. 새 탭은 이 셋을 복제해 시작한다 (`docs/SESSION_HANDOFF.md` §4-5) |
+| `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
 | `web/src/pages/*.vue` | 7 페이지. 이식 전 페이지는 `LegacyStub` |
 | `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
 
@@ -168,7 +171,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 - `POST /api/duality/etag-simulation` — ETag 낙관적 동시성 제어 시뮬레이션
 - `GET /api/duality/recent-queries` — V$SQL 최근 쿼리
 
-### ④ Property Graph
+### ④ Property Graph (`app/routers/graph.py`)
 - `POST /api/graph/create` · `POST /api/graph/drop` — Property Graph 생성/삭제
 - `GET /api/graph/queries` — 비교 쿼리 3종 + 패턴 쿼리 3종 목록
 - `POST /api/graph/compare` — 같은 질문을 SQL과 SQL/PGQ로 각각 실행해 결과·시간 비교

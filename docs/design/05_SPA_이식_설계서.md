@@ -179,7 +179,10 @@ web/
 | `/legacy` | (FastAPI 가 Jinja 서빙) | `#tab` | 이식 기간 한정 |
 
 기능 레지스트리(`app/feature_registry.py`)의 `path` 필드는 현재 `"vector:검색 모드"` 같은 위치 표기다.
-5-7 에서 `"/vector?sub=search"` 형태의 **실제 딥링크**로 바꾼다. 정본은 Python 그대로.
+탭을 이식할 때마다 그 탭 항목을 `"/vector?sub=search"` 형태의 **실제 딥링크**로 바꾼다(graph 는 5-1 에서 완료). 정본은 Python 그대로.
+
+**`&run=1` 규약 (5-1 에서 확정):** 결과가 있는 서브탭은 `?sub=compare&run=1` 로 들어오면 mount 직후 기본 동작을 한 번 실행한다.
+기능 지도의 [이동]이 결과까지 보여줄 수 있고, 헤드리스 캡처(`docs/design/captures/`)와 시연 딥링크가 이 규약에 기댄다. 이미 결과가 캐시돼 있으면 재실행하지 않는다.
 
 ---
 
@@ -323,18 +326,19 @@ async def spa(path: str, request: Request):
 
 **완료 판정:** `npm run build` 통과 · `/` 가 SPA · `/legacy` 가 기존 화면 · 헤더 상태칩이 `/api/health` 를 반영 · 다크모드 토글 동작 · 06 캡처와 헤더·카드·서브탭 스타일 대조.
 
-### 6.1 · 5-1 Property Graph (★ Fable — 첫 탭, 조립 패턴의 기준)
+### 6.1 · 5-1 Property Graph (★ Fable — 첫 탭, 조립 패턴의 기준) — ✅ 완료 2026-09-05
 
 | 서브탭 | 컴포넌트 트리 | API |
 |---|---|---|
 | 그래프 관리 | `Card` › 설명 + `Button×2`(생성/삭제) › `SqlBlock`(DDL) | create · drop |
 | SQL vs PGQ | `SearchableSelect`(쿼리 3) › `CompareView` › 좌·우 `SqlBlock`+`ResultTable`+소요 | compare |
 | 패턴 탐색 | 셀렉트 › `SqlBlock` › `ResultTable` | pattern |
-| 시각화 | 기존 canvas 로직을 `GraphViz.vue` 로 캡슐화 | (compare 결과 재사용) |
-| (공통) 실행 쿼리 확인 | 우상단 보조 버튼 › 슬라이드 패널 › `ResultTable` | recent-queries |
+| 시각화 | ~~기존 canvas 로직~~ 레거시는 자리표시자였다 → **SVG 이분 그래프 신설** `GraphViz.vue`(고객 ⇢ 제품, 간선 굵기=매출, 색=카테고리, 라이브러리 없음) | (pattern 0 결과 재사용) |
+| (공통) 실행 쿼리 확인 | 우상단 보조 버튼 › 슬라이드 패널 › `SqlBlock`+`ResultTable` = **`RecentQueriesPanel.vue`**(`endpoint` prop 만 바꿔 전 탭 재사용) | recent-queries |
 
 백엔드: `app/routers/graph.py` 로 6개 엔드포인트 이동. **완료 판정:** SQL/PGQ 3종 완전일치 표시(회귀 테스트 통과) · 캡처 대조.
-**여기서 세운 "카드 안에 SqlBlock + ResultTable" 조립 규칙이 5-2~5-5 의 기준이 된다.**
+**여기서 세운 "카드 안에 SqlBlock + ResultTable" 조립 규칙이 5-2~5-5 의 기준이 된다.** 확정본은 `SESSION_HANDOFF.md` §4-5
+(페이지 › SubTabs › KeepAlive · lib/<tab>.ts → stores/<tab>.ts → 페이지 · normalize 에서만 응답 키를 안다).
 
 ### 6.2 · 5-2 개발생산성 (Opus, 패턴 추종)
 
@@ -445,13 +449,13 @@ npm run build
 |---|---|---|
 | R1 | 채팅형 화면(nl2sql·vector)이 사이드바 없이 **너무 넓어져** 말풍선 가독성이 떨어질 수 있다 | 스레드 폭 `max-w-[960px]` 중앙 정렬 — investhub `md-body` 의 폭 감각과 맞춘다. 5-5 에서 확인 |
 | R2 | vector 탭 1,062줄의 상태 얽힘(세션·모드·임베딩 설정이 서로 참조) | 스토어 먼저 설계하고 컴포넌트는 스토어만 본다. 5-6 이 Fable 인 이유 |
-| R3 | 그래프 시각화·벡터 시각화의 canvas 코드가 Vue 생명주기와 충돌 | `onMounted`/`watch` 로 감싼 `GraphViz.vue`·`VectorViz.vue` 로 격리. investhub `LineChart.vue` 가 선례 |
+| R3 | ~~그래프 시각화~~·벡터 시각화의 canvas 코드가 Vue 생명주기와 충돌 | 그래프는 5-1 에서 **순수 SVG 템플릿**으로 만들어 생명주기 문제 자체가 없다(레거시에 canvas 코드도 없었다). 벡터는 `VectorViz.vue` 로 격리. investhub `LineChart.vue` 가 선례 |
 | R4 | 이식 중 레거시와 SPA 의 **캐시버스팅 규칙이 이중** | 레거시는 `?v=N` 유지, SPA 는 해시. 노하우 문서에 기간 한정 규칙 명시 |
 | R5 | `marked` 의 표 렌더가 3-8 정규식 렌더러와 달라 가이드 문서 모양이 바뀜 | 06 §5.13 `md-body` 스타일을 investhub 에서 그대로 가져와 오히려 좋아진다. 5-7 에서 4문서 전부 육안 확인 |
 
 **사용자 확인 포인트 (화면을 보고 판단하실 것)**
 1. §3.2 ① — 실행 모드 7종의 배치(세그먼트 vs 셀렉트) — 5-5 에서 두 안 시연
-2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서
+2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서 → **제시함** (`captures/db26ai_graph_compare_light.png` · `_dark.png`, 2026-09-05)
 3. 헤더 색 — Oracle 다크 차콜(권고) vs investhub 블루 — 5-0 에서
 4. 채팅 스레드 폭(R1) — 5-5 에서
 5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서

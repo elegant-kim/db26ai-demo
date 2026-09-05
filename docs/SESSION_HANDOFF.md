@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5-0 완료 — 새 화면 토대가 `/` 에서 서빙 중) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-1 완료 — Property Graph 가 첫 이식 탭으로 `/graph` 에서 서빙 중) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -142,7 +142,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **다음 작업 = 5-0 디자인 토대 (★ Fable)**. 설계서 05 §6.0 의 표가 곧 작업 목록이다.
 착수 전 사용자가 05 §0 결정 요약과 06 §10 확인 포인트를 훑고 이의가 없으면 그대로 간다.
 
-## 4-4. ✅ Phase 5-0 완료 (2026-09-05, Fable 5.1) — 다음은 5-1 Property Graph (★ Fable)
+## 4-4. ✅ Phase 5-0 완료 (2026-09-05, Fable 5.1)
 
 **`web/` 62개 파일 신설, `/` 에서 새 화면이 서빙 중.** 이식 전 7탭은 `LegacyStub` 이고 메뉴에서 `/legacy#탭` 으로 나간다.
 
@@ -165,13 +165,37 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **미결(5-7 에서 정리)**: 헤더 라벨은 짧게(`NL2SQL`·`Vector Search`…) 두었고 기능 레지스트리 `tab_label` 은
 레거시 풀네임 그대로다. 페이지 h1 은 풀네임을 쓰므로 "화면 라벨 = 레지스트리" 규칙은 h1 기준으로 지켜진다.
 
+## 4-5. ✅ Phase 5-1 완료 (2026-09-05, Fable 5.1) — 다음은 5-2 개발생산성 (Opus 5)
+
+**Property Graph 가 첫 이식 탭이다.** 메뉴 `migrated: true` → `/graph` 가 SPA 로 열리고 나머지 5탭은 아직 `/legacy#탭`.
+
+| 만든 것 | 위치 |
+|---|---|
+| 페이지 + 서브탭 4개(`?sub=manage\|compare\|pattern\|viz`) | `web/src/pages/Graph.vue` · `pages/graph/Graph{Manage,Compare,Pattern,Viz}.vue` |
+| 스토어(질의 목록 1회 로드·결과 캐시·busy 상태) · 타입드 API | `web/src/stores/graph.ts` · `lib/graph.ts` |
+| **「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통 부품** (`endpoint` 만 바꿔 재사용) | `web/src/components/demo/RecentQueriesPanel.vue` |
+| **그래프 시각화 신설** — 레거시는 자리표시자("향후 구현 예정")였다. 패턴 질의 0 결과를 SVG 이분 그래프로(간선 굵기=매출, 색=카테고리). 라이브러리 없음 | `pages/graph/GraphViz.vue` |
+| `?run=1` 자동 실행 규약 — 딥링크·시연·헤드리스 캡처용 | compare/pattern/viz 의 `onMounted` |
+| 백엔드 라우터 분리 1호 `app/routers/graph.py` (경로·응답 불변, 테스트 50 그대로) + API 명세 생성기 `scripts/gen_api_doc.py` | |
+| 기능 레지스트리 graph 5항목 `path` → 실제 딥링크(`/graph?sub=…`) | `app/feature_registry.py` |
+| 캡처 4장 `captures/db26ai_graph_{compare_light,compare_dark,manage_light,viz_light}.png` | 사용자 확인 포인트 ② 제시용 |
+
+**여기서 확정된 조립 규칙(5-2~5-6 이 상속)**: 페이지 = `PageHeader`(우상단 `RecentQueriesPanel`) › `SubTabs` › `KeepAlive` 로 서브탭 컴포넌트 전환.
+서브탭 = `Card` 하나 안에 [입력 행(`SearchableSelect`+`Button`)] › [`LoadingBlock` | `EmptyState` | 결과]. 결과 = `SqlBlock` + `ResultTable`,
+비교는 `CompareView`(좌·우 슬롯에 같은 조합, `equal=rowsEqual(...)`). 응답 → `Rows` 변환은 `lib/normalize.ts` 에서만.
+페이지가 API 를 직접 부르지 않는다 — `lib/<tab>.ts`(타입드 호출) → `stores/<tab>.ts`(상태) → 페이지.
+
+**5-2 를 시작할 때**: `lib/menu.ts` productivity `migrated: true`, `pages/Productivity.vue` 를 위 규칙대로, `app/routers/productivity.py` 분리
+(`routes.py` 의 `# === 개발생산성` 블록을 `routers/graph.py` 와 같은 모양으로), 레지스트리 `path` 갱신, `scripts/gen_api_doc.py` 재실행.
+**모델은 Opus 5** (계획서 5-2). 실측 공수는 사용자가 알려준 값으로 ROADMAP §4 에 기록한다.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
   force-push 해도 회수 불가 — 유일한 수습은 키 로테이션.
 - **`except: pass` 금지.** 삼켜야 해도 `logger.warning` 은 남긴다. 성공 카운트는 실제 성공분만.
 - **`VECTOR_EMBEDDING` 은 항상 `(SELECT ... FROM dual)` 스칼라 서브쿼리로 감싼다** (100배).
-- **프론트 파일 수정 시 `?v=N` 증가.** 현재 v=74.
+- **레거시 프론트 파일 수정 시 `?v=N` 증가.** 현재 v=76. (SPA `web/` 는 빌드 해시라 해당 없음)
 - **검증이 끝난 변경은 묻지 말고 커밋·푸시.** 작게 자주.
 - 확인을 구하는 것: 시크릿 수정, `push --force`, `DROP TABLE`/조건 없는 `DELETE`.
 
@@ -182,7 +206,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0) 완료, 탭 이식 5-1~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0)·graph(5-1) 완료, 5-2~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 

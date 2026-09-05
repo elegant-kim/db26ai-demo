@@ -28,7 +28,7 @@ export function rowsFrom(o: any, k: Keys): Rows {
   }
 }
 
-/** POST /api/execute-sql · GET /api/*/recent-queries · duality/graph 의 columns+data 형 */
+/** POST /api/execute-sql · GET /api/{tab}/recent-queries · duality/graph 의 columns+data 형 */
 export const fromColumnsData = (r: any): Rows =>
   rowsFrom(r, { columns: 'columns', data: 'data', elapsed: 'elapsed_ms', sql: 'sql_executed', error: 'error' })
 
