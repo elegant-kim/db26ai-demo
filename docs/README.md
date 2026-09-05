@@ -66,4 +66,6 @@ docs/
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (시크릿은 자리표시자) |
 | `sql/setup/_private/` | 위의 원본(자격증명 포함) — **gitignore** |
 | `scripts/check-secrets.sh` | 커밋 전 시크릿 게이트 |
+| `scripts/deploy.sh` | 배포 한 방 (pytest → ruff → npm build → 재기동 → 스모크) |
+| `web/` | 새 화면 SPA (Vue 3 + TS + Vite). 구조 `design/05`, 시각 `design/06` |
 | `deploy/` | macOS launchd 상시 구동 정의 |

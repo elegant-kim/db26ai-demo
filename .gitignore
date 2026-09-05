@@ -30,3 +30,8 @@ Wallet_*/
 *.pem
 *.p12
 *.jks
+
+# ── 프론트 SPA (web/) 산출물 — 배포 시 빌드한다 ──
+web/node_modules/
+web/dist/
+web/.vite/

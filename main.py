@@ -1,7 +1,9 @@
 import asyncio
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -13,7 +15,18 @@ from app.vector_search import init_vector_tables, warm_embedding_pool
 
 app = FastAPI(title="Oracle AI Database 26ai 데모")
 
+# ── 프론트 공존 서빙 (SPA 이식 기간, 설계서 05 §5.1) ──
+#   /api/*   → 라우터 (아래 include_router — 가장 먼저 매칭)
+#   /static  → 레거시 정적파일 (이식 완료 시 제거)
+#   /assets  → SPA 빌드 산출물 (web/dist/assets)
+#   /legacy  → 레거시 화면 (templates/index.html)
+#   /{path}  → SPA index.html. dist 가 없으면 레거시로 폴백 = 롤백은 `rm -rf web/dist` 한 동작
+BASE_DIR = Path(__file__).resolve().parent
+DIST = BASE_DIR / "web" / "dist"
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
+if (DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="spa-assets")
 templates = Jinja2Templates(directory="templates")
 
 app.include_router(api_router)
@@ -71,13 +84,30 @@ async def shutdown():
     print("✓ 데이터베이스 연결 풀이 종료되었습니다.")
 
 
-@app.get("/")
-async def index(request: Request):
+@app.get("/legacy", include_in_schema=False)
+async def legacy(request: Request):
+    """이식 전 탭이 열리는 기존 화면. `/legacy#vector` 처럼 해시로 탭을 지정한다."""
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={"default_profile": settings.SELECT_AI_PROFILE},
     )
+
+
+@app.get("/{path:path}", include_in_schema=False)
+async def spa(path: str, request: Request):
+    """SPA 엔트리. dist 안의 실제 파일(favicon 등)은 그대로, 그 외 경로는 index.html (history 라우팅)."""
+    # 알 수 없는 /api/* 는 SPA 셸이 아니라 JSON 404 — API 클라이언트가 HTML 을 받으면 안 된다
+    if path.startswith("api/") or path == "api":
+        return JSONResponse(status_code=404, content={"success": False, "error": f"알 수 없는 API 경로: /{path}"})
+    index = DIST / "index.html"
+    if index.is_file():
+        if path:
+            cand = (DIST / path).resolve()
+            if cand.is_file() and str(cand).startswith(str(DIST.resolve()) + "/"):
+                return FileResponse(cand)
+        return FileResponse(index)
+    return await legacy(request)
 
 
 if __name__ == "__main__":

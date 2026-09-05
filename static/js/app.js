@@ -6,6 +6,12 @@ const app = createApp({
     setup() {
         // === Common State ===
         const activeTab = ref('nl2sql');
+        // 2026-09-05 SPA 공존: 새 화면의 메뉴가 /legacy#vector 처럼 해시로 진입시킨다 (설계서 05 §5.2).
+        // 이식이 끝나면 이 화면과 함께 사라진다.
+        const _hashTab = (location.hash || '').slice(1);
+        if (['nl2sql', 'vector', 'duality', 'graph', 'productivity', 'extra', 'manual'].includes(_hashTab)) {
+            activeTab.value = _hashTab;
+        }
         const dbConnected = ref(false);
         const schema = ref('');
         const systemStatus = ref(null);  // health API 상세 정보
@@ -2658,6 +2664,8 @@ const app = createApp({
             listDualityViews();
             loadGraphQueries();
         });
+
+        onMounted(() => { if (activeTab.value === 'manual') loadManual(); });
 
         return {
             // Common

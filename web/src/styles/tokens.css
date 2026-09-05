@@ -1,0 +1,119 @@
+:root,
+[data-theme='light'] {
+  --bg-base: #ffffff;
+  --bg-surface: #f7f9fc;
+  --bg-elevated: #ffffff;
+  --bg-card: #ffffff;        /* 카드·모달 불투명 배경(미정의 시 투명 → 모달 비침 버그) */
+  --bg-hover: #eef1f6;
+  --border-default: #eef1f6;
+  --border-strong: #d8dde6;
+
+  --text-primary: #0a2540;
+  --text-secondary: #425466;
+  --text-muted: #8898aa;
+  --text-on-accent: #ffffff;
+
+  /* investhub 퍼플(#635bff) → Oracle Red. 나머지 의미색은 그대로 (06 문서 §2.1) */
+  --accent-primary: #C74634;
+  --accent-primary-hover: #A83A2C;
+  --accent-primary-soft: #FBEDEA;
+  --accent-positive: #00a82d;
+  --accent-negative: #ff3b30;
+  --accent-warm: #ff9500;
+  --accent-info: #0a84ff;
+  --accent-positive-soft: rgba(0, 168, 45, 0.12);
+  --accent-negative-soft: rgba(255, 59, 48, 0.12);
+  --accent-warm-soft: rgba(255, 149, 0, 0.12);
+  --accent-info-soft: rgba(10, 132, 255, 0.12);
+
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --shadow-card: 0 1px 2px rgba(10, 37, 64, 0.04);
+  --shadow-elevated: 0 4px 12px rgba(10, 37, 64, 0.08);
+
+  --nav-h: 56px;
+  color-scheme: light;
+}
+
+/* ── 테마 무관 상수 (06 문서 §2.2) ──
+   헤더는 브랜드 상수, SQL 블록은 "주인공" 이라 라이트·다크 모두 다크 터미널 스타일. */
+:root {
+  --header-bg: #312D2A;
+  --header-text: rgba(255, 255, 255, 0.85);
+  --header-active-bg: rgba(255, 255, 255, 0.14);
+  --header-active-bar: var(--accent-primary);
+
+  --code-bg: #1F1D1C;
+  --code-text: #E6E1DC;
+  --code-keyword: #F4A58A;
+  --code-string: #A8D5A2;
+  --code-number: #FFD479;
+  --code-comment: #8A837E;
+  --code-fn: #9CC9FF;
+  --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+[data-theme='dark'] {
+  --bg-base: #0a0e1a;
+  --bg-surface: #131826;
+  --bg-elevated: #1a2033;
+  --bg-card: #1a2033;
+  --bg-hover: #232a3d;
+  --border-default: #232a3d;
+  --border-strong: #3a4258;
+
+  --text-primary: #e6e9f0;
+  --text-secondary: #a8b1c7;
+  --text-muted: #6b7691;
+  --text-on-accent: #ffffff;
+
+  --accent-primary: #E0644F;          /* 다크에서 벽돌색은 가라앉으므로 한 톤 밝게 */
+  --accent-primary-hover: #EB7B68;
+  --accent-primary-soft: #3A1F1B;
+  --accent-positive: #2ee066;
+  --accent-negative: #ff5b50;
+  --accent-warm: #ffaa33;
+  --accent-info: #4ca5ff;
+  --accent-positive-soft: rgba(46, 224, 102, 0.15);
+  --accent-negative-soft: rgba(255, 91, 80, 0.15);
+  --accent-warm-soft: rgba(255, 170, 51, 0.15);
+  --accent-info-soft: rgba(76, 165, 255, 0.15);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+html, body, #app { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+* { box-sizing: border-box; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* ── SQL 블록 토큰 색 (SqlBlock.vue + lib/sqlHighlight.ts) ── */
+.sql-code { font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--code-text); }
+.sql-code .tk-kw  { color: var(--code-keyword); }
+.sql-code .tk-fn  { color: var(--code-fn); font-weight: 600; }
+.sql-code .tk-str { color: var(--code-string); }
+.sql-code .tk-num, .sql-code .tk-bind { color: var(--code-number); }
+.sql-code .tk-cmt { color: var(--code-comment); font-style: italic; }
+.sql-code .ln { display: inline-block; width: 2.4em; margin-right: 1em; text-align: right; color: var(--code-comment); user-select: none; }

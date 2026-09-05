@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 4 완료 — 설계 검토 대기) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-0 완료 — 새 화면 토대가 `/` 에서 서빙 중) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -21,7 +21,9 @@ macOS launchd 로 상시 구동. **서버는 자동 리로드가 없어 코드 �
 ## 2. 운영 빠른 참조
 
 ```bash
-# 재기동 (코드 변경 후 필수)
+# 배포 한 방 (pytest → ruff → npm build → 재기동 → 스모크)
+scripts/deploy.sh
+# 재기동만
 launchctl kickstart -k gui/$(id -u)/com.db26ai.server
 # 헬스 (DB·프로필·문서·ONNX·벡터인덱스 상태 한 번에)
 curl -s http://localhost:8247/api/health | python3 -m json.tool
@@ -140,6 +142,29 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **다음 작업 = 5-0 디자인 토대 (★ Fable)**. 설계서 05 §6.0 의 표가 곧 작업 목록이다.
 착수 전 사용자가 05 §0 결정 요약과 06 §10 확인 포인트를 훑고 이의가 없으면 그대로 간다.
 
+## 4-4. ✅ Phase 5-0 완료 (2026-09-05, Fable 5.1) — 다음은 5-1 Property Graph (★ Fable)
+
+**`web/` 62개 파일 신설, `/` 에서 새 화면이 서빙 중.** 이식 전 7탭은 `LegacyStub` 이고 메뉴에서 `/legacy#탭` 으로 나간다.
+
+| 만든 것 | 위치 |
+|---|---|
+| 토큰(Oracle Red 재매핑)·타이포·베이스 | `web/src/styles/tokens.css` |
+| 헤더(56px `#312D2A`)·상단 메뉴·상태칩·테마 토글·토스트 | `web/src/components/layout/` |
+| investhub ui 13종 이식 | `web/src/components/ui/` |
+| db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader | `web/src/components/demo/` |
+| api(GET 재시도)·normalize(D11)·sqlHighlight·format·markdown·theme·menu | `web/src/lib/` |
+| system 스토어(health 30초 폴링·토스트)·useHealth·useSubTab | `web/src/stores/` `composables/` |
+| FastAPI 공존 서빙(`/`·`/legacy`·`/assets`·catch-all·`/api/*` JSON 404) | `main.py` |
+| 레거시 해시 shim(`/legacy#tab`)·헤더 "새 화면" 링크·v=76 | `static/js/app.js` `templates/index.html` |
+| `scripts/deploy.sh` · 서빙 테스트 4개(총 50) | |
+| 검증 화면 `/styleguide` + 캡처 `captures/db26ai_after_*` | |
+
+**5-1 을 시작할 때**: `lib/menu.ts` 의 graph `migrated: true`, `pages/Graph.vue` 를 LegacyStub 에서 실제 화면으로,
+`app/routers/graph.py` 분리(설계서 05 §6.1). 조립 규칙 = "Card 안에 SqlBlock + ResultTable", 비교는 CompareView.
+
+**미결(5-7 에서 정리)**: 헤더 라벨은 짧게(`NL2SQL`·`Vector Search`…) 두었고 기능 레지스트리 `tab_label` 은
+레거시 풀네임 그대로다. 페이지 h1 은 풀네임을 쓰므로 "화면 라벨 = 레지스트리" 규칙은 h1 기준으로 지켜진다.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -157,7 +182,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 8,338줄 단일파일** → SPA 이식. **설계 완료(05·06)**, 실행은 Phase 5 (7세션) | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0) 완료, 탭 이식 5-1~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 

@@ -195,3 +195,31 @@ class TestFeatureRegistry:
             d = client.get(f"/api/guide/docs/{g['key']}").json()
             assert d["success"] is True
             assert len(d["content"]) > 500, f"{g['key']} 내용이 너무 짧다"
+
+
+class TestServing:
+    """SPA 공존 서빙 (설계서 05 §5.1) — 라우트 순서가 깨지면 /api 가 catch-all 에 먹힌다."""
+
+    def test_api_health_는_catch_all_에_먹히지_않는다(self, client):
+        r = client.get("/api/health")
+        assert r.status_code == 200 and r.headers.get("content-type", "").startswith("application/json")
+
+    def test_legacy_는_기존_화면(self, client):
+        r = client.get("/legacy")
+        assert r.status_code == 200
+        assert "activeTab" in r.text and "Oracle AI Database 26ai" in r.text
+
+    def test_루트는_SPA_또는_레거시_폴백(self, client):
+        import os
+        r = client.get("/")
+        assert r.status_code == 200
+        dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist", "index.html")
+        if os.path.exists(dist):
+            assert 'id="app"' in r.text, "dist 가 있는데 SPA 가 아니다"
+            assert 'id="app"' in client.get("/graph?sub=compare").text   # history 라우팅
+        else:
+            assert "activeTab" in r.text, "dist 가 없으면 레거시로 폴백해야 한다"
+
+    def test_dist_밖_파일은_열리지_않는다(self, client):
+        r = client.get("/../.env")
+        assert "ORACLE_PASSWORD" not in r.text

@@ -49,7 +49,18 @@ pip install -r requirements-dev.txt
 scripts/check-secrets.sh                  # 커밋 전 시크릿 게이트
 ```
 
-빌드 불필요 — Vue 3, Chart.js는 CDN에서 로드.
+```bash
+# 프론트 SPA (web/ — 2026-09-05 부터, 이식 중)
+cd web && npm install                     # 최초 1회
+npm run dev                               # 개발 HMR (http://localhost:5175, /api·/legacy 는 8247 로 프록시)
+npm run build                             # undef-check + vue-tsc + vite → web/dist (FastAPI 가 서빙)
+
+# 배포 한 방 = pytest + ruff + npm build + 재기동 + 스모크
+scripts/deploy.sh
+```
+
+**서빙 규칙**: `/` = SPA(`web/dist`), `/legacy` = 기존 화면, `web/dist` 가 없으면 `/` 도 레거시로 폴백(=롤백).
+아직 이식 전인 탭은 새 화면 메뉴에서 `/legacy#<tab>` 으로 나간다. 레거시 3파일은 Phase 6 까지 남는다.
 로그는 `db26ai.log` (gitignore 대상).
 
 ## Architecture
@@ -73,21 +84,31 @@ scripts/check-secrets.sh                  # 커밋 전 시크릿 게이트
 
 > `app/awr_analyzer.py`(구버전)는 2026-09-04 삭제됨. V2가 유일한 정본.
 
-### Frontend (Single-page, no build)
+### Frontend — 두 벌이 공존한다 (SPA 이식 중, 2026-09-05~)
 
-| 파일 | 줄수 | 역할 |
-|------|-----|------|
-| `templates/index.html` | 2,617 | Jinja2 템플릿, Vue 3 `[[ ]]` 구분자 (Jinja `{{ }}` 충돌 방지) |
-| `static/js/app.js` | 2,766 | Vue 3 Composition API (`createApp` + `setup()`), 모든 반응형 상태 및 API 호출 |
-| `static/css/style.css` | 2,955 | CSS 변수 기반 커스텀 스타일 (Oracle 테마: `--oracle-red: #C74634`) |
+**새 화면 `web/`** (Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia) — 구조는 `docs/design/05`, 시각 규칙은 `06` 이 정본
 
-> **이 3개 파일은 SPA 이식 대상이다** (`docs/ROADMAP.md` Phase 4·5). Vue 3 + TypeScript + Vite
-> 구조로 옮기며, 디자인 기준선은 `~/Dev/investhub`의 `web/` 이다.
+| 경로 | 역할 |
+|---|---|
+| `web/src/lib/menu.ts` | 상단 메뉴 정본 — 순서·라벨·아이콘·**`migrated` 플래그**(탭을 이식하면 true 로) |
+| `web/src/styles/tokens.css` | 팔레트·간격·타이포 토큰. **컴포넌트에 hex 금지** |
+| `web/src/lib/normalize.ts` | D11 어댑터 — 응답 배열 키 불일치를 흡수. 키 이름을 아는 유일한 곳 |
+| `web/src/lib/sqlHighlight.ts` | Oracle SQL 토크나이저 (레거시 `highlightOracleSQL` 이식) |
+| `web/src/components/ui/` | investhub 이식 13종 (Card·Button·Badge·Stat·LoadingBlock·차트 …) |
+| `web/src/components/demo/` | db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader |
+| `web/src/components/layout/` | AppShell·TopNav·StatusChips(헤더 상태칩 = 옛 사이드바 시스템 상태)·ThemeToggle·Toast |
+| `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
+| `web/src/pages/*.vue` | 7 페이지. 이식 전 페이지는 `LegacyStub` |
+| `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
+
+**레거시** (Phase 6 에서 삭제 예정) — `templates/index.html`(2,724줄) · `static/js/app.js`(2,890) · `static/css/style.css`(3,000).
+Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 연다(SPA 공존용 shim).
 
 ### 운영 파일
 
 | 경로 | 역할 |
 |---|---|
+| `scripts/deploy.sh` | **배포 한 방**: pytest → ruff → `npm run build` → kickstart → 스모크 |
 | `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
 | `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
@@ -300,8 +321,10 @@ Oracle LOB 값은 `await _lob_to_str(val)` 변환 필수. `hasattr(row[0], 'read
 (ONNX 거짓보고 5개월, 임베딩 전량 NULL을 "성공"으로 보고 등).
 예외를 삼켜야 하는 자리라도 **`logger.warning`은 반드시 남긴다.**
 
-### Cache Busting
-`style.css?v=N`, `app.js?v=N` — 프론트 코드 변경 시 반드시 버전 증가. **현재 v=74.**
+### Cache Busting — 이식 기간에는 규칙이 둘이다
+- **레거시** 3파일을 고치면 `style.css?v=N`·`app.js?v=N` 을 올린다. **현재 v=76.**
+- **SPA(`web/`)** 는 Vite 해시 파일명이라 버전 관리가 없다. 대신 **빌드 후 재기동**(`scripts/deploy.sh`).
+  배포 직후 옛 chunk 404 는 `main.ts` 의 stale-chunk 자동 새로고침이 흡수한다.
 
 ### SSE 스트리밍
 PDF 업로드와 AWR 분석은 `StreamingResponse` + `text/event-stream`.
