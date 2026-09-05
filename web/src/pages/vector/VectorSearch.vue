@@ -41,7 +41,7 @@ const readonly = computed(() => v.activeSession !== -1)
 </script>
 
 <template>
-  <div class="w-full max-w-[1100px] mx-auto flex flex-col gap-4">
+  <div class="w-full flex flex-col gap-4">
     <div v-if="v.docsLoaded && !v.docs.length" class="px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-warm-soft); border-left: 3px solid var(--accent-warm); color: var(--text-primary);">아직 올린 문서가 없습니다 — 「문서 · 업로드」에서 PDF 를 올리면 청킹 → 임베딩 → 저장이 자동으로 돕니다.</div>
     <div v-if="v.configError" class="px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-negative-soft); border-left: 3px solid var(--accent-negative); color: var(--text-primary);">{{ v.configError }}</div>
 

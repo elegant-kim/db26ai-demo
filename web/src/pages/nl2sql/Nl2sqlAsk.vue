@@ -37,7 +37,7 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
 </script>
 
 <template>
-  <div class="w-full max-w-[960px] mx-auto flex flex-col gap-4">
+  <div class="w-full flex flex-col gap-4">
     <!-- 첫 질문 전에만: Select AI 의 차별성 -->
     <Card v-if="!s.asked" title="Oracle Select AI — 자연어로 데이터를 질의하다" :icon="MessageSquareText" compact>
       <VersusBox left-title="기존 방식" left-desc="개발자가 SQL 을 직접 작성. 스키마 이해 필수. 앱마다 쿼리 개발."

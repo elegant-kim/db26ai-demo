@@ -256,7 +256,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 
 | 만든 것 | 위치 |
 |---|---|
-| 페이지 + 서브탭 2(`?sub=ask\|schema`). 스레드·컴포저는 **폭 960 중앙 정렬**(확인 포인트 ④) | `web/src/pages/Nl2sql.vue` · `pages/nl2sql/{Nl2sqlAsk,Nl2sqlAnswer,Nl2sqlSchema}.vue` |
+| 페이지 + 서브탭 2(`?sub=ask\|schema`). 스레드·컴포저는 ~~폭 960 중앙 정렬~~ → **전체 폭**(확인 포인트 ④, 2026-09-05 사용자 지시로 변경: "첫 탭만 좁아 보인다") | `web/src/pages/Nl2sql.vue` · `pages/nl2sql/{Nl2sqlAsk,Nl2sqlAnswer,Nl2sqlSchema}.vue` |
 | 스토어 — 프로필(기본 GROQ_SH_PROFILE)·실행 모드·스레드·스키마·Annotation. 레거시 sendQuestion/executeAction/processResult 를 그대로 옮기고 결과는 `Rows` 로 | `web/src/stores/nl2sql.ts` · `lib/nl2sql.ts`(ACTIONS·ACTION_BUTTONS·예시 질문) · `lib/annotations.ts`(SH 세트 — app.js 에서 이전) |
 | 어시스턴트 메시지 = 카드 없는 블록: 프로필 속성 표 · 생성 SQL(`SqlBlock`) · 결과 표(`ResultTable`) · **차트(Bar/Line/Donut, 세그먼트 전환)** · 서술(md-body) · 프롬프트(text) · 실행계획 · 후속 버튼 행(캐시된 것은 primary) | `Nl2sqlAnswer.vue` |
 | `ChatThread` 에 `user`/`assistant` 스코프 슬롯 + `minHeight` — 결과 블록을 꽂는 자리. 5-6 도 같은 방식 | `components/demo/ChatThread.vue` |
@@ -266,7 +266,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 라우터 분리 5호 `app/routers/nl2sql.py`(8 라우트 + 모델 3 + VALID_ACTIONS). routes.py 에는 health·llm/providers·vector·guide 27개만 남았다 | |
 | 캡처 3장 `captures/db26ai_nl2sql_{ask_light,ask_dark,schema_light}.png` | 확인 포인트 ①·④ 근거 |
 
-**사용자 확인 포인트 ①·④ 확정 (2026-09-05, 사용자 "계속 진행" = 기본안)** — ① 세그먼트 한 줄, ④ 폭 960. B 셀렉트 분기와 캡처는 삭제(git 125bfdd 에 남음).
+**사용자 확인 포인트 ①·④ 확정 (2026-09-05)** — ① 세그먼트 한 줄("계속 진행" = 기본안). ④ 는 처음 960 중앙 정렬로 갔다가 **사용자 지시로 전체 폭으로 변경** — 서브탭마다 폭이 다르면 첫 탭만 좁아 보인다. NL2SQL 질문·Vector 검색 모두 다른 화면과 같은 1400 컨테이너를 채운다. B 셀렉트 분기와 캡처는 삭제(git 125bfdd 에 남음).
 
 **5-6 을 시작할 때 (Vector, ★ Fable — 상태 의존 최상위)**: 스토어를 먼저 설계한다(세션·모드·임베딩 설정이 서로 참조 — R2). `composables/useSse.ts`(fetch+ReadableStream) 는 여기서 만든다 —
 업로드만 SSE 다. 서브탭 `search|docs|store|embedding`. 검색은 `SessionTabs` › `ChatThread`(답변 + `ChunkCard` 목록 + 시각화) + 컴포저 슬롯에 검색모드 `Segmented` 4 · top_k · LLM. compare 모드는 `CompareView`.
