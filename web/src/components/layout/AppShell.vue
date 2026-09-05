@@ -5,13 +5,16 @@ import MobileDrawer from './MobileDrawer.vue'
 import StatusChips from './StatusChips.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import Toast from './Toast.vue'
-import { HelpCircle } from 'lucide-vue-next'
+import CommandPalette from './CommandPalette.vue'
+import { HelpCircle, Search } from 'lucide-vue-next'
+import { useGuideStore } from '@/stores/guide'
 import { menuById, legacyUrl } from '@/lib/menu'
 import { useHealth } from '@/composables/useHealth'
 import { useRouter } from 'vue-router'
 
 useHealth()
 const router = useRouter()
+const guide = useGuideStore()
 const drawerOpen = ref(false)
 
 // 헤더 ? = 매뉴얼. 이식 전에는 레거시 매뉴얼 탭으로 전체 이동 (설계서 05 §5.2)
@@ -54,6 +57,17 @@ function goManual() {
 
       <div class="flex items-center gap-2 shrink-0">
         <StatusChips />
+        <button
+          class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors duration-150"
+          title="빠른 이동 · 기능 검색 (⌘K)"
+          style="color: var(--header-text);"
+          @click="guide.showPalette()"
+          @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)')"
+          @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
+        >
+          <Search :size="17" :stroke-width="1.75" />
+          <kbd class="hidden lg:inline text-[10px] font-mono px-1 py-0.5 rounded" style="background: rgba(255,255,255,0.1); color: var(--header-text);">⌘K</kbd>
+        </button>
         <ThemeToggle />
         <button
           class="inline-flex items-center justify-center px-2 py-1.5 rounded-md transition-colors duration-150"
@@ -75,6 +89,7 @@ function goManual() {
     </main>
 
     <MobileDrawer :open="drawerOpen" @close="drawerOpen = false" />
+    <CommandPalette />
     <Toast />
   </div>
 </template>

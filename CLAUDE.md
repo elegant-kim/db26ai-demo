@@ -108,7 +108,8 @@ scripts/deploy.sh
 | `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
 | `web/src/pages/<tab>/` · `stores/<tab>.ts` · `lib/<tab>.ts` | 이식된 탭마다 이 셋 (graph 5-1 · productivity 5-2). 조립 규칙은 `docs/SESSION_HANDOFF.md` §4-5 — 새 탭은 graph 를 복제해 시작한다 |
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
-| `web/src/pages/*.vue` | 7 페이지. 6탭은 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`), manual 만 `LegacyStub`. `/` 는 `/nl2sql` 로 리다이렉트 |
+| `web/src/pages/*.vue` | 7 페이지 전부 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`). `/` 는 `/nl2sql` 로 리다이렉트 |
+| `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5) |
 | `web/src/composables/useSse.ts` | SSE 수신(fetch + ReadableStream) — PDF 업로드 전용 |
 | `web/src/lib/annotations.ts` | SH Display Annotation 세트 정본 (app.js 에서 이전, 5-5) |
 | `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
@@ -133,7 +134,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 | L1 | **`CLAUDE.md`** (이 파일) | Claude+사람 | 매 세션 자동 | 이 앱은 무엇이고 어떤 규칙으로 만드나 |
 | L2 | **`docs/개발노하우.md`** | Claude | `@import` 자동 | 어떻게 일하나 — 작업 규율·검증·함정 |
 | L3 | **`docs/SESSION_HANDOFF.md`** | Claude+사람 | 세션 시작 시 | **지금 상태 / 마지막에 뭘 했나 / 뭐가 미완인가** |
-| L4 | `docs/guides/*.md` | 사람 | **앱 매뉴얼 탭** | 어떤 기능이 어디 있고 언제 쓰나 |
+| L4 | `docs/guides/*.md` | 사람 | **앱 「매뉴얼」 탭(`/manual`)** | 어떤 기능이 어디 있고 언제 쓰나 |
 
 부속: `docs/README.md`(인덱스) · `docs/design/`(설계 명세) · `docs/ROADMAP.md`(업데이트 계획서)
 

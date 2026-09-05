@@ -389,7 +389,7 @@ Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 �
 라우터 `vector.py`(25개). `vector_search.py` 는 그대로.
 **완료 판정:** 4모드 회귀 테스트 통과 · 자연어 질문에서 keyword 점수 > 0 · 세션탭 전환 시 대화 보존.
 
-### 6.7 · 5-7 매뉴얼 + ⌘K (Opus)
+### 6.7 · 5-7 매뉴얼 + ⌘K (~~Opus~~ Fable — 사용자 결정) — ✅ 완료 2026-09-05
 
 `Manual.vue` 서브탭 3: 기능 지도(`/api/guide/features` — 카드형 목록, [이동] 버튼이 §3.3 딥링크로), 사용 설명서(`DocViewer`, `md-body` 스타일 이식), 현재 상태·계획.
 `CommandPalette` 이식 — 데이터 소스를 `FEATURES` import 에서 **`/api/guide/features` fetch** 로 바꾼다(D5).
@@ -462,6 +462,6 @@ npm run build
 2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서 → **✅ 확정: 두 테마 모두 다크 유지** (사용자, 2026-09-05; 근거 캡처 `captures/db26ai_graph_compare_light.png` · `_dark.png`)
 3. 헤더 색 — Oracle 다크 차콜(권고) vs investhub 블루 — 5-0 에서
 4. 채팅 스레드 폭(R1) — 5-5 에서 → **✅ 확정: 960 중앙 정렬** (사용자 "계속 진행", 2026-09-05)
-5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서
+5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서 → **제시함**: 헤더 `?` = `/manual`, 그 옆 🔍 ⌘K = 팔레트 (`captures/db26ai_manual_features_light.png`)
 
 각 지점에서 제가 멈추고 캡처 2장(새 화면·기준선)과 함께 묻는다. 그 외에는 이 문서대로 진행한다.

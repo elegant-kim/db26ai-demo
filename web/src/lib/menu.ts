@@ -25,7 +25,7 @@ export const MENUS: MenuDef[] = [
   { id: 'graph', label: 'Property Graph', title: 'Property Graph', subtitle: 'SQL/PGQ — 기존 테이블 위의 그래프', icon: Network, path: '/graph', legacyTab: 'graph', migrated: true },
   { id: 'productivity', label: '생산성', title: '개발생산성 향상', subtitle: 'Lock-Free Reservations · Priority Transactions', icon: Zap, path: '/productivity', legacyTab: 'productivity', migrated: true },
   { id: 'awr', label: 'AWR 분석', title: '기타 부가 기능', subtitle: 'AWR 리포트 AI 분석', icon: Activity, path: '/awr', legacyTab: 'extra', migrated: true },
-  { id: 'manual', label: '매뉴얼', title: '매뉴얼', subtitle: '기능 지도 · 사용 설명서 · 현재 상태', icon: BookOpen, path: '/manual', legacyTab: 'manual', migrated: false },
+  { id: 'manual', label: '매뉴얼', title: '매뉴얼', subtitle: '기능 지도 · 사용 설명서 · 현재 상태', icon: BookOpen, path: '/manual', legacyTab: 'manual', migrated: true },
 ]
 
 export const menuById = (id: MenuId): MenuDef => MENUS.find((m) => m.id === id)!
