@@ -35,7 +35,9 @@ cp .env.example .env  # DB 접속정보 및 API 키 설정
 python main.py
 # → http://localhost:8247
 
-# 운영 반영 (launchd 상시 구동 중이므로 재기동 필요)
+# 운영 반영 — launchd 가 `python main.py` 를 돌리므로 uvicorn reload=True 가 켜져 있다:
+#   .py 를 저장하면 서버가 스스로 재기동된다 (진행 중인 SSE 업로드·LLM 요청은 끊긴다 — 2026-09-05 실측).
+#   .env·web/dist 변경은 리로드 대상이 아니므로 그때만 수동 재기동:
 launchctl kickstart -k gui/$(id -u)/com.db26ai.server
 # 재기동 후 헬스체크
 curl -s http://localhost:8247/api/health
@@ -73,12 +75,13 @@ scripts/deploy.sh
 | `app/config.py` | 40 | `.env` → Settings 클래스 (DB, 임베딩, LLM 설정) |
 | `app/database.py` | 56 | oracledb 비동기 커넥션 풀 (min=1, max=5, 120초 타임아웃) |
 | `app/select_ai.py` | 463 | Select AI 핵심: `DBMS_CLOUD_AI.GENERATE`, 프로필 관리, raw SQL 실행, 스키마 정보, Annotation, EXPLAIN PLAN |
-| `app/routes.py` | ~900 | 남은 API 엔드포인트 27개 — health · llm/providers · ② vector 전부 · guide. **탭을 이식할 때마다 `app/routers/<tab>.py` 로 빠져나간다** (D8) |
+| `app/routes.py` | ~190 | 공통 5개 — health · llm/providers · guide 3. 6탭 API 는 전부 `app/routers/<tab>.py` (D8 완료) |
 | `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
 | `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
 | `app/routers/awr.py` | ~200 | ⑥ AWR 3개 엔드포인트 + 세션 캐시 (5-4 에서 분리). **분석은 SSE 가 아니라 JSON 1회** |
 | `app/routers/nl2sql.py` | ~230 | ① NL2SQL 8개 엔드포인트 + 요청 모델 + `VALID_ACTIONS` (5-5 에서 분리) |
+| `app/routers/vector.py` | ~640 | ② Vector 22개 엔드포인트 — 업로드(SSE)·검색·문서·테이블·임베딩 설정·ONNX (5-6 에서 분리) |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
 | `app/graph.py` | 315 | SQL/PGQ Property Graph 생성/삭제, SQL vs PGQ 비교 쿼리 3종, 패턴 질의 3종 |
@@ -105,7 +108,8 @@ scripts/deploy.sh
 | `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
 | `web/src/pages/<tab>/` · `stores/<tab>.ts` · `lib/<tab>.ts` | 이식된 탭마다 이 셋 (graph 5-1 · productivity 5-2). 조립 규칙은 `docs/SESSION_HANDOFF.md` §4-5 — 새 탭은 graph 를 복제해 시작한다 |
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
-| `web/src/pages/*.vue` | 7 페이지. 이식 전 페이지(vector·manual)는 `LegacyStub`. `/` 는 `/nl2sql` 로 리다이렉트 |
+| `web/src/pages/*.vue` | 7 페이지. 6탭은 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`), manual 만 `LegacyStub`. `/` 는 `/nl2sql` 로 리다이렉트 |
+| `web/src/composables/useSse.ts` | SSE 수신(fetch + ReadableStream) — PDF 업로드 전용 |
 | `web/src/lib/annotations.ts` | SH Display Annotation 세트 정본 (app.js 에서 이전, 5-5) |
 | `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
 
@@ -148,7 +152,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 - `POST /api/explain-plan` — SQL 실행계획
 - `POST /api/execute-sql` — SELECT 문 직접 실행 (**SELECT로 시작하는 문장만 허용 — `WITH` CTE도 거부됨**)
 
-### ② AI Vector Search
+### ② AI Vector Search (`app/routers/vector.py`)
 - `POST /api/vector/upload` — PDF 업로드 (SSE 스트리밍 진행률)
 - `POST /api/vector/search` — 벡터/키워드/하이브리드/비교 검색
 - `GET /api/vector/documents` · `DELETE /api/vector/documents/{doc_id}` — 문서 목록/삭제
@@ -160,7 +164,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 - `POST /api/vector/explain-plan` — 벡터 검색 실행계획
 - `POST /api/vector/visualize` — 벡터 시각화 데이터
 
-### 임베딩 & ONNX 관리
+### 임베딩 & ONNX 관리 (`app/routers/vector.py`)
 - `GET /api/vector/embedding-config` · `POST /api/vector/embedding-config` — 임베딩 소스/모델 조회·변경
 - `GET /api/vector/onnx-models` — DB 내 ONNX 모델 목록
 - `POST /api/vector/onnx-models/upload` · `load-cloud` — ONNX 파일 업로드 / OML Cloud 로드
@@ -207,7 +211,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 ### 임베딩 듀얼 모드
 - **DB 내장 (ONNX)**: `EMBEDDING_SOURCE=database` — `VECTOR_EMBEDDING(model USING text AS data)`
 - **외부 API**: `EMBEDDING_SOURCE=external` — Google AI Studio OpenAI-compatible embedding API
-- 사이드바 "임베딩 설정"에서 런타임 전환 가능
+- 「임베딩 · ONNX」 서브탭에서 런타임 전환 가능 (인덱스 모델과 다르면 화면이 경고한다)
 - ⚠ **모델을 바꾸면 벡터 차원이 바뀌고 HNSW 인덱스가 깨진다** — 아래 Critical Notes 참조
 
 ### PDF 업로드 파이프라인 (SSE 스트리밍)

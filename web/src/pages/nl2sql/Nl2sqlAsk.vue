@@ -28,9 +28,8 @@ onMounted(() => {
   })
 })
 
-// 사용자 확인 포인트 ① — 실행 모드 7종의 배치: A 세그먼트(기본) vs B 셀렉트 (`?modeui=select`) 두 안을 같은 화면에서 비교한다
-const modeUi = computed(() => (route.query.modeui === 'select' ? 'select' : 'segment'))
-const actionOptions = ACTIONS.map((a) => ({ value: a.value, label: a.label, hint: a.hint, sub: a.hint }))
+// 확인 포인트 ① (2026-09-05): 실행 모드 7종은 세그먼트 한 줄로 확정 — B 셀렉트 안은 git 125bfdd 에 남아 있다
+const actionOptions = ACTIONS.map((a) => ({ value: a.value, label: a.label, hint: a.hint }))
 const exampleOptions = computed(() => s.examples.map((q) => ({ value: q, label: q })))
 const example = ref('')
 function pickExample(v: string) { example.value = ''; s.input = v }
@@ -67,8 +66,7 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
         <ChatComposer v-model="s.input" :busy="s.sending" :disabled="!s.profile" placeholder="자연어로 질문하세요…" send-label="질문" @send="s.send(s.input)">
           <div class="flex flex-wrap items-center gap-2">
             <div class="w-[220px]"><SearchableSelect :model-value="s.profile" :options="s.profileOptions" placeholder="AI 프로필" :searchable="false" @update:model-value="(v: string) => s.selectProfile(v)" /></div>
-            <Segmented v-if="modeUi === 'segment'" :model-value="s.action" :options="actionOptions" size="sm" @update:model-value="(v: string) => (s.action = v as Action)" />
-            <div v-else class="w-[200px]"><SearchableSelect :model-value="s.action" :options="actionOptions" placeholder="실행 모드" :searchable="false" @update:model-value="(v: string) => (s.action = v as Action)" /></div>
+            <Segmented :model-value="s.action" :options="actionOptions" size="sm" @update:model-value="(v: string) => (s.action = v as Action)" />
             <div class="flex-1 min-w-[240px]"><SearchableSelect :model-value="example" :options="exampleOptions" placeholder="예시 질문 고르기…" @update:model-value="pickExample" /></div>
           </div>
         </ChatComposer>

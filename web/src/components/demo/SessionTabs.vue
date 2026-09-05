@@ -2,7 +2,7 @@
 /** 결과 세션 탭 — AWR 분석 이력·벡터 검색 세션 공통. 라벨 + 보조(제공자) + 시각 + 닫기. */
 import { X as XIcon } from 'lucide-vue-next'
 
-interface Tab { id: string | number; label: string; sub?: string; time?: string }
+interface Tab { id: string | number; label: string; sub?: string; time?: string; closable?: boolean }
 defineProps<{ tabs: Tab[]; modelValue: number; closable?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [number]; close: [number] }>()
 </script>
@@ -14,7 +14,7 @@ const emit = defineEmits<{ 'update:modelValue': [number]; close: [number] }>()
       <span class="font-medium truncate max-w-[260px]">{{ t.label }}</span>
       <span v-if="t.sub" class="text-xs" style="color: var(--text-muted);">{{ t.sub }}</span>
       <span v-if="t.time" class="text-xs tabular-nums" style="color: var(--text-muted);">{{ t.time }}</span>
-      <button v-if="closable" class="close rounded p-0.5" title="닫기" @click.stop="emit('close', i)"><XIcon :size="13" :stroke-width="2" /></button>
+      <button v-if="t.closable ?? closable" class="close rounded p-0.5" title="닫기" @click.stop="emit('close', i)"><XIcon :size="13" :stroke-width="2" /></button>
     </div>
   </div>
 </template>

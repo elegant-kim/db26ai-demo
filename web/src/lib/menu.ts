@@ -20,7 +20,7 @@ export interface MenuDef {
 
 export const MENUS: MenuDef[] = [
   { id: 'nl2sql', label: 'NL2SQL', title: 'NL2SQL(Select AI)', subtitle: '자연어 → SQL 생성·실행', icon: MessageSquareText, path: '/nl2sql', legacyTab: 'nl2sql', migrated: true },
-  { id: 'vector', label: 'Vector Search', title: 'AI Vector Search', subtitle: '의미 검색 · 키워드 · 하이브리드 · RAG', icon: Search, path: '/vector', legacyTab: 'vector', migrated: false },
+  { id: 'vector', label: 'Vector Search', title: 'AI Vector Search', subtitle: '의미 검색 · 키워드 · 하이브리드 · RAG', icon: Search, path: '/vector', legacyTab: 'vector', migrated: true },
   { id: 'duality', label: 'Duality', title: 'JSON Relational Duality', subtitle: '관계형 ↔ JSON, 하나의 데이터', icon: Braces, path: '/duality', legacyTab: 'duality', migrated: true },
   { id: 'graph', label: 'Property Graph', title: 'Property Graph', subtitle: 'SQL/PGQ — 기존 테이블 위의 그래프', icon: Network, path: '/graph', legacyTab: 'graph', migrated: true },
   { id: 'productivity', label: '생산성', title: '개발생산성 향상', subtitle: 'Lock-Free Reservations · Priority Transactions', icon: Zap, path: '/productivity', legacyTab: 'productivity', migrated: true },

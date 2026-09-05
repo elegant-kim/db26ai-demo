@@ -379,7 +379,9 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         # Step 2: PDF 텍스트 추출
         step_start = time.time()
         await emit("step", {"step": 2, "label": "텍스트 추출", "status": "running"})
-        pages = extract_text_from_pdf(file_path)
+        # pdfplumber 는 동기 코드다 — 2026-09-05 실측: 195쪽 PDF 추출 84초 동안 이벤트 루프가 통째로 막혀
+        # SSE 는 "1단계 진행 중"에 멈춰 보였고 /api/health 도 응답하지 않았다. 스레드로 보낸다.
+        pages = await asyncio.to_thread(extract_text_from_pdf, file_path)
         step_ms = int((time.time() - step_start) * 1000)
         pipeline.append({"step": "텍스트 추출", "sql": "-- pdfplumber PDF 텍스트 추출", "duration_ms": step_ms})
 

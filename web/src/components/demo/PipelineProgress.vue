@@ -6,7 +6,7 @@
 import { Check } from 'lucide-vue-next'
 import { fmtNum } from '@/lib/format'
 
-interface Step { label: string; detail?: string }
+interface Step { label: string; detail?: string; time?: string }
 const props = withDefaults(defineProps<{
   title: string
   subtitle?: string
@@ -18,7 +18,9 @@ const props = withDefaults(defineProps<{
   /** 진행 중 단계 아래 막대 (0~100) — 추정치일 때 `~` 를 붙인다 */
   barPercent?: number | null
   barEstimated?: boolean
-}>(), { percent: null, elapsedSec: null, barPercent: null, barEstimated: false })
+  /** 막대 옆 글자 — 생략하면 % */
+  barLabel?: string
+}>(), { percent: null, elapsedSec: null, barPercent: null, barEstimated: false, barLabel: undefined })
 const state = (i: number) => (i + 1 < props.current ? 'done' : i + 1 === props.current ? 'running' : 'pending')
 </script>
 
@@ -41,13 +43,14 @@ const state = (i: number) => (i + 1 < props.current ? 'done' : i + 1 === props.c
           <span v-else-if="state(i) === 'running'" class="pulse" />
         </div>
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-medium" :style="{ color: state(i) === 'pending' ? 'var(--text-muted)' : 'var(--text-primary)' }">{{ i + 1 }}단계: {{ s.label }}</div>
+          <div class="text-sm font-medium flex items-center gap-2" :style="{ color: state(i) === 'pending' ? 'var(--text-muted)' : 'var(--text-primary)' }">{{ i + 1 }}단계: {{ s.label }}<span v-if="state(i) === 'done' && s.time" class="text-[11px] font-normal tabular-nums" style="color: var(--text-muted);">{{ s.time }}</span></div>
+          <div v-if="state(i) === 'done' && s.detail" class="text-xs mt-0.5" style="color: var(--text-muted);">{{ s.detail }}</div>
           <div v-if="state(i) === 'running' && s.detail" class="text-xs mt-0.5" style="color: var(--text-secondary);">{{ s.detail }}</div>
           <div v-if="state(i) === 'running' && barPercent !== null" class="flex items-center gap-2 mt-1.5">
             <div class="flex-1 h-1.5 rounded-full overflow-hidden" style="background: var(--bg-surface);">
               <div class="h-full rounded-full transition-all duration-1000" :style="{ width: `${Math.min(100, barPercent)}%`, background: 'var(--accent-primary)' }" />
             </div>
-            <span class="text-[11px] tabular-nums" style="color: var(--text-muted);">{{ barEstimated ? '~' : '' }}{{ Math.round(Math.min(100, barPercent)) }}%</span>
+            <span class="text-[11px] tabular-nums" style="color: var(--text-muted);">{{ barLabel ?? `${barEstimated ? '~' : ''}${Math.round(Math.min(100, barPercent))}%` }}</span>
           </div>
         </div>
       </li>

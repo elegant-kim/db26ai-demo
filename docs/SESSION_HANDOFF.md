@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5-5 완료 — `/` 가 `/nl2sql` 로 열린다. vector·manual 만 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-6 완료 — 6탭 전부 새 화면. 레거시로 남은 것은 「매뉴얼」 탭뿐) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -249,7 +249,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 `ChatThread`/`ChatComposer` 를 확장(결과 블록 = `SqlBlock`+`ResultTable`+차트+실행계획 버튼, 컴포저 위 슬롯에 프로필 셀렉트·모드 세그먼트·예시 질문). 서브탭 `ask|schema`(스키마 트리 + Annotation 적용/제거).
 `app/routers/nl2sql.py`(ask·profiles·set-profile·annotations·schema-info·explain-plan·execute-sql). 5-5 가 끝나면 `homePath()` 가 `/nl2sql` 로 바뀐다(menu.ts 의 첫 migrated). 설계서 05 §6.5.
 
-## 4-9. ✅ Phase 5-5 완료 (2026-09-05, Fable 5.1) — 다음은 5-6 Vector (★ Fable) · 확인 포인트 ①·④ 제시 중
+## 4-9. ✅ Phase 5-5 완료 (2026-09-05, Fable 5.1) — 확인 포인트 ①·④ 확정
 
 **`/` 가 이제 `/nl2sql` 로 열린다** (`menu.ts` 의 `homePath()` — nl2sql 이 migrated 면 첫 화면). 앱의 얼굴이 새 화면이 됐다.
 
@@ -259,18 +259,39 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 스토어 — 프로필(기본 GROQ_SH_PROFILE)·실행 모드·스레드·스키마·Annotation. 레거시 sendQuestion/executeAction/processResult 를 그대로 옮기고 결과는 `Rows` 로 | `web/src/stores/nl2sql.ts` · `lib/nl2sql.ts`(ACTIONS·ACTION_BUTTONS·예시 질문) · `lib/annotations.ts`(SH 세트 — app.js 에서 이전) |
 | 어시스턴트 메시지 = 카드 없는 블록: 프로필 속성 표 · 생성 SQL(`SqlBlock`) · 결과 표(`ResultTable`) · **차트(Bar/Line/Donut, 세그먼트 전환)** · 서술(md-body) · 프롬프트(text) · 실행계획 · 후속 버튼 행(캐시된 것은 primary) | `Nl2sqlAnswer.vue` |
 | `ChatThread` 에 `user`/`assistant` 스코프 슬롯 + `minHeight` — 결과 블록을 꽂는 자리. 5-6 도 같은 방식 | `components/demo/ChatThread.vue` |
-| 컴포저 위 슬롯: 프로필 셀렉트 · **실행 모드(A 세그먼트 = 기본 / B 셀렉트 = `?modeui=select`)** · 예시 질문 셀렉트. 아래 줄: SELECT 직접 실행 + 대화 비우기 | `Nl2sqlAsk.vue` |
+| 컴포저 위 슬롯: 프로필 셀렉트 · **실행 모드 세그먼트 7종** · 예시 질문 셀렉트. 아래 줄: SELECT 직접 실행 + 대화 비우기 | `Nl2sqlAsk.vue` |
 | 딥링크 `?profile=…&action=runsql&q=…&run=1` (캡처·시연) | |
 | **기본 프로필을 GEMINI 우선으로** — 2026-09-05 GROQ_SH_PROFILE 이 DB 자격증명 문제(`ORA-20404 Object not found - bearer://api.groq.com/...`)로 모든 질문에 실패한다. Groq 를 고치면 `stores/nl2sql.ts` 의 `PREFER` 순서만 되돌리면 된다 | `stores/nl2sql.ts` |
 | 라우터 분리 5호 `app/routers/nl2sql.py`(8 라우트 + 모델 3 + VALID_ACTIONS). routes.py 에는 health·llm/providers·vector·guide 27개만 남았다 | |
-| 캡처 4장 `captures/db26ai_nl2sql_{ask_light,ask_select_light,ask_dark,schema_light}.png` | 확인 포인트 ①·④ 제시용 |
+| 캡처 3장 `captures/db26ai_nl2sql_{ask_light,ask_dark,schema_light}.png` | 확인 포인트 ①·④ 근거 |
 
-**사용자 확인 포인트 ①·④ (제시 중, 2026-09-05)** — ① 실행 모드 7종: A 세그먼트 한 줄(`ask_light`) vs B 셀렉트(`ask_select_light`). ④ 스레드 폭 960.
-사용자가 고르면 지는 안은 지운다(`modeui` 쿼리와 분기 삭제).
+**사용자 확인 포인트 ①·④ 확정 (2026-09-05, 사용자 "계속 진행" = 기본안)** — ① 세그먼트 한 줄, ④ 폭 960. B 셀렉트 분기와 캡처는 삭제(git 125bfdd 에 남음).
 
 **5-6 을 시작할 때 (Vector, ★ Fable — 상태 의존 최상위)**: 스토어를 먼저 설계한다(세션·모드·임베딩 설정이 서로 참조 — R2). `composables/useSse.ts`(fetch+ReadableStream) 는 여기서 만든다 —
 업로드만 SSE 다. 서브탭 `search|docs|store|embedding`. 검색은 `SessionTabs` › `ChatThread`(답변 + `ChunkCard` 목록 + 시각화) + 컴포저 슬롯에 검색모드 `Segmented` 4 · top_k · LLM. compare 모드는 `CompareView`.
 업로드는 드롭존 › `PipelineProgress`(SSE, **warning 표시**) › 문서 목록. 임베딩·ONNX 탭에 **차원 경고 배너**(HNSW 함정). `app/routers/vector.py`(25개). 설계서 05 §6.6. 완료 판정: 4모드 회귀 · 자연어 질문 keyword>0 · 세션탭 전환 시 대화 보존.
+
+## 4-10. ✅ Phase 5-6 완료 (2026-09-05, Fable 5.1) — 다음은 5-7 매뉴얼 + ⌘K
+
+**6개 데모 탭이 전부 새 화면이다.** 레거시(`/legacy`)로 남은 것은 「매뉴얼」 탭 하나. 상태가 가장 얽힌 vector 는 스토어를 먼저 설계했다(R2):
+임베딩 설정 → 문서/업로드(SSE) → 검색(세션) → Store 점검 네 덩어리, 화면은 스토어만 본다.
+
+| 만든 것 | 위치 |
+|---|---|
+| 페이지 + 서브탭 4(`?sub=search\|docs\|store\|embedding`). 레거시의 5메뉴(store·upload·search·query·onnx) 중 query 는 헤더 「실행 쿼리 확인」 + Store 탭의 EXPLAIN PLAN 으로 흡수 | `web/src/pages/Vector.vue` · `pages/vector/Vector{Search,Answer,Docs,Store,Embedding}.vue` |
+| **`composables/useSse.ts`** — fetch + ReadableStream 파서(event/data). 이 앱의 유일한 SSE 소비자 = PDF 업로드 | |
+| 스토어 — 임베딩 소스/모델/ONNX/인덱스 · 문서 · 업로드 파이프라인(5단계 + 임베딩 진행률 + `warning`) · 검색(모드 4 · top_k · LLM · 세션 탭) · Store 점검 · ONNX 적재 | `web/src/stores/vector.ts` · `lib/vector.ts` |
+| 검색 답변 = md-body 답 · **`ChunkCard`**(출처·점수 배지·유사도 막대·4줄 접기) · SQL · 후속(임베딩 과정/키워드 비교/인덱스 정보/**2D 시각화 `ScatterChart`**). compare 모드는 `CompareView` 좌 키워드/우 의미 | `VectorAnswer.vue` · `components/demo/ChunkCard.vue` · `components/ui/ScatterChart.vue` |
+| 세션 탭: 「현재」 + 보관 세션(임베딩 소스를 바꾸면 자동 보관, 수동 「세션으로 보관」도 있음). 보관 세션은 읽기 전용 | `SessionTabs` 에 탭별 `closable` 추가 |
+| 업로드: 드롭존 › `PipelineProgress`(SSE step/progress/done/error, 단계별 ms, 임베딩 n/N) › 결과 요약 + **warning 배너**(임베딩 없이 저장된 청크 수) › 문서 목록(삭제 ConfirmModal) | `VectorDocs.vue` · `PipelineProgress` 에 `time`·`barLabel` 추가 |
+| 임베딩·ONNX: 소스 세그먼트(변경 → 확인 2단계: 변경 → 초기화?) · 모델 셀렉트 · **차원 경고 배너**(인덱스 모델 ≠ 현재 모델이면 ORA-51932 예고 — 열린 과제 1의 화면 대응) · 모델 목록(선택/테스트/삭제) · 로컬/Object Storage 적재 · PL/SQL 참고 | `VectorEmbedding.vue` |
+| Store: VersusBox 도입 · 테이블 생성/초기화 · 조회 3종(`ResultTable`) · EXPLAIN PLAN | `VectorStore.vue` |
+| 라우터 분리 6호 `app/routers/vector.py`(22 라우트). **routes.py 에는 health · llm/providers · guide 3개 = 5개만 남았다** | |
+| **백엔드 결함 수정**: PDF 텍스트 추출(pdfplumber, 동기)이 이벤트 루프를 막아 195쪽 PDF 에서 84초간 SSE 가 1단계에 멈춰 보이고 서버 전체가 응답하지 않았다 → `asyncio.to_thread`. 실측(자동차보험약관.pdf 3.6MB): 추출 84초 · 800청크 · 임베딩 약 50초 | `app/vector_search.py` |
+| 딥링크 `?sub=search&mode=hybrid&q=…&run=1` · 레지스트리 vector 10항목 딥링크 · 캡처 `captures/db26ai_vector_*` | |
+
+**5-7 을 시작할 때 (매뉴얼 + ⌘K, 계획서상 Opus — 사용자가 Fable 로 이어가는 것도 허용)**: `Manual.vue` 서브탭 3(기능 지도 `/api/guide/features` · 사용 설명서 `DocViewer`(md-body) · 현재 상태·계획),
+`CommandPalette`(⌘K, 데이터는 `/api/guide/features`), 헤더 `?` = `/manual`(확인 포인트 ⑤). 레지스트리 `tab_label` 과 헤더 짧은 라벨 정리(§4-4 미결). 그 뒤 Phase 6(레거시 삭제·문서 동기화·UI 검수).
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
@@ -286,10 +307,10 @@ scripts/check-secrets.sh                # 커밋 전 필수
 
 | # | 내용 | 근거 |
 |---|---|---|
-| 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
+| 1 | **런타임 임베딩 전환의 HNSW 차원 함정** — 새 화면(5-6)은 인덱스 모델 ≠ 현재 모델이면 **경고 배너**를 띄우고 소스 전환 때 초기화를 묻는다. 자동 인덱스 재생성은 아직 없다(백엔드) | `개발노하우.md` 3.2 · `stores/vector.ts` `dimensionWarning` |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식 진행 중** — 5-0~5-5 완료(첫 화면 nl2sql 포함), 5-6 vector · 5-7 manual · Phase 6 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 5-0~5-6 완료(6탭 전부), 5-7 manual · Phase 6(레거시 삭제) 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (2026-09-05 실측: `Object not found - bearer://api.groq.com/openai/v1/chat/completions`). DB 의 `GROQ_CRED` 자격증명 또는 네트워크 ACL 문제로 보인다 — 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 |

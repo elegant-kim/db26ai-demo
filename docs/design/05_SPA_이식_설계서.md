@@ -377,11 +377,11 @@ Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 �
 라우터 `nl2sql.py`(ask·profiles·set-profile·annotations·schema-info·explain-plan·execute-sql).
 **사용자 확인 포인트 ①**(§3.2)을 여기서 두 안으로 시연.
 
-### 6.6 · 5-6 Vector (★ Fable — 상태 의존 최상위)
+### 6.6 · 5-6 Vector (★ Fable — 상태 의존 최상위) — ✅ 완료 2026-09-05
 
 | 서브탭 | 컴포넌트 |
 |---|---|
-| 검색 | `SessionTabs` › `ChatThread`(답변 + `ChunkCard` 목록 + 시각화) + `ChatComposer`(검색모드 세그먼트 4 · top_k · LLM) — compare 모드는 `CompareView` |
+| 검색 | `SessionTabs`(현재 + 보관, 읽기 전용) › `ChatThread`(답변 + `ChunkCard` 목록 + `ScatterChart` 시각화 + 임베딩 과정/인덱스 `KvGrid` + 키워드 비교) + `ChatComposer`(검색모드 세그먼트 4 · top_k · LLM · 예시 질문) — compare 모드는 `CompareView`. 폭 1100(청크 카드 2열 때문 — ④의 960 예외, B 도메인 편차) |
 | 문서·업로드 | 드롭존 › `PipelineProgress`(SSE, **warning 표시**) › 문서 목록 `ResultTable`(삭제) |
 | Vector Store | 정의/데이터/인덱스 3버튼 › `SqlBlock`+`ResultTable` |
 | 임베딩·ONNX | 소스 토글 · 모델 셀렉트 · **차원 경고 배너**(HNSW 함정 — 트러블슈팅 4절) · ONNX 목록/테스트/업로드 |
@@ -458,10 +458,10 @@ npm run build
 | R5 | `marked` 의 표 렌더가 3-8 정규식 렌더러와 달라 가이드 문서 모양이 바뀜 | 06 §5.13 `md-body` 스타일을 investhub 에서 그대로 가져와 오히려 좋아진다. 5-7 에서 4문서 전부 육안 확인 |
 
 **사용자 확인 포인트 (화면을 보고 판단하실 것)**
-1. §3.2 ① — 실행 모드 7종의 배치(세그먼트 vs 셀렉트) — 5-5 에서 두 안 시연 → **제시함** (`captures/db26ai_nl2sql_ask_light.png` = A 세그먼트 · `ask_select_light.png` = B 셀렉트, `?modeui=select`)
+1. §3.2 ① — 실행 모드 7종의 배치(세그먼트 vs 셀렉트) — 5-5 에서 두 안 시연 → **✅ 확정: A 세그먼트 한 줄** (사용자 "계속 진행", 2026-09-05 — 기본안 채택. B 셀렉트 분기는 git 125bfdd 에만 남김)
 2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서 → **✅ 확정: 두 테마 모두 다크 유지** (사용자, 2026-09-05; 근거 캡처 `captures/db26ai_graph_compare_light.png` · `_dark.png`)
 3. 헤더 색 — Oracle 다크 차콜(권고) vs investhub 블루 — 5-0 에서
-4. 채팅 스레드 폭(R1) — 5-5 에서 → **제시함** (`max-w-[960px]` 중앙 정렬, 같은 캡처)
+4. 채팅 스레드 폭(R1) — 5-5 에서 → **✅ 확정: 960 중앙 정렬** (사용자 "계속 진행", 2026-09-05)
 5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서
 
 각 지점에서 제가 멈추고 캡처 2장(새 화면·기준선)과 함께 묻는다. 그 외에는 이 문서대로 진행한다.
