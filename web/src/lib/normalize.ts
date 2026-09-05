@@ -36,6 +36,10 @@ export const fromColumnsData = (r: any): Rows =>
 export const fromGraphSide = (r: any, side: 'sql' | 'pgq'): Rows =>
   rowsFrom(r, { columns: `${side}_columns`, data: `${side}_data`, elapsed: `${side}_elapsed`, sql: `${side}_query`, error: `${side}_error` })
 
+/** POST /api/duality/compare — relational_* 평면 구조 (json_* 쪽은 문서 배열이라 Rows 가 아니다) */
+export const fromDualityRelational = (r: any): Rows =>
+  rowsFrom(r, { columns: 'relational_columns', data: 'relational_data', elapsed: 'relational_elapsed', sql: 'relational_sql', error: 'relational_error' })
+
 /** 두 Rows 의 값이 순서까지 같은가 — CompareView 의 "동일" 배너 판정 */
 export function rowsEqual(a: Rows, b: Rows): boolean {
   if (a.rows.length !== b.rows.length) return false

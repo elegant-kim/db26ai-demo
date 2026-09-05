@@ -346,14 +346,14 @@ async def spa(path: str, request: Request):
 `StepList.vue`(성공/거부 라벨 props) 와 `VersusBox.vue`(기존 vs 26ai 두 칸) 가 여기서 생겼고 graph 관리 화면도 VersusBox 로 통일했다. 라우터 `productivity.py`.
 Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 적었다(레거시는 숨김).
 
-### 6.3 · 5-3 Duality (Opus, 패턴 추종)
+### 6.3 · 5-3 Duality (~~Opus~~ Fable — 사용자 결정, 패턴 추종) — ✅ 완료 2026-09-05
 
 | 서브탭 | 핵심 |
 |---|---|
 | 뷰 관리 | 생성/삭제/목록 — 5-1 의 관리 화면과 같은 조립 |
-| 관계형 vs JSON | `CompareView` (좌 `ResultTable`, 우 JSON 프리티 — `SqlBlock` 의 json 모드) |
+| 관계형 vs JSON | `CompareView` (좌 `ResultTable`, 우 JSON 프리티 — `SqlBlock` 의 json 모드 ↔ **앱 화면 카드** `Segmented` 토글). `equal` = PK/_id 배열 일치. 백엔드를 PK 정렬로 고쳐 같은 행이 마주 본다 |
 | 문서 CRUD | 목록(`ResultTable` 클릭) › 편집 카드(JSON textarea + 저장) |
-| ETag | 단계 카드(5-2 의 `StepList`) |
+| ETag | 단계 카드(5-2 의 `StepList`, `Step.etag` 배지). 4단계 = DB 의 ORA-42699 거부(진짜 검사) |
 
 라우터 `duality.py`.
 

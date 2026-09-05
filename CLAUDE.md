@@ -76,8 +76,9 @@ scripts/deploy.sh
 | `app/routes.py` | ~1,470 | API 엔드포인트 (`/api` prefix) — **탭을 이식할 때마다 `app/routers/<tab>.py` 로 빠져나간다** (D8) |
 | `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
+| `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
-| `app/duality.py` | 531 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교, 문서 CRUD, ETag 동시성 시뮬레이션 |
+| `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
 | `app/graph.py` | 315 | SQL/PGQ Property Graph 생성/삭제, SQL vs PGQ 비교 쿼리 3종, 패턴 질의 3종 |
 | `app/productivity.py` | 270 | 26ai 개발생산성 기능 시뮬레이션 — Lock-Free Reservations, Priority Transactions |
 | `app/awr_analyzer_v2.py` | 634 | AWR HTML 파싱(23개 섹션), 8개 섹션 분석 보고서, categoryScores/actionItems, 후속 질문 |
@@ -164,7 +165,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 - `POST /api/vector/onnx-models/test` — 테스트 임베딩 (차원·소요시간 반환)
 - `GET /api/vector/onnx-models/{model_name}/detail` — 상세
 
-### ③ JSON Relational Duality
+### ③ JSON Relational Duality (`app/routers/duality.py`)
 - `POST /api/duality/create-views` · `POST /api/duality/drop-views` — Duality View 생성/삭제
 - `GET /api/duality/views` — View 목록
 - `POST /api/duality/compare` — 관계형 SQL JOIN vs Duality JSON 비교
@@ -309,6 +310,11 @@ E5_BASE 5.2초 / E5_SMALL 1.1초, 2회차부터 20~40ms. 풀이 max=5라 데모 
 
 ### SQL/PGQ: GRAPH_TABLE() 안에서 집계함수 불가
 `COLUMNS` 절에 `COUNT`/`SUM`을 쓰면 `ORA-49011`. 원시 행을 투영하고 **바깥에서 집계**한다.
+
+### Duality View 문서에 `_metadata.etag` 가 실려 있으면 UPDATE 때 DB 가 ETag 를 검사한다
+문서를 읽은 그대로(`_metadata` 포함) 고쳐서 UPDATE 하면 현재 ETag 와 다를 때 `ORA-42699` 로 거부된다 — 이것이 낙관적 잠금이다.
+**원복·무조건 쓰기는 `_metadata` 를 뺀 문서로 보낸다**(검사 생략). 2026-09-05 까지 ETag 시뮬의 원복이 옛 ETag 를 실은 채 UPDATE 해
+조용히 실패했고, 그 결과 고객 5명의 신용한도가 +1 씩 오염돼 있었다(되돌림). `SAMPLE(n)` 절은 테이블 별칭 **앞**에 온다.
 
 ### VECTOR 컬럼에는 집계함수를 직접 못 쓴다
 `COUNT(embedding)` → `ORA-22849`. `COUNT(CASE WHEN embedding IS NOT NULL THEN 1 END)`로 우회.

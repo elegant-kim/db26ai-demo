@@ -242,15 +242,18 @@ async def list_duality_docs(pool, view_name: str, limit: int = 10) -> dict:
         sql = f"""SELECT JSON_VALUE(data, '$._id') AS doc_id,
        JSON_VALUE(data, '$.firstName') || ' ' || JSON_VALUE(data, '$.lastName') AS summary
 FROM {view_name}
+ORDER BY JSON_VALUE(data, '$._id' RETURNING NUMBER)
 FETCH FIRST {limit} ROWS ONLY"""
     elif "PRODUCT" in view_name.upper():
         sql = f"""SELECT JSON_VALUE(data, '$._id') AS doc_id,
        JSON_VALUE(data, '$.prodName') AS summary
 FROM {view_name}
+ORDER BY JSON_VALUE(data, '$._id' RETURNING NUMBER)
 FETCH FIRST {limit} ROWS ONLY"""
     else:
         sql = f"""SELECT JSON_VALUE(data, '$._id') AS doc_id, '' AS summary
 FROM {view_name}
+ORDER BY JSON_VALUE(data, '$._id' RETURNING NUMBER)
 FETCH FIRST {limit} ROWS ONLY"""
 
     async with pool.acquire() as conn:

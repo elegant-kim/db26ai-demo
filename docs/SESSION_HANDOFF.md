@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5-2 완료 — `/graph` · `/productivity` 가 새 화면, 나머지 4탭은 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-3 완료 — `/graph` · `/productivity` · `/duality` 가 새 화면, nl2sql·vector·awr·manual 은 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -189,7 +189,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 (`routes.py` 의 `# === 개발생산성` 블록을 `routers/graph.py` 와 같은 모양으로), 레지스트리 `path` 갱신, `scripts/gen_api_doc.py` 재실행.
 ~~모델은 Opus 5~~ → 사용자 결정(2026-09-05): **5-2·5-3 도 Fable 로 진행.** 5-1 실측 시간은 측정되지 않았다.
 
-## 4-6. ✅ Phase 5-2 완료 (2026-09-05, Fable 5.1) — 다음은 5-3 Duality (★ Fable, 사용자 결정)
+## 4-6. ✅ Phase 5-2 완료 (2026-09-05, Fable 5.1)
 
 **사용자 확인 포인트 ② 확정: SQL 블록은 두 테마 모두 다크 유지** (D10 그대로). 5-1 의 조립 규칙을 그대로 따라 두 번째 탭을 옮겼다.
 
@@ -208,6 +208,28 @@ scripts/check-secrets.sh                # 커밋 전 필수
 `app/routers/duality.py`(routes.py 의 `# === JSON Duality` 블록), 레지스트리 path, `gen_api_doc.py`. 관계형 vs JSON 은 `CompareView`
 (우측은 `SqlBlock lang="json"`), ETag 는 `StepList`, 문서 CRUD 는 `ResultTable` 클릭 → 편집 카드. 설계서 05 §6.3.
 
+## 4-7. ✅ Phase 5-3 완료 (2026-09-05, Fable 5.1) — 다음은 5-4 AWR (★ Fable)
+
+**이식하면서 백엔드 버그 2건을 찾았다 — 둘 다 HTTP 200 뒤에 숨어 있었다** (`개발노하우.md` 3.1 표에 5·6번째 행으로 추가):
+
+| 증상 | 원인 | 고침 |
+|---|---|---|
+| 관계형 vs JSON 비교의 관계형 쪽이 5개월간 `ORA-03049` | `FROM admin.customers c SAMPLE(5)` — SAMPLE 은 별칭 **앞**에 와야 한다. 게다가 양쪽이 `SAMPLE` 무작위라 비교 자체가 불가능했다 | 양쪽 다 PK 오름차순 + `FETCH FIRST n` → 같은 엔티티가 마주 본다. 테스트가 id 배열 일치를 고정 |
+| ETag 시뮬이 4단계에서 끊기고 `error` 동반, **고객 5명의 신용한도가 +1 씩 오염** | 4단계는 WHERE 로 흉내 냈고, 5단계 원복이 옛 ETag 를 실은 문서로 UPDATE → 진짜 ETag 검사(ORA-42699)가 거기서 터짐 → `except: pass` | 4단계가 **DB 의 ORA-42699 거부**를 그대로 보여준다(진짜 낙관적 잠금). 원복은 `_metadata` 를 뺀 문서로(검사 생략). 오염 5건은 SH 표준값으로 되돌렸다(`UPDATE … -1 WHERE IN (1501,5001,7001,11001)`) |
+
+| 만든 것 | 위치 |
+|---|---|
+| 페이지 + 서브탭 4개(`?sub=views\|compare\|crud\|etag`) | `web/src/pages/Duality.vue` · `pages/duality/Duality{Views,Compare,Crud,Etag}.vue` |
+| 스토어(뷰 목록 1회 로드·비교/문서/ETag 결과 캐시) · 타입드 API · `normalize.fromDualityRelational` | `web/src/stores/duality.ts` · `lib/duality.ts` |
+| 비교 = `CompareView`(좌 `ResultTable`, 우 `SqlBlock lang="json"` ↔ **앱 화면 카드** `Segmented` 토글). `equal` 은 PK/_id 배열 일치, 배너 문구는 `equalText` prop | `DualityCompare.vue` |
+| 문서 CRUD = 목록(클릭 행) → 편집 카드(textarea + ETag 배지 + 저장). 저장 성공 시 새 ETag 를 textarea 의 `_metadata` 에 되써서 연속 저장이 된다 | `DualityCrud.vue` |
+| ETag 시뮬 = `StepList`(ETag 배지 지원 — `Step.etag`, 공용 타입 `lib/types/steps.ts`) | `DualityEtag.vue` · `StepList.vue` |
+| 라우터 분리 3호 `app/routers/duality.py` · 테스트 `TestDuality` 2개 강화(총 52) · 레지스트리 5항목 딥링크 · 캡처 `captures/db26ai_duality_*` | |
+
+**5-4 를 시작할 때 (AWR, ★ Fable)**: 서브탭 없이 한 페이지. SSE(`POST /api/awr/analyze`) 수신용 `composables/useSse.ts` 를 먼저 만들고,
+`PipelineProgress`(SSE 단계) · `SessionTabs` · `ScoreGauge`(7 카테고리) · `KvGrid` · 액션아이템 · 후속질문 · 원문 모달 순으로. 설계서 05 §6.4.
+**완료 판정은 픽셀이 아니라 정보 누락 0** — 기존 분석 JSON 을 그대로 넣어 렌더가 같은가. `app/routers/awr.py` 분리.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -225,7 +247,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0)·graph(5-1)·productivity(5-2) 완료, 5-3~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0)·graph(5-1)·productivity(5-2)·duality(5-3) 완료, 5-4~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 

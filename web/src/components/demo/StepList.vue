@@ -6,7 +6,8 @@
  */
 import { computed } from 'vue'
 import { CheckCircle2, XCircle } from 'lucide-vue-next'
-import type { Step } from '@/lib/productivity'
+import type { Step } from '@/lib/types/steps'
+import Badge from '@/components/ui/Badge.vue'
 import SqlBlock from './SqlBlock.vue'
 import LoadingBlock from '@/components/ui/LoadingBlock.vue'
 
@@ -37,6 +38,7 @@ const pending = computed(() => props.running && shown.value.length < props.steps
               :style="{ background: 'var(--bg-elevated)', color: s.success ? 'var(--accent-positive)' : 'var(--accent-negative)' }">{{ s.success ? okLabel : failLabel }}</span>
             <span>{{ s.description }}</span>
           </div>
+          <div v-if="s.etag" class="mt-1.5"><Badge tone="code">ETag {{ s.etag }}</Badge></div>
           <div v-if="s.sql" class="mt-2"><SqlBlock :code="s.sql" label="SQL" max-height="220px" /></div>
         </div>
       </div>
