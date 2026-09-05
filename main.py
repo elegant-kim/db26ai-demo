@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.database import close_pool, get_pool, init_pool
+from app.routers import awr as awr_router
 from app.routers import duality as duality_router
 from app.routers import graph as graph_router
 from app.routers import productivity as productivity_router
@@ -36,6 +37,7 @@ app.include_router(api_router)
 app.include_router(graph_router.router)   # 탭을 이식할 때마다 하나씩 늘어난다 (설계서 05 §7)
 app.include_router(productivity_router.router)
 app.include_router(duality_router.router)
+app.include_router(awr_router.router)
 
 
 @app.on_event("startup")
