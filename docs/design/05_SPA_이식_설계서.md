@@ -340,10 +340,11 @@ async def spa(path: str, request: Request):
 **여기서 세운 "카드 안에 SqlBlock + ResultTable" 조립 규칙이 5-2~5-5 의 기준이 된다.** 확정본은 `SESSION_HANDOFF.md` §4-5
 (페이지 › SubTabs › KeepAlive · lib/<tab>.ts → stores/<tab>.ts → 페이지 · normalize 에서만 응답 키를 안다).
 
-### 6.2 · 5-2 개발생산성 (Opus, 패턴 추종)
+### 6.2 · 5-2 개발생산성 (~~Opus~~ Fable — 사용자 결정, 패턴 추종) — ✅ 완료 2026-09-05
 
-시뮬 2종 = 서브탭 2개. 각각 `Button`(실행) › `PipelineProgress`(단계 카드 — SSE 아님, 순차 결과) › 단계별 `SqlBlock`+결과.
-`step-card` 37곳 중 이 탭 것을 `StepList.vue` 로 정리. 라우터 `productivity.py`.
+시뮬 2종 = 서브탭 2개. 각각 `Card`(VersusBox 도입) › `Card`(실행 버튼 › `EmptyState` | **`StepList`**) — 결과는 한 번에 오지만 한 단계씩 드러낸다(스토어의 reveal 카운터, [바로 보기]로 건너뜀).
+`StepList.vue`(성공/거부 라벨 props) 와 `VersusBox.vue`(기존 vs 26ai 두 칸) 가 여기서 생겼고 graph 관리 화면도 VersusBox 로 통일했다. 라우터 `productivity.py`.
+Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 적었다(레거시는 숨김).
 
 ### 6.3 · 5-3 Duality (Opus, 패턴 추종)
 
@@ -455,7 +456,7 @@ npm run build
 
 **사용자 확인 포인트 (화면을 보고 판단하실 것)**
 1. §3.2 ① — 실행 모드 7종의 배치(세그먼트 vs 셀렉트) — 5-5 에서 두 안 시연
-2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서 → **제시함** (`captures/db26ai_graph_compare_light.png` · `_dark.png`, 2026-09-05)
+2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서 → **✅ 확정: 두 테마 모두 다크 유지** (사용자, 2026-09-05; 근거 캡처 `captures/db26ai_graph_compare_light.png` · `_dark.png`)
 3. 헤더 색 — Oracle 다크 차콜(권고) vs investhub 블루 — 5-0 에서
 4. 채팅 스레드 폭(R1) — 5-5 에서
 5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서

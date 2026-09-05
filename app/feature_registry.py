@@ -114,13 +114,13 @@ _F = [
  # ── ⑤ 개발생산성 향상 ──────────────────────────────────────
  ("productivity", "Lock-Free Reservations", "동시 차감 시뮬레이션 — 잠금 경합 없이 잔액을 예약",
   "여러 세션이 같은 잔액을 동시에 차감할 때, 기존 방식은 잠금 대기가 생기지만 26ai 는 예약으로 처리한다. CHECK 제약 위반도 재현된다.",
-  "productivity:Lock-Free Reservations", "lock free reservation 동시 차감 잠금 예약"),
+  "/productivity?sub=lockfree", "lock free reservation 동시 차감 잠금 예약"),
  ("productivity", "Priority Transactions", "우선순위 충돌 시뮬레이션 — 높은 우선순위가 낮은 쪽을 선점",
   "긴급 트랜잭션이 일반 트랜잭션에 막히지 않아야 할 때.",
-  "productivity:Priority Transactions", "priority transaction 우선순위 선점"),
+  "/productivity?sub=priority", "priority transaction 우선순위 선점"),
  ("productivity", "실행 쿼리 확인", "V$SQL 에서 시뮬레이션 관련 최근 쿼리 조회",
   "시뮬레이션이 실제로 어떤 SQL 을 돌렸는지 확인할 때.",
-  "productivity:쿼리", "v$sql 실행 쿼리"),
+  "/productivity?sub=lockfree", "v$sql 실행 쿼리"),
 
  # ── ⑥ 기타 부가 기능 ──────────────────────────────────────
  ("extra", "AWR 리포트 분석", "AWR HTML 업로드 → 23개 섹션 파싱 → LLM 이 8개 섹션 보고서 생성",

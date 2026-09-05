@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5-1 완료 — Property Graph 가 첫 이식 탭으로 `/graph` 에서 서빙 중) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-2 완료 — `/graph` · `/productivity` 가 새 화면, 나머지 4탭은 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -165,7 +165,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **미결(5-7 에서 정리)**: 헤더 라벨은 짧게(`NL2SQL`·`Vector Search`…) 두었고 기능 레지스트리 `tab_label` 은
 레거시 풀네임 그대로다. 페이지 h1 은 풀네임을 쓰므로 "화면 라벨 = 레지스트리" 규칙은 h1 기준으로 지켜진다.
 
-## 4-5. ✅ Phase 5-1 완료 (2026-09-05, Fable 5.1) — 다음은 5-2 개발생산성 (Opus 5)
+## 4-5. ✅ Phase 5-1 완료 (2026-09-05, Fable 5.1)
 
 **Property Graph 가 첫 이식 탭이다.** 메뉴 `migrated: true` → `/graph` 가 SPA 로 열리고 나머지 5탭은 아직 `/legacy#탭`.
 
@@ -187,7 +187,26 @@ scripts/check-secrets.sh                # 커밋 전 필수
 
 **5-2 를 시작할 때**: `lib/menu.ts` productivity `migrated: true`, `pages/Productivity.vue` 를 위 규칙대로, `app/routers/productivity.py` 분리
 (`routes.py` 의 `# === 개발생산성` 블록을 `routers/graph.py` 와 같은 모양으로), 레지스트리 `path` 갱신, `scripts/gen_api_doc.py` 재실행.
-**모델은 Opus 5** (계획서 5-2). 실측 공수는 사용자가 알려준 값으로 ROADMAP §4 에 기록한다.
+~~모델은 Opus 5~~ → 사용자 결정(2026-09-05): **5-2·5-3 도 Fable 로 진행.** 5-1 실측 시간은 측정되지 않았다.
+
+## 4-6. ✅ Phase 5-2 완료 (2026-09-05, Fable 5.1) — 다음은 5-3 Duality (★ Fable, 사용자 결정)
+
+**사용자 확인 포인트 ② 확정: SQL 블록은 두 테마 모두 다크 유지** (D10 그대로). 5-1 의 조립 규칙을 그대로 따라 두 번째 탭을 옮겼다.
+
+| 만든 것 | 위치 |
+|---|---|
+| 페이지 + 서브탭 2개(`?sub=lockfree\|priority`) | `web/src/pages/Productivity.vue` · `pages/productivity/{LockFree,PriorityTx}.vue` |
+| 스토어 — 결과는 한 번에 오지만 **한 단계씩 드러내는 연출**(첫 0.3초, 이후 1.2초; 레거시 계승) + [바로 보기] | `web/src/stores/productivity.ts` · `lib/productivity.ts` |
+| **`StepList.vue`** — 단계 카드 목록(성공/거부 토큰 색, 단계별 SqlBlock, 진행 중 표시). 5-3 ETag 시뮬·5-6 업로드 파이프라인이 재사용 | `web/src/components/demo/StepList.vue` |
+| **`VersusBox.vue`** — "기존 방식 vs 26ai" 두 칸 비교 상자. graph 관리 화면도 이걸로 바꿨다 | `web/src/components/demo/VersusBox.vue` |
+| Priority 화면에 **정직한 안내** 추가 — ADB 는 `PRIORITY_TXNS_MODE` 를 못 바꿔 1단계만 실제 실행, 2~6단계는 설명 (레거시는 이 사실을 숨겼다) | `PriorityTx.vue` |
+| 라우터 분리 2호 `app/routers/productivity.py` (경로·응답 불변) | |
+| 회귀 테스트 `TestProductivity` 2개 — 동시 차감 성공·CHECK 거부·최종 잔액 400 을 고정 (총 52) | `tests/test_api_smoke.py` |
+| 레지스트리 productivity 3항목 딥링크 · 캡처 3장 `captures/db26ai_productivity_*` | |
+
+**5-3 을 시작할 때**: duality 도 같은 순서 — `lib/menu.ts` migrated, `pages/Duality.vue` + `pages/duality/` 4서브탭(views·compare·crud·etag),
+`app/routers/duality.py`(routes.py 의 `# === JSON Duality` 블록), 레지스트리 path, `gen_api_doc.py`. 관계형 vs JSON 은 `CompareView`
+(우측은 `SqlBlock lang="json"`), ETag 는 `StepList`, 문서 CRUD 는 `ResultTable` 클릭 → 편집 카드. 설계서 05 §6.3.
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
@@ -206,7 +225,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0)·graph(5-1) 완료, 5-2~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0)·graph(5-1)·productivity(5-2) 완료, 5-3~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 
