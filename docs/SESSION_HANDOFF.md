@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 6-1·6-2·6-4 완료 — 레거시 삭제, SPA 단일 서빙, 문서 동기화. 남은 것: 6-3 UI 검수 · 6-5 · 6-6) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (**Phase 6 완료 = 계획서 전체 완료.** 새 화면 단일 서빙, 레거시 없음) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -39,16 +39,16 @@ tail -f db26ai.log
   서버는 즉시 응답하지만 첫 벡터 질의는 워밍 완료 후가 정확하다. 로그에 `✓ 커넥션 풀 워밍 완료`.
 - `/api/execute-sql` 은 **SELECT 로 시작하는 문장만** 받는다(`WITH` CTE 도 거부).
 
-## 3. 현재 환경 실측 스냅샷 (2026-09-04)
+## 3. 현재 환경 실측 스냅샷 (2026-09-05 갱신)
 
 | 항목 | 값 |
 |---|---|
-| **DB** | `db26aidemo_medium` · schema **ADMIN** · Oracle 26ai **23.26.3.2.0** |
+| **DB** | `db26aidemo_medium` · schema **ADMIN** · Oracle 26ai **23.26.3.3.0** |
 | **테넌시** | 신규(춘천). 2026-04-14 08:50 Data Pump 이관 **완료** — 구 aidb 는 더 이상 안 씀 |
 | **Wallet** | `~/Dev/Wallet_DB26AIDEMO` |
 | **SH 샘플** | SALES 918,843 · CUSTOMERS 55,500 · COSTS 82,112 · TIMES 1,826 · PROMOTIONS 503 · PRODUCTS 72 · COUNTRIES 23 · CHANNELS 5 |
-| **Select AI 프로필** | 2개 (GROQ_SH / GEMINI_SH) |
-| **Vector Store** | 문서 1개(`SQL작성가이드.pdf`) · 청크 79 · **임베딩 79/79 (768차원)** |
+| **Select AI 프로필** | 2개 (GROQ_SH / GEMINI_SH) — **GROQ 는 2026-09-05 현재 ORA-20404 로 실패**(열린 과제 7), 화면 기본은 GEMINI |
+| **Vector Store** | 문서 2개(`SQL작성가이드.pdf` 79청크 · `현대Card개인회원약관.pdf` 101청크) · 청크 180 · **임베딩 180/180 (768차원)** |
 | **ONNX 모델** | `MULTILINGUAL_E5_BASE`(768, 사용 중) · `MULTILINGUAL_E5_SMALL`(384) |
 | **임베딩 설정** | `database` / `MULTILINGUAL_E5_BASE` |
 | **인덱스** | `DOC_CHUNKS_HNSW_IDX`(VECTOR, 768차원 고정) · `DOC_CHUNKS_TEXT_IDX`(Oracle Text, WORLD_LEXER, SYNC ON COMMIT) |
@@ -56,6 +56,7 @@ tail -f db26ai.log
 | **Property Graph** | `SALES_GRAPH` 생성됨 (customers·products 정점, sales 간선) |
 | **keepalive** | 주 1회 월 09:00 ADB 핑 (OCI Always Free 회수 방지) |
 | **저장소** | `elegant-kim/db26ai-demo` — **GitHub 공개(PUBLIC)** ⚠ |
+| **프론트** | `web/` Vue 3 SPA 단일 서빙(2026-09-05). 레거시 templates/static 없음. `/` → `/nl2sql` |
 
 **성능 실측 (2026-09-04, 79청크 기준, RAG 제외 SQL 시간):**
 vector 95ms · keyword 49ms · hybrid 0.1초대 · compare 39~69ms.
@@ -319,7 +320,24 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 6-2 | 이미 5-1~5-6 에서 탭별 분리 완료 — `routes.py` 는 공통 5개 |
 | 6-4 문서 동기화 | CLAUDE.md 프론트 절(공존 서술·캐시버스팅 규칙 삭제) · 개발노하우 §2 표·§4 도입부 · 가이드 01 §0 「화면 구성」을 새 화면 기준으로 다시 그림 · 02 레거시 절 삭제 · 03/04 「사이드바」 표현 정정 |
 
-**남은 것**: 6-3 UI 검수(★ Fable — `captures/final_<tab>_{light,dark}.png` 14장을 06 §10 다섯 분류로 점검) · 6-5 이 문서 최종 스냅샷 · 6-6 7탭 회귀 스모크.
+
+## 4-13. ✅ Phase 6-3 · 6-5 · 6-6 완료 (2026-09-05, Fable 5.1) — 계획서 끝
+
+**6-3 UI 검수** — 7페이지 × 라이트/다크 14장(`captures/final_<tab>_{light,dark}.png`)을 06 §10 다섯 분류로 점검:
+
+| 분류 | 결과 |
+|---|---|
+| A 의도된 편차 | 헤더 차콜 · SQL 다크 블록(두 테마) · 레드 액센트 — 전 페이지 일관. 사용자 확정 ②③ + 기본안 ①④⑤ |
+| B 도메인 편차 | CompareView·StepList·VersusBox·ChunkCard·PipelineProgress·ScatterChart·GraphViz·SessionTabs·RecentQueriesPanel — investhub 에 없는 db26ai 부품, 토큰만 사용 |
+| C 밀도 | 카드 패딩 24 · 서브탭 pill · 표 8px/14 — 기준선과 동일. 비교 화면의 좌우 SQL 블록 높이 차는 06 §5 의 `items-start` 규칙대로 둠 |
+| D 색 | 컴포넌트에 hex 없음(차트 팔레트·GraphViz 카테고리색만 상수). 다크에서 배지·막대·코드 블록 대비 확인 |
+| E 상태 | 로딩(LoadingBlock/PipelineProgress)·빈 상태(EmptyState)·오류(배너, 삼키지 않음)·경고(warm 배너) 전 탭 존재 |
+
+교정 1건: 기능 지도의 `how` 문구에 마크다운 강조·백틱이 평문으로 찍혀 레지스트리 문자열을 평문으로 정리.
+
+**6-6 회귀** — pytest 53개 통과. 7탭 실제 조작(브라우저 패널): NL2SQL runsql→차트→SQL 보기, Vector 하이브리드→시각화→업로드 SSE(101청크), Duality 비교→앱 화면 토글→CRUD 저장→ETag 시뮬, Graph 3쿼리 동일 배너·시각화, 생산성 2시뮬 연출, AWR 픽스처 렌더→후속질문→원문 모달, 매뉴얼 기능 지도·문서·⌘K.
+
+**이 뒤에 열린 과제만 남는다** — §6 표. 특히 7번(GROQ 프로필 ORA-20404)은 사용자 판단.
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
@@ -338,7 +356,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **런타임 임베딩 전환의 HNSW 차원 함정** — 새 화면(5-6)은 인덱스 모델 ≠ 현재 모델이면 **경고 배너**를 띄우고 소스 전환 때 초기화를 묻는다. 자동 인덱스 재생성은 아직 없다(백엔드) | `개발노하우.md` 3.2 · `stores/vector.ts` `dimensionWarning` |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식** — Phase 5 완료 + 6-1/6-2/6-4 완료(레거시 삭제). 6-3 UI 검수·6-5·6-6 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| ~~4~~ | ~~프론트 SPA 이식~~ **해소** — Phase 4·5·6 완료(2026-09-05). 레거시 삭제, 7페이지 새 화면 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (2026-09-05 실측: `Object not found - bearer://api.groq.com/openai/v1/chat/completions`). DB 의 `GROQ_CRED` 자격증명 또는 네트워크 ACL 문제로 보인다 — 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 |

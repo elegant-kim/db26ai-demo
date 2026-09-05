@@ -462,6 +462,6 @@ npm run build
 2. D10 — SQL 블록 다크 스타일 유지 여부 — 5-1 첫 화면에서 → **✅ 확정: 두 테마 모두 다크 유지** (사용자, 2026-09-05; 근거 캡처 `captures/db26ai_graph_compare_light.png` · `_dark.png`)
 3. 헤더 색 — Oracle 다크 차콜(권고) vs investhub 블루 — 5-0 에서
 4. 채팅 스레드 폭(R1) — 5-5 에서 → **✅ 확정: 960 중앙 정렬** (사용자 "계속 진행", 2026-09-05)
-5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서 → **제시함**: 헤더 `?` = `/manual`, 그 옆 🔍 ⌘K = 팔레트 (`captures/db26ai_manual_features_light.png`)
+5. 매뉴얼 탭의 헤더 `?` 아이콘 진입 — 5-7 에서 → **✅ 확정(기본안, 사용자 "계속 진행")**: 헤더 `?` = `/manual`, 그 옆 🔍 ⌘K = 팔레트 (`captures/db26ai_manual_features_light.png`)
 
 각 지점에서 제가 멈추고 캡처 2장(새 화면·기준선)과 함께 묻는다. 그 외에는 이 문서대로 진행한다.
