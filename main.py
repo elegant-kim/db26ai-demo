@@ -14,6 +14,7 @@ from app.routers import duality as duality_router
 from app.routers import graph as graph_router
 from app.routers import nl2sql as nl2sql_router
 from app.routers import productivity as productivity_router
+from app.routers import vector as vector_router
 from app.routes import router as api_router
 from app.scheduler import init_scheduler, shutdown_scheduler
 from app.vector_search import init_vector_tables, warm_embedding_pool
@@ -40,6 +41,7 @@ app.include_router(productivity_router.router)
 app.include_router(duality_router.router)
 app.include_router(awr_router.router)
 app.include_router(nl2sql_router.router)
+app.include_router(vector_router.router)
 
 
 @app.on_event("startup")
