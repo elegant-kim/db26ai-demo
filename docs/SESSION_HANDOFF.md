@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5-4 완료 — graph·productivity·duality·awr 가 새 화면, nl2sql·vector·manual 은 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-5 완료 — `/` 가 `/nl2sql` 로 열린다. vector·manual 만 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -230,7 +230,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 `PipelineProgress`(SSE 단계) · `SessionTabs` · `ScoreGauge`(7 카테고리) · `KvGrid` · 액션아이템 · 후속질문 · 원문 모달 순으로. 설계서 05 §6.4.
 **완료 판정은 픽셀이 아니라 정보 누락 0** — 기존 분석 JSON 을 그대로 넣어 렌더가 같은가. `app/routers/awr.py` 분리.
 
-## 4-8. ✅ Phase 5-4 완료 (2026-09-05, Fable 5.1) — 다음은 5-5 NL2SQL (★ Fable, 확인 포인트 ①·④)
+## 4-8. ✅ Phase 5-4 완료 (2026-09-05, Fable 5.1)
 
 **문서와 코드가 갈라져 있던 것 하나 정정**: CLAUDE.md·설계서는 AWR 분석을 SSE 라고 적었지만 **`POST /api/awr/analyze` 는 분석이 끝난 뒤 JSON 을 한 번 돌려준다**(30~120초).
 레거시 화면의 진행 표시는 타이머 연출이었고, 새 화면도 같은 연출을 유지한다(`stores/awr.ts`). SSE 는 PDF 업로드뿐이다 → `useSse` 는 5-6 에서 만든다.
@@ -249,6 +249,29 @@ scripts/check-secrets.sh                # 커밋 전 필수
 `ChatThread`/`ChatComposer` 를 확장(결과 블록 = `SqlBlock`+`ResultTable`+차트+실행계획 버튼, 컴포저 위 슬롯에 프로필 셀렉트·모드 세그먼트·예시 질문). 서브탭 `ask|schema`(스키마 트리 + Annotation 적용/제거).
 `app/routers/nl2sql.py`(ask·profiles·set-profile·annotations·schema-info·explain-plan·execute-sql). 5-5 가 끝나면 `homePath()` 가 `/nl2sql` 로 바뀐다(menu.ts 의 첫 migrated). 설계서 05 §6.5.
 
+## 4-9. ✅ Phase 5-5 완료 (2026-09-05, Fable 5.1) — 다음은 5-6 Vector (★ Fable) · 확인 포인트 ①·④ 제시 중
+
+**`/` 가 이제 `/nl2sql` 로 열린다** (`menu.ts` 의 `homePath()` — nl2sql 이 migrated 면 첫 화면). 앱의 얼굴이 새 화면이 됐다.
+
+| 만든 것 | 위치 |
+|---|---|
+| 페이지 + 서브탭 2(`?sub=ask\|schema`). 스레드·컴포저는 **폭 960 중앙 정렬**(확인 포인트 ④) | `web/src/pages/Nl2sql.vue` · `pages/nl2sql/{Nl2sqlAsk,Nl2sqlAnswer,Nl2sqlSchema}.vue` |
+| 스토어 — 프로필(기본 GROQ_SH_PROFILE)·실행 모드·스레드·스키마·Annotation. 레거시 sendQuestion/executeAction/processResult 를 그대로 옮기고 결과는 `Rows` 로 | `web/src/stores/nl2sql.ts` · `lib/nl2sql.ts`(ACTIONS·ACTION_BUTTONS·예시 질문) · `lib/annotations.ts`(SH 세트 — app.js 에서 이전) |
+| 어시스턴트 메시지 = 카드 없는 블록: 프로필 속성 표 · 생성 SQL(`SqlBlock`) · 결과 표(`ResultTable`) · **차트(Bar/Line/Donut, 세그먼트 전환)** · 서술(md-body) · 프롬프트(text) · 실행계획 · 후속 버튼 행(캐시된 것은 primary) | `Nl2sqlAnswer.vue` |
+| `ChatThread` 에 `user`/`assistant` 스코프 슬롯 + `minHeight` — 결과 블록을 꽂는 자리. 5-6 도 같은 방식 | `components/demo/ChatThread.vue` |
+| 컴포저 위 슬롯: 프로필 셀렉트 · **실행 모드(A 세그먼트 = 기본 / B 셀렉트 = `?modeui=select`)** · 예시 질문 셀렉트. 아래 줄: SELECT 직접 실행 + 대화 비우기 | `Nl2sqlAsk.vue` |
+| 딥링크 `?profile=…&action=runsql&q=…&run=1` (캡처·시연) | |
+| **기본 프로필을 GEMINI 우선으로** — 2026-09-05 GROQ_SH_PROFILE 이 DB 자격증명 문제(`ORA-20404 Object not found - bearer://api.groq.com/...`)로 모든 질문에 실패한다. Groq 를 고치면 `stores/nl2sql.ts` 의 `PREFER` 순서만 되돌리면 된다 | `stores/nl2sql.ts` |
+| 라우터 분리 5호 `app/routers/nl2sql.py`(8 라우트 + 모델 3 + VALID_ACTIONS). routes.py 에는 health·llm/providers·vector·guide 27개만 남았다 | |
+| 캡처 4장 `captures/db26ai_nl2sql_{ask_light,ask_select_light,ask_dark,schema_light}.png` | 확인 포인트 ①·④ 제시용 |
+
+**사용자 확인 포인트 ①·④ (제시 중, 2026-09-05)** — ① 실행 모드 7종: A 세그먼트 한 줄(`ask_light`) vs B 셀렉트(`ask_select_light`). ④ 스레드 폭 960.
+사용자가 고르면 지는 안은 지운다(`modeui` 쿼리와 분기 삭제).
+
+**5-6 을 시작할 때 (Vector, ★ Fable — 상태 의존 최상위)**: 스토어를 먼저 설계한다(세션·모드·임베딩 설정이 서로 참조 — R2). `composables/useSse.ts`(fetch+ReadableStream) 는 여기서 만든다 —
+업로드만 SSE 다. 서브탭 `search|docs|store|embedding`. 검색은 `SessionTabs` › `ChatThread`(답변 + `ChunkCard` 목록 + 시각화) + 컴포저 슬롯에 검색모드 `Segmented` 4 · top_k · LLM. compare 모드는 `CompareView`.
+업로드는 드롭존 › `PipelineProgress`(SSE, **warning 표시**) › 문서 목록. 임베딩·ONNX 탭에 **차원 경고 배너**(HNSW 함정). `app/routers/vector.py`(25개). 설계서 05 §6.6. 완료 판정: 4모드 회귀 · 자연어 질문 keyword>0 · 세션탭 전환 시 대화 보존.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -266,9 +289,11 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식 진행 중** — 5-0~5-4 완료(graph·productivity·duality·awr), 5-5 nl2sql · 5-6 vector · 5-7 manual 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 5-0~5-5 완료(첫 화면 nl2sql 포함), 5-6 vector · 5-7 manual · Phase 6 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
+| 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (2026-09-05 실측: `Object not found - bearer://api.groq.com/openai/v1/chat/completions`). DB 의 `GROQ_CRED` 자격증명 또는 네트워크 ACL 문제로 보인다 — 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 |
+| 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
 
 ## 7. 새 세션 첫 단계 권장
 

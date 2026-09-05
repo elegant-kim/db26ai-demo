@@ -73,11 +73,12 @@ scripts/deploy.sh
 | `app/config.py` | 40 | `.env` → Settings 클래스 (DB, 임베딩, LLM 설정) |
 | `app/database.py` | 56 | oracledb 비동기 커넥션 풀 (min=1, max=5, 120초 타임아웃) |
 | `app/select_ai.py` | 463 | Select AI 핵심: `DBMS_CLOUD_AI.GENERATE`, 프로필 관리, raw SQL 실행, 스키마 정보, Annotation, EXPLAIN PLAN |
-| `app/routes.py` | ~1,470 | API 엔드포인트 (`/api` prefix) — **탭을 이식할 때마다 `app/routers/<tab>.py` 로 빠져나간다** (D8) |
+| `app/routes.py` | ~900 | 남은 API 엔드포인트 27개 — health · llm/providers · ② vector 전부 · guide. **탭을 이식할 때마다 `app/routers/<tab>.py` 로 빠져나간다** (D8) |
 | `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
 | `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
 | `app/routers/awr.py` | ~200 | ⑥ AWR 3개 엔드포인트 + 세션 캐시 (5-4 에서 분리). **분석은 SSE 가 아니라 JSON 1회** |
+| `app/routers/nl2sql.py` | ~230 | ① NL2SQL 8개 엔드포인트 + 요청 모델 + `VALID_ACTIONS` (5-5 에서 분리) |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
 | `app/graph.py` | 315 | SQL/PGQ Property Graph 생성/삭제, SQL vs PGQ 비교 쿼리 3종, 패턴 질의 3종 |
@@ -104,7 +105,8 @@ scripts/deploy.sh
 | `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
 | `web/src/pages/<tab>/` · `stores/<tab>.ts` · `lib/<tab>.ts` | 이식된 탭마다 이 셋 (graph 5-1 · productivity 5-2). 조립 규칙은 `docs/SESSION_HANDOFF.md` §4-5 — 새 탭은 graph 를 복제해 시작한다 |
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
-| `web/src/pages/*.vue` | 7 페이지. 이식 전 페이지는 `LegacyStub` |
+| `web/src/pages/*.vue` | 7 페이지. 이식 전 페이지(vector·manual)는 `LegacyStub`. `/` 는 `/nl2sql` 로 리다이렉트 |
+| `web/src/lib/annotations.ts` | SH Display Annotation 세트 정본 (app.js 에서 이전, 5-5) |
 | `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
 
 **레거시** (Phase 6 에서 삭제 예정) — `templates/index.html`(2,724줄) · `static/js/app.js`(2,890) · `static/css/style.css`(3,000).
@@ -137,7 +139,7 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 - `GET /api/health` — DB 연결 상태, 스키마, DB 버전, 프로필 수, 문서/청크/임베딩 수, ONNX 모델, 벡터 인덱스 상태
 - `GET /api/llm/providers` — 사용 가능한 LLM 제공자 목록
 
-### ① NL2SQL (Select AI)
+### ① NL2SQL (Select AI) (`app/routers/nl2sql.py`)
 - `POST /api/ask` — Select AI 쿼리 실행 (action: runsql/showsql/narrate/explainsql/showprompt/summarize/chat)
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회
@@ -351,7 +353,8 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - `explainsql` action은 한국어 지시 자동 추가: `"(Please explain in Korean / 한국어로 설명해 주세요)"`
 - `execute_raw_sql()` — SELECT 문만 허용 (보안). `WITH` CTE도 거부되니 주의
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
-- 프로필 이름에 'SH' 포함 시 SH 스키마용 예시 질문/Annotation 세트 적용
+- 프로필 이름에 'SH' 포함 시 SH 스키마용 예시 질문/Annotation 세트 적용 (`web/src/lib/annotations.ts` · `lib/nl2sql.ts`)
+- 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
 - AWR 결과 탭과 벡터 검색 세션 탭은 동일한 CSS 클래스 (`awr-result-tabs`/`awr-result-tab`) 공유
 - 저장소는 **GitHub 공개(PUBLIC)** — 커밋 전 시크릿 검사 필수 (`docs/개발노하우.md` 참조)
 
