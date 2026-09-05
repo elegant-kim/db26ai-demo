@@ -77,6 +77,7 @@ scripts/deploy.sh
 | `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
 | `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
+| `app/routers/awr.py` | ~200 | ⑥ AWR 3개 엔드포인트 + 세션 캐시 (5-4 에서 분리). **분석은 SSE 가 아니라 JSON 1회** |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
 | `app/graph.py` | 315 | SQL/PGQ Property Graph 생성/삭제, SQL vs PGQ 비교 쿼리 3종, 패턴 질의 3종 |
@@ -98,7 +99,7 @@ scripts/deploy.sh
 | `web/src/lib/normalize.ts` | D11 어댑터 — 응답 배열 키 불일치를 흡수. 키 이름을 아는 유일한 곳 |
 | `web/src/lib/sqlHighlight.ts` | Oracle SQL 토크나이저 (레거시 `highlightOracleSQL` 이식) |
 | `web/src/components/ui/` | investhub 이식 13종 (Card·Button·Badge·Stat·LoadingBlock·차트 …) |
-| `web/src/components/demo/` | db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader·**StepList**(단계 카드)·**VersusBox**(기존 vs 26ai) |
+| `web/src/components/demo/` | db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader·StepList·VersusBox·**PipelineProgress·KvGrid·SessionTabs·ChatThread/ChatComposer**(5-4) |
 | `web/src/components/layout/` | AppShell·TopNav·StatusChips(헤더 상태칩 = 옛 사이드바 시스템 상태)·ThemeToggle·Toast |
 | `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
 | `web/src/pages/<tab>/` · `stores/<tab>.ts` · `lib/<tab>.ts` | 이식된 탭마다 이 셋 (graph 5-1 · productivity 5-2). 조립 규칙은 `docs/SESSION_HANDOFF.md` §4-5 — 새 탭은 graph 를 복제해 시작한다 |
@@ -185,8 +186,8 @@ Jinja2 + Vue `[[ ]]` 구분자, 빌드 없음. `/legacy#<tab>` 해시로 탭을 
 - `POST /api/productivity/priority-tx` — Priority Transactions 시뮬레이션
 - `GET /api/productivity/recent-queries` — V$SQL 최근 쿼리
 
-### ⑥ 기타 부가 기능 (AWR)
-- `POST /api/awr/analyze` — AWR HTML 업로드 + LLM 분석 (SSE 스트리밍)
+### ⑥ 기타 부가 기능 (AWR) (`app/routers/awr.py`)
+- `POST /api/awr/analyze` — AWR HTML 업로드 + LLM 분석 (**JSON 1회 응답, 30~120초** — SSE 아님. 2026-09-05 정정)
 - `POST /api/awr/followup` — 후속 질문
 - `GET /api/awr/source/{session_id}` — AWR 원본 HTML 반환
 
@@ -337,8 +338,8 @@ Oracle LOB 값은 `await _lob_to_str(val)` 변환 필수. `hasattr(row[0], 'read
   배포 직후 옛 chunk 404 는 `main.ts` 의 stale-chunk 자동 새로고침이 흡수한다.
 
 ### SSE 스트리밍
-PDF 업로드와 AWR 분석은 `StreamingResponse` + `text/event-stream`.
-프론트엔드는 `fetch` + `ReadableStream`으로 수신.
+**PDF 업로드만** `StreamingResponse` + `text/event-stream` 이다(프론트는 `fetch` + `ReadableStream`).
+AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시는 타이머 연출이다(2026-09-05 정정. 그 전까지 이 문단이 코드와 달랐다).
 
 ### API 응답 구조가 엔드포인트마다 다르다 (알려진 부채 D11)
 결과 배열 키가 `data`(execute-sql) / `chunks`(vector/search) / `sql_data`·`pgq_data`(graph/compare) /

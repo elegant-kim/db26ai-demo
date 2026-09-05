@@ -78,7 +78,7 @@
 | 결과 표(행수·소요·스크롤) | `result-table` `table-wrapper` `row-count`(21곳) | 전 탭 | 표 스타일만 |
 | **좌우 비교** ★ | `duality-compare-grid`, graph compare 2열, vector compare | duality · graph · vector | 없음 — 이 앱의 서사 |
 | 단계 카드(step-card + 헤더 + SQL + 결과) | `step-card`(37곳) `step-title` | productivity · duality · graph | Card 로 대체 가능 |
-| **SSE 파이프라인 진행** ★ | `pipeline-*`(링·점·바) | vector 업로드 · AWR | 없음 |
+| **파이프라인 진행** ★ | `pipeline-*`(링·점·바) | vector 업로드(SSE) · AWR(타이머 연출) | 없음 |
 | 세션/결과 탭 바 ★ | `awr-result-tabs` | vector · AWR | 없음 |
 | 청크 카드(유사도 바·점수 3종) ★ | `vec-chunk-card` `vec-badge` | vector | 없음 |
 | 상태 목록(사이드바 시스템 상태) | `status-row` `status-label` `status-value` | 전 탭 | MarketStatusBar(헤더 칩) |
@@ -357,9 +357,12 @@ Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 �
 
 라우터 `duality.py`.
 
-### 6.4 · 5-4 AWR (★ Fable — 시각 밀도 최상위)
+### 6.4 · 5-4 AWR (★ Fable — 시각 밀도 최상위) — ✅ 완료 2026-09-05
 
-서브탭 없이 한 페이지: 상단 업로드 카드(드롭존 + LLM 셀렉트) › `PipelineProgress`(SSE) › **`SessionTabs`** › 결과:
+> **정정(2026-09-05):** `/api/awr/analyze` 는 SSE 가 아니라 분석 후 JSON 1회다. `PipelineProgress` 는 타이머 연출로 돌고, SSE 수신은 5-6 업로드에서만 쓴다.
+> 8섹션은 아코디언 대신 **기본 펼침 + 접기 버튼**(정보 누락 0 원칙). 원문은 iframe 모달. `?load=<json>` 로 저장된 응답을 열 수 있다(캡처·시연).
+
+서브탭 없이 한 페이지: 상단 업로드 카드(드롭존 + LLM 셀렉트) › `PipelineProgress`(~~SSE~~ 타이머) › **`SessionTabs`** › 결과:
 `ScoreGauge`(7 카테고리) › 요약 › 8섹션 아코디언(각 `KvGrid`/`ResultTable`/해석) › 액션아이템(우선순위 배지 + evidence) › 후속질문(`ChatThread` 축소판) › 원문 보기(모달).
 `renderMarkdown` 은 `lib/markdown.ts`(marked+dompurify)로 대체. 라우터 `awr.py`.
 **완료 판정:** 기존 분석 결과 JSON 을 그대로 넣어 렌더가 같은가(픽셀이 아니라 **정보 누락 0**).

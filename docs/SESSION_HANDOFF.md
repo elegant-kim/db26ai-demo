@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (Phase 5-3 완료 — `/graph` · `/productivity` · `/duality` 가 새 화면, nl2sql·vector·awr·manual 은 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-05 (Phase 5-4 완료 — graph·productivity·duality·awr 가 새 화면, nl2sql·vector·manual 은 레거시) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -208,7 +208,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 `app/routers/duality.py`(routes.py 의 `# === JSON Duality` 블록), 레지스트리 path, `gen_api_doc.py`. 관계형 vs JSON 은 `CompareView`
 (우측은 `SqlBlock lang="json"`), ETag 는 `StepList`, 문서 CRUD 는 `ResultTable` 클릭 → 편집 카드. 설계서 05 §6.3.
 
-## 4-7. ✅ Phase 5-3 완료 (2026-09-05, Fable 5.1) — 다음은 5-4 AWR (★ Fable)
+## 4-7. ✅ Phase 5-3 완료 (2026-09-05, Fable 5.1)
 
 **이식하면서 백엔드 버그 2건을 찾았다 — 둘 다 HTTP 200 뒤에 숨어 있었다** (`개발노하우.md` 3.1 표에 5·6번째 행으로 추가):
 
@@ -230,6 +230,25 @@ scripts/check-secrets.sh                # 커밋 전 필수
 `PipelineProgress`(SSE 단계) · `SessionTabs` · `ScoreGauge`(7 카테고리) · `KvGrid` · 액션아이템 · 후속질문 · 원문 모달 순으로. 설계서 05 §6.4.
 **완료 판정은 픽셀이 아니라 정보 누락 0** — 기존 분석 JSON 을 그대로 넣어 렌더가 같은가. `app/routers/awr.py` 분리.
 
+## 4-8. ✅ Phase 5-4 완료 (2026-09-05, Fable 5.1) — 다음은 5-5 NL2SQL (★ Fable, 확인 포인트 ①·④)
+
+**문서와 코드가 갈라져 있던 것 하나 정정**: CLAUDE.md·설계서는 AWR 분석을 SSE 라고 적었지만 **`POST /api/awr/analyze` 는 분석이 끝난 뒤 JSON 을 한 번 돌려준다**(30~120초).
+레거시 화면의 진행 표시는 타이머 연출이었고, 새 화면도 같은 연출을 유지한다(`stores/awr.ts`). SSE 는 PDF 업로드뿐이다 → `useSse` 는 5-6 에서 만든다.
+
+| 만든 것 | 위치 |
+|---|---|
+| 페이지(서브탭 없음): 업로드 카드(드롭존 + LLM 셀렉트) › 진행 카드 › `SessionTabs` › 보고서 | `web/src/pages/Awr.vue` · `pages/awr/{AwrUpload,AwrReport,AwrSection}.vue` |
+| 보고서 = 분석 정보 배지 행(옛 사이드바) › 점수 카드 7(막대, 80/60/40 톤) › 8섹션 카드(접기; data→`KvGrid` · table(s)→`ResultTable` · interpretation) › 액션아이템(우선순위 배지·근거·기대효과) › 후속질문(`ChatThread`+`ChatComposer`) › 원문 iframe 모달 | `AwrReport.vue` |
+| **공용 부품 4종 신설** — `PipelineProgress`(링 % + 단계, 5-6 업로드 재사용) · `KvGrid` · `SessionTabs` · `ChatThread`/`ChatComposer`(5-5·5-6 의 대화 화면 기초) + `lib/types/chat.ts` | `web/src/components/demo/` |
+| `.md-body` 마크다운 스타일(06 §5.13) — 후속질문 답의 표·목록. 5-7 가이드 문서 렌더가 같은 클래스를 쓴다 | `web/src/styles/tokens.css` 끝 |
+| `?load=<json url>` — 저장해 둔 분석 응답을 세션으로 연다(시연·캡처용). 픽스처는 **커밋하지 않는다**(고객 DB 이름이 든 실제 AWR) — `web/dist/awr_sample.json` 에 세션 한정으로 둔다 | `stores/awr.ts` `loadFromUrl` |
+| 라우터 분리 4호 `app/routers/awr.py` (routes.py 에 남아 있던 잔존 헤더·상수도 정리) · 레지스트리 extra 4항목 → `/awr` | |
+| 캡처 `captures/db26ai_awr_report_{light,dark}.png` (샘플 = `~/Dev/db26ai-demo/awr분석/awrrpt_1_199355_199359.html`, RAC+Exadata, Gemini 73초) | |
+
+**5-5 를 시작할 때 (NL2SQL, ★ Fable — 앱의 첫 화면)**: 사용자 확인 포인트 ①(실행 모드 7종 배치: 세그먼트 vs 셀렉트, 두 안 시연)과 ④(스레드 폭 `max-w-[960px]`) 가 여기 있다.
+`ChatThread`/`ChatComposer` 를 확장(결과 블록 = `SqlBlock`+`ResultTable`+차트+실행계획 버튼, 컴포저 위 슬롯에 프로필 셀렉트·모드 세그먼트·예시 질문). 서브탭 `ask|schema`(스키마 트리 + Annotation 적용/제거).
+`app/routers/nl2sql.py`(ask·profiles·set-profile·annotations·schema-info·explain-plan·execute-sql). 5-5 가 끝나면 `homePath()` 가 `/nl2sql` 로 바뀐다(menu.ts 의 첫 migrated). 설계서 05 §6.5.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -247,7 +266,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | 1 | **UI 런타임 임베딩 전환이 HNSW 차원 함정을 그대로 밟는다** — 사이드바에서 모델을 바꾸고 업로드하면 임베딩이 전부 NULL 이 된다(ORA-51932). 전환 시 인덱스 재생성이 필요하다는 안내나 자동 처리 없음 | `개발노하우.md` 3.2 |
 | ~~2~~ | ~~테스트·린트 없음~~ **해소** — pytest 45개 + ruff (`4fee5ae`) | — |
 | 3 | **API 응답 구조 불일치** (D11) — `data`/`chunks`/`sql_data`/`models`. SPA 이식 때 정규화 | `개발노하우.md` 3.4 |
-| 4 | **프론트 SPA 이식 진행 중** — 토대(5-0)·graph(5-1)·productivity(5-2)·duality(5-3) 완료, 5-4~5-7 남음 | `docs/design/05_SPA_이식_설계서.md` |
+| 4 | **프론트 SPA 이식 진행 중** — 5-0~5-4 완료(graph·productivity·duality·awr), 5-5 nl2sql · 5-6 vector · 5-7 manual 남음 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 
