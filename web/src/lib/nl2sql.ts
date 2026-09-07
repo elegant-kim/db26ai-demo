@@ -22,15 +22,27 @@ export const ACTIONS: { value: Action; label: string; hint: string }[] = [
 ]
 
 /**
- * 「환경 확인」 3종 — Select AI 가 돌려면 세 가지가 맞아야 한다.
- * 조회 SQL 의 정본은 app/select_ai.py 의 ENV_QUERIES, 허용값은 VALID_ENV_KINDS.
+ * 「환경」 서브탭 — Select AI 가 돌려면 세 가지가 맞아야 한다(2026-09-07 재설계, 사용자 지시).
+ * 프로필 → (credential_name) → 크리덴셜, 프로필 → (provider_endpoint 의 호스트) → ACL 로 이어지는
+ * 사슬을 한 화면에 놓는다. 조회 SQL 의 정본은 app/select_ai.py 의 ENV_QUERIES.
  */
 export type EnvKind = 'profile' | 'acl' | 'credential'
-export const ENV_CHECKS: { value: EnvKind; label: string; hint: string }[] = [
-  { value: 'profile', label: 'profile(프로필 속성)', hint: '이 프로필이 어느 LLM 으로 어느 테이블을 보는가 — DBA_CLOUD_AI_PROFILE_ATTRIBUTES' },
-  { value: 'acl', label: 'acl(네트워크 ACL)', hint: 'DB 가 LLM 엔드포인트로 나갈 수 있는가 — DBA_HOST_ACES. 없으면 ORA-24247' },
-  { value: 'credential', label: 'credential(크리덴셜)', hint: 'LLM API 키가 등록돼 있는가 — USER_CREDENTIALS. 키 값 자체는 보이지 않는다' },
-]
+
+/** provider_endpoint URL 에서 ACL 이 보는 호스트명만 뽑는다. 못 뽑으면 null. */
+export function hostFromEndpoint(url: string | null | undefined): string | null {
+  if (!url) return null
+  try { return new URL(url).hostname || null } catch { return null }
+}
+
+/** ACE 의 host 가 이 호스트를 덮는가 — 정확히 같거나, '*' 이거나, '*.example.com' 꼴의 접미 일치 */
+export function aclHostMatches(aceHost: string, target: string): boolean {
+  const a = aceHost.toLowerCase(), t = target.toLowerCase()
+  if (a === '*' || a === t) return true
+  return a.startsWith('*.') && t.endsWith(a.slice(1))
+}
+
+/** 환경 탭 「실제 호출 테스트」가 보내는 프롬프트 — 테이블을 읽지 않는 chat 이라 크리덴셜·ACL·LLM 경로만 탄다 */
+export const ENV_TEST_PROMPT = '안녕하세요. 준비됐으면 한 문장으로 답해 주세요.'
 
 export const LOADING_TEXT: Record<Action, string> = {
   showsql: 'AI 가 SQL 을 생성하고 있습니다',

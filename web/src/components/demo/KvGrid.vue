@@ -1,11 +1,14 @@
 <script setup lang="ts">
-/** label:value 그리드 — AWR 섹션의 data 유형. ⚠️ 가 든 값은 경고색 (레거시 awr-kv-warn). */
-defineProps<{ data: Record<string, string | number | null | undefined> }>()
+/**
+ * label:value 그리드 — AWR 섹션의 data 유형. ⚠️ 가 든 값은 경고색 (레거시 awr-kv-warn).
+ * cols=1 은 좁은 카드(NL2SQL 환경 탭의 3열 카드)용 — 2열이면 라벨이 잘린다.
+ */
+withDefaults(defineProps<{ data: Record<string, string | number | null | undefined>; cols?: 1 | 2 }>(), { cols: 2 })
 const warn = (v: unknown) => typeof v === 'string' && v.includes('⚠')
 </script>
 
 <template>
-  <dl class="m-0 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1">
+  <dl class="m-0 grid grid-cols-1 gap-x-8 gap-y-1" :class="cols === 2 ? 'lg:grid-cols-2' : ''">
     <div v-for="(v, k) in data" :key="k" class="kv flex items-baseline gap-3 py-1.5 text-sm">
       <dt class="shrink-0 w-40 truncate" style="color: var(--text-muted);" :title="String(k)">{{ k }}</dt>
       <dd class="m-0 min-w-0 break-words" :class="warn(v) ? 'font-semibold' : ''" :style="{ color: warn(v) ? 'var(--accent-warm)' : 'var(--text-primary)' }">{{ v ?? '—' }}</dd>

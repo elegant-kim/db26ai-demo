@@ -4,7 +4,7 @@ import { errorMessage } from '@/lib/api'
 import { annotationSetFor } from '@/lib/annotations'
 import {
   ACTION_BUTTONS, LOADING_TEXT, ask, applyAnnotations, executeSql, exampleQuestionsFor, explainPlan, getProfiles, getSchemaInfo,
-  removeAnnotations, setProfile, getEnvInfo, ENV_CHECKS, type Action, type EnvKind, type FollowAction, type Profile, type SchemaTable,
+  removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, type Action, type FollowAction, type Profile, type SchemaTable,
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
 import type { ChatMessage } from '@/lib/types/chat'
@@ -18,7 +18,7 @@ export interface Nl2sqlMessage extends ChatMessage {
   isSql?: boolean
   prevPrompt?: string | null
   // 어시스턴트
-  action?: Action | 'rawsql' | 'profile' | 'explainplan'
+  action?: Action | 'rawsql' | 'explainplan'
   prompt?: string
   profileName?: string
   loadingText?: string
@@ -33,16 +33,15 @@ export interface Nl2sqlMessage extends ChatMessage {
   cached?: Record<string, unknown>
   actionLoading?: boolean
   actionLoadingText?: string
-  profileResult?: { profile_name: string; attributes?: any }
-  envResult?: { kind: EnvKind; label: string; result?: any }
   sqlResult?: Rows | null
 }
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 
 /**
- * NL2SQL 탭 — 앱의 첫 화면. 프로필·실행 모드·대화 스레드·스키마 뷰어.
- * 레거시 app.js 의 sendQuestion/executeAction/processResult 를 그대로 옮기되, 결과는 Rows 로 정규화한다.
+ * NL2SQL 탭 — 앱의 첫 화면. 서브탭 3: 환경(프로필·크리덴셜·ACL 사슬) · 질문(대화) · 스키마·Annotation.
+ * 프로필은 페이지 공통이라 세 서브탭이 같은 것을 본다 (2026-09-07 재설계).
+ * 질문 쪽은 레거시 app.js 의 sendQuestion/executeAction/processResult 를 그대로 옮기되, 결과는 Rows 로 정규화한다.
  */
 export const useNl2sqlStore = defineStore('nl2sql', () => {
   const system = useSystemStore()
@@ -67,6 +66,73 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   const hasAnnotationSet = computed(() => annotationSetFor(profile.value) !== null)
   const asked = computed(() => messages.value.some((m) => m.role === 'user'))
 
+  // ── 「환경」 서브탭 ────────────────────────────────────────────────────────
+  // 프로필 → credential_name → 크리덴셜 / 프로필 → provider_endpoint 호스트 → ACL 사슬.
+  // 세 조회는 독립이라 병렬로 부르고, 프로필이 바뀌면 다시 읽는다. 결과 형태는 /api/env-info 의 result 그대로.
+  const env = ref<{ profile: any | null; credential: any | null; acl: any | null }>({ profile: null, credential: null, acl: null })
+  const envLoading = ref(false)
+  const envLoadedFor = ref('')
+  const envTest = ref<{ busy: boolean; response: string | null; elapsedMs: number | null; error: string | null }>({ busy: false, response: null, elapsedMs: null, error: null })
+
+  const profileAttrs = computed<Record<string, string>>(() => {
+    const out: Record<string, string> = {}
+    for (const r of env.value.profile?.data ?? []) out[String(r.ATTRIBUTE_NAME)] = r.ATTRIBUTE_VALUE == null ? '' : String(r.ATTRIBUTE_VALUE)
+    return out
+  })
+  const objectList = computed<{ owner: string; name: string }[]>(() => {
+    try { const v = JSON.parse(profileAttrs.value.object_list || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
+  })
+  const endpointHost = computed(() => hostFromEndpoint(profileAttrs.value.provider_endpoint))
+  const credentialName = computed(() => profileAttrs.value.credential_name || '')
+  const credentialRow = computed<Record<string, any> | null>(() => (env.value.credential?.data ?? []).find((r: any) => String(r.CREDENTIAL_NAME) === credentialName.value) ?? null)
+  const credOk = computed(() => !!credentialRow.value && String(credentialRow.value.ENABLED).toUpperCase() === 'TRUE')
+  const aclAll = computed<Rows | null>(() => (env.value.acl?.columns?.length ? fromColumnsData(env.value.acl) : null))
+  const aclForHost = computed<Record<string, any>[]>(() => {
+    const h = endpointHost.value
+    return h ? (env.value.acl?.data ?? []).filter((r: any) => aclHostMatches(String(r.HOST ?? ''), h)) : []
+  })
+  // 앱이 붙은 계정(ADMIN)에 준 권한만 센다 — 다른 principal 의 ACE 는 이 앱에 도움이 안 된다.
+  // USER_ 뷰 폴백에는 PRINCIPAL 열이 없으므로 그때는 거르지 않는다.
+  const currentUser = computed(() => (system.health?.schema || '').toUpperCase())
+  const aclPrivs = computed(() => new Set(
+    aclForHost.value
+      .filter((r) => r.PRINCIPAL == null || !currentUser.value || String(r.PRINCIPAL).toUpperCase() === currentUser.value)
+      .map((r) => String(r.PRIVILEGE ?? '').toUpperCase()),
+  ))
+  const aclOk = computed(() => aclPrivs.value.has('CONNECT'))
+  const annotationCount = computed(() => {
+    let n = 0
+    for (const t of schema.value ?? []) { if (t.annotation) n++; for (const c of t.columns) if (c.annotation) n++ }
+    return n
+  })
+
+  async function loadEnv(force = false) {
+    if (!profile.value) return
+    if (!force && envLoadedFor.value === profile.value) return
+    envLoading.value = true
+    try {
+      const [p, c, a] = await Promise.all([getEnvInfo('profile', profile.value), getEnvInfo('credential', profile.value), getEnvInfo('acl', profile.value)])
+      env.value = { profile: p.result ?? null, credential: c.result ?? null, acl: a.result ?? null }
+      envLoadedFor.value = profile.value
+      const err = [p, c, a].map((r) => r.result?.error).find(Boolean)
+      if (err) lastError.value = err
+    } catch (e) { lastError.value = errorMessage(e) }
+    finally { envLoading.value = false }
+  }
+
+  /** 세 카드가 전부 ✓ 여도 키가 만료됐으면 실패한다 — 그걸 이 자리에서 드러내는 것이 목적. chat 이라 테이블은 안 읽는다. */
+  async function testCall() {
+    if (envTest.value.busy || !profile.value) return
+    envTest.value = { busy: true, response: null, elapsedMs: null, error: null }
+    try {
+      const r = await ask(ENV_TEST_PROMPT, 'chat', profile.value)
+      if (r.success) envTest.value = { busy: false, response: typeof r.result === 'string' ? r.result : JSON.stringify(r.result), elapsedMs: r.elapsed_ms ?? null, error: null }
+      else envTest.value = { busy: false, response: null, elapsedMs: r.elapsed_ms ?? null, error: r.error || '알 수 없는 오류가 발생했습니다.' }
+    } catch (e: any) {
+      envTest.value = { busy: false, response: null, elapsedMs: null, error: e?.code === 'ECONNABORTED' ? '요청 시간이 초과되었습니다 (120초).' : errorMessage(e) }
+    }
+  }
+
   function push(m: Omit<Nl2sqlMessage, 'id' | 'timestamp'>): Nl2sqlMessage {
     const msg: Nl2sqlMessage = { id: ++seq, timestamp: now(), ...m }
     messages.value.push(msg)
@@ -74,55 +140,45 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   }
 
   let inflight: Promise<void> | null = null
-  function init(): Promise<void> {
-    if (profilesLoaded.value) return Promise.resolve()
-    if (inflight) return inflight
-    inflight = (async () => {
-      try {
-        profiles.value = await getProfiles()
-        profilesLoaded.value = true
-        if (!profiles.value.length) { lastError.value = 'DB 에 등록된 AI 프로필이 없습니다.'; return }
-        if (!profile.value) {
+  const known = (name: string) => !!name && profiles.value.some((p) => p.profile_name === name)
+  /**
+   * 프로필 목록을 한 번만 읽고 기본 프로필을 고른다. `preferred` 는 `?profile=` 딥링크 —
+   * 페이지와 서브탭이 같은 값으로 부르므로 첫 호출이 이긴다. 이미 로드된 뒤에 다른 값이 오면 그때 바꾼다.
+   */
+  function init(preferred?: unknown): Promise<void> {
+    const want = typeof preferred === 'string' ? preferred : ''
+    if (!profilesLoaded.value && !inflight) {
+      inflight = (async () => {
+        try {
+          profiles.value = await getProfiles()
+          profilesLoaded.value = true
+          if (!profiles.value.length) { lastError.value = 'DB 에 등록된 AI 프로필이 없습니다.'; return }
           // 기본 프로필 우선순위. 2026-09-05: GROQ 프로필이 DB 자격증명 문제(ORA-20404 bearer://api.groq.com)로 실패해
           // GEMINI 를 앞에 둔다 — Groq credential 을 고치면 순서를 되돌려도 된다.
-          const PREFER = ['GEMINI_SH_PROFILE', 'GROQ_SH_PROFILE']
+          const PREFER = [want, 'GEMINI_SH_PROFILE', 'GROQ_SH_PROFILE']
           const def = PREFER.map((n) => profiles.value.find((p) => p.profile_name === n)).find(Boolean) ?? profiles.value[0]
           await selectProfile(def.profile_name)
-        }
-      } catch (e) { lastError.value = errorMessage(e) } finally { inflight = null }
-    })()
-    return inflight
-  }
-
-  async function selectProfile(name: string) {
-    profile.value = name
-    try {
-      const r = await setProfile(name)
-      if (!r.success) { lastError.value = r.error || '프로필 설정 실패'; return }
-      push({ role: 'assistant', content: '', action: 'profile', profileResult: { profile_name: name, attributes: r.attributes ?? null } })
-      system.toast(`프로필 설정 완료: ${name}`, 'success')
-    } catch (e) { lastError.value = errorMessage(e) }
-    void loadSchema()
+        } catch (e) { lastError.value = errorMessage(e) } finally { inflight = null }
+      })()
+      return inflight
+    }
+    return (inflight ?? Promise.resolve()).then(async () => { if (want && want !== profile.value && known(want)) await selectProfile(want) })
   }
 
   /**
-   * 「환경 확인」 — 프로필 속성 · 네트워크 ACL · 크리덴셜을 조회해 스레드에 남긴다.
-   * 실행 모드와 같은 세그먼트 버튼으로 고르고, 결과는 조회 SQL + 표로 보여준다
-   * (무엇을 어떻게 확인했는지가 화면에 남아야 시연에서 설명이 된다).
+   * 프로필 선택 — 페이지 공통. 환경 3종과 스키마를 다시 읽는다.
+   * DBMS_CLOUD_AI.SET_PROFILE 은 부르지 않는다: 세션 단위라 풀 커넥션에선 의미가 없고(ORA-20046 교훈),
+   * /api/ask 는 매 호출 프로필명을 명시한다. 옛 화면이 대화창에 밀어 넣던 속성 표는 「환경」 탭이 대신한다.
    */
-  async function checkEnv(kind: EnvKind) {
-    const meta = ENV_CHECKS.find((e) => e.value === kind)
-    const label = meta?.label ?? kind
-    const msg = push({ role: 'assistant', content: '', action: 'env', envResult: { kind, label }, loading: true, loadingText: `${label} 조회 중…` })
-    try {
-      const r = await getEnvInfo(kind, profile.value)
-      msg.envResult = { kind, label, result: r.result ?? null }
-      if (r.result?.error) msg.errorText = r.result.error
-    } catch (e) {
-      msg.errorText = errorMessage(e)
-    } finally {
-      msg.loading = false
-    }
+  async function selectProfile(name: string) {
+    if (!name || !known(name)) return
+    const changed = profile.value !== '' && profile.value !== name
+    if (name === profile.value && envLoadedFor.value === name) return
+    profile.value = name
+    envTest.value = { busy: false, response: null, elapsedMs: null, error: null }
+    lastError.value = null
+    if (changed) system.toast(`프로필 선택: ${name}`, 'success')
+    await Promise.all([loadEnv(true), loadSchema()])
   }
 
   async function loadSchema() {
@@ -239,13 +295,12 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     } catch (e) { system.toast(errorMessage(e), 'error') } finally { annoBusy.value = '' }
   }
 
-  function clear() { messages.value = messages.value.filter((m) => m.action === 'profile').slice(-1) }
-  const profileAttrsRows = (m: Nl2sqlMessage): Rows | null => (m.profileResult?.attributes?.columns ? fromColumnsData(m.profileResult.attributes) : null)
-  const envRows = (m: Nl2sqlMessage): Rows | null => (m.envResult?.result?.columns?.length ? fromColumnsData(m.envResult.result) : null)
+  function clear() { messages.value = [] }
 
   return {
     profiles, profile, profilesLoaded, action, messages, input, sqlInput, sending, sqlRunning, schema, schemaLoading, expanded, annoBusy, lastError,
     examples, profileOptions, hasAnnotationSet, asked,
-    init, selectProfile, checkEnv, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear, profileAttrsRows, envRows,
+    env, envLoading, envTest, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
+    init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,
   }
 })

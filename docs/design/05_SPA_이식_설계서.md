@@ -140,7 +140,7 @@ web/
     │   │            SchemaTree ExplainPlan EmptyState DocViewer
     │   └── CommandPalette.vue       investhub 이식 (권한 필터 제거, 레지스트리는 API)
     └── pages/
-        ├── Nl2sql.vue     서브탭: 질문 · 스키마·Annotation
+        ├── Nl2sql.vue     서브탭: 환경 · 질문 · 스키마·Annotation (2026-09-07 재설계)
         ├── Vector.vue     서브탭: 검색 · 문서·업로드 · Vector Store · 임베딩·ONNX
         ├── Duality.vue    서브탭: 뷰 관리 · 관계형 vs JSON · 문서 CRUD · ETag
         ├── Graph.vue      서브탭: 그래프 관리 · SQL vs PGQ · 패턴 탐색 · 시각화
@@ -169,7 +169,7 @@ web/
 | 경로 | 페이지 | 서브탭 쿼리 | 비고 |
 |---|---|---|---|
 | `/` | → `/nl2sql` 리다이렉트 | | |
-| `/nl2sql` | Nl2sql | `?sub=ask\|schema` | 기본 진입 |
+| `/nl2sql` | Nl2sql | `?sub=env\|ask\|schema` | 기본 진입 = env (2026-09-07). `?profile=` 은 페이지 헤더 셀렉트에 적용, `?sub=env&run=1` 은 실제 호출 테스트 |
 | `/vector` | Vector | `?sub=search\|docs\|store\|embedding` | |
 | `/duality` | Duality | `?sub=views\|compare\|crud\|etag` | |
 | `/graph` | Graph | `?sub=manage\|compare\|pattern\|viz` | |
@@ -371,8 +371,13 @@ Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 �
 
 | 서브탭 | 컴포넌트 |
 |---|---|
-| 질문 | `ChatThread`(사용자 말풍선·결과 블록: `SqlBlock`+`ResultTable`+차트+실행계획 버튼) + **`ChatComposer`**(프로필 셀렉트 · 실행모드 세그먼트 · 예시질문 셀렉트 · 입력 · SQL 직접실행 입력) |
+| **환경** (2026-09-07 추가, 기본 진입) | 상태 스트립(`Badge` ✓/✗) › 3열 `Card`: ① 프로필 `KvGrid cols=1` + object_list 칩 · ② 크리덴셜(← credential_name) · ③ ACL(← provider_endpoint 호스트, 권한 배지 + 해당 호스트 ACE 표, 전체 보기) — 카드마다 접힌 `SqlBlock` › 「실제 호출 테스트」(chat 1회, 응답·소요시간·ORA 코드) |
+| 질문 | `ChatThread`(사용자 말풍선·결과 블록: `SqlBlock`+`ResultTable`+차트+실행계획 버튼) + **`ChatComposer`**(실행모드 세그먼트 · 예시질문 셀렉트 · 입력 · SQL 직접실행 입력). 프로필 셀렉트는 페이지 헤더로 올라갔다 |
 | 스키마·Annotation | `SchemaTree`(테이블 › 컬럼, Annotation 배지) + `Button`(적용/제거) |
+
+**2026-09-07 재설계 (사용자 지시 "직관성·일관성 기준으로 메인 화면을 대폭 수정")** — 이 앱의 다른 탭은 전부 "단계 = 서브탭"인데 NL2SQL 만 채팅 우선이었다.
+서브탭 순서를 시연 순서(환경 → 질문 → 스키마)로 맞추고, 프로필을 페이지 공통으로 올렸다. 환경 정보를 대화 스레드에 섞던 것(옛 `profileResult`)은 폐기.
+1차 시도(질문 탭 하단에 환경 버튼 3개, 결과는 위 스레드에)는 "누른 곳과 결과가 나오는 곳이 다르다 · 모드 선택기와 같은 생김새인데 동작이 다르다"로 기각됐다 — `SESSION_HANDOFF.md` §4-15·4-16.
 
 라우터 `nl2sql.py`(ask·profiles·set-profile·annotations·schema-info·explain-plan·execute-sql).
 **사용자 확인 포인트 ①**(§3.2)을 여기서 두 안으로 시연.
