@@ -123,6 +123,7 @@ scripts/deploy.sh
 | `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
 | `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
+| `sql/setup/51_selectai_adb_setup.sql`<br>`52_..._demo.sql` · `53_..._teardown.sql` | **앱 없이 SQLcl 만으로** Select AI 를 세팅·시연·원복하는 ADB 전용 3종 세트 (2026-09-07). Annotation 목록의 정본은 `web/src/lib/annotations.ts` 이고 51번 §5 는 거기서 생성한 것이다. 옛 `selectAI_설정.sql`·`selectAI_demo.sql` 은 **다른 환경용**이라 보존만 한다 |
 | `docs/` | 사람이 읽는 문서 — 아래 "문서 체계" 참조 |
 
 ## 문서 체계 (4층)

@@ -339,6 +339,40 @@ scripts/check-secrets.sh                # 커밋 전 필수
 
 **이 뒤에 열린 과제만 남는다** — §6 표. 특히 7번(GROQ 프로필 ORA-20404)은 사용자 판단.
 
+## 4-14. Select AI 독립 실행 SQL 3종 세트 (2026-09-07, Opus 5)
+
+**계기** — 사용자가 "앱 화면이 아니라 SQL 만으로 세팅·시연하던 옛 파일 2개를 검토해 달라"고 요청.
+검토 결과 두 파일은 **다른 환경에서 쓰던 작업 로그**였고 이 ADB 에서는 첫 줄부터 깨졌다.
+
+| 발견 | 내용 |
+|---|---|
+| 프로필명 불일치 | `set_profile('GROQ_PROFILE')` — 실제는 `GROQ_SH_PROFILE`. 두 파일 모두 시연 첫 줄에서 ORA-20000 |
+| 실행 순서 역전 | 프로필의 `object_list` 가 `ADMIN.*` 인데 ADMIN 복제(CTAS)는 180줄 뒤에 있었다 |
+| 스키마 불일치 | 대본은 `SH` 를 조회하는데 프로필은 `ADMIN` 을 본다 |
+| DROP 블록 | `DROP_PROFILE` 4개가 한 BEGIN/END — 첫 실패가 나머지를 막는다 |
+| 죽은 설정 | `OCI_CRED` 생성 — 참조하는 프로필 없음, 현재 DB 에도 없음. SSB 프로필 2개도 대상 테이블이 주석 처리돼 있었다 |
+| 시크릿 | `create user mhmc identified by Welcome12345` 가 **두 파일에 각각** + 무관한 고객사 테이블명 |
+
+**기존 2개는 보존**(다른 환경용, 사용자 지시). 새로 3개를 추가했다:
+
+| 파일 | 내용 |
+|---|---|
+| `sql/setup/51_selectai_adb_setup.sql` | §0 사전확인 → §1 SH→ADMIN 복제 → §2 ACL → §3 크리덴셜 → §4 프로필 2개 → §5 Annotation 59건 → §6 검증 6종 |
+| `sql/setup/52_selectai_adb_demo.sql` | §0 프로필·워밍업 → §2 액션 6종 → §3 한국어 질문 → **§4 Annotation 효과 비교(핵심)** → §5 멀티턴 → §6 함수 호출 → §7 실행계획·프로필 전환 |
+| `sql/setup/53_selectai_adb_teardown.sql` | 프로필 → 크리덴셜 → Annotation → ACL 순 원복. **테이블 삭제(§5)는 주석 처리**(다른 탭의 기반이라) |
+
+**실측으로 확인한 것** (추측으로 쓰지 않기 위해 전부 이 ADB 에서 돌렸다):
+
+- `select AI` 축약구문에서 액션 6종(`runsql`·`showsql`·`narrate`·`explainsql`·`showprompt`·`summarize`) 전부 동작
+- `explainsql` 은 한국어 지시를 질문에 직접 붙여야 한국어로 답한다(앱은 자동으로 붙인다)
+- `summarize` 는 질의 **결과**가 아니라 **프롬프트 텍스트**를 요약한다 — 짧은 질문에는 쓸모가 없다
+- **`ANNOTATIONS (ADD Display ...)` 는 덮어쓰지 않고 중복 행을 만든다** → `개발노하우.md` 3.3 에 추가
+- §5 블록 왕복 검증: 59건 적용 → 0건 제거 → 59건 복원, 중복 0
+- 검증 쿼리 12개 전부 오류 없이 실행
+
+**Annotation 목록은 손으로 옮기지 않았다** — 정본 `web/src/lib/annotations.ts` 에서 생성했다(59건 일치).
+내용을 바꿀 때는 TS 를 먼저 고치고 51번 §5 를 다시 생성한다.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -359,7 +393,7 @@ scripts/check-secrets.sh                # 커밋 전 필수
 | ~~4~~ | ~~프론트 SPA 이식~~ **해소** — Phase 4·5·6 완료(2026-09-05). 레거시 삭제, 7페이지 새 화면 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
-| 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (2026-09-05 실측: `Object not found - bearer://api.groq.com/openai/v1/chat/completions`). DB 의 `GROQ_CRED` 자격증명 또는 네트워크 ACL 문제로 보인다 — 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 |
+| 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
 
 ## 7. 새 세션 첫 단계 권장
