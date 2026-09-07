@@ -43,7 +43,7 @@ const chart = computed(() => {
         <!-- SQL 직접 실행 -->
         <template v-if="msg.sqlResult">
           <SqlBlock :code="msg.sqlResult.sql" label="직접 실행한 SQL" :badge="msg.profileName ? `SELECT AI · ${msg.profileName}` : undefined" />
-          <ResultTable :rows="msg.sqlResult" dense />
+          <ResultTable v-if="!msg.aiDirect" :rows="msg.sqlResult" dense />
         </template>
 
         <SqlBlock v-if="msg.sql" :code="msg.sql" label="생성된 SQL" badge="Select AI" line-numbers />

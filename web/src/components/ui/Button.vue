@@ -15,7 +15,8 @@ const sizeStyle: Record<string, string> = {
 }
 const variantStyle: Record<string, string> = {
   primary: 'background: var(--accent-primary); color: var(--text-on-accent);',
-  secondary: 'background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-strong);',
+  // 테두리를 inset 그림자로 그린다 — border 는 박스를 2px 키워 옆의 primary 와 높이가 어긋났다(2026-09-07 실측 39.7 vs 37.7).
+  secondary: 'background: var(--bg-surface); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border-strong);',
   ghost: 'background: transparent; color: var(--text-primary);',
   danger: 'background: var(--accent-negative); color: var(--text-on-accent);',
 }

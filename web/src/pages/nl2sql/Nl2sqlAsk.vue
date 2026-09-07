@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Terminal, Eraser } from 'lucide-vue-next'
+import { MessageSquareText, Terminal, Play, Eraser } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -51,18 +51,17 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
       </ChatThread>
 
       <div class="mt-4 pt-4 flex flex-col gap-3" style="border-top: 1px solid var(--border-default);">
-        <ChatComposer v-model="s.input" :busy="s.sending" :disabled="!s.profile" placeholder="자연어로 질문하세요…" send-label="질문" @send="s.send(s.input)">
+        <ChatComposer v-model="s.input" :icon="MessageSquareText" :busy="s.sending" :disabled="!s.profile" placeholder="자연어로 질문하세요…" send-label="질문" @send="s.send(s.input)">
           <div class="flex flex-wrap items-center gap-2">
             <Segmented :model-value="s.action" :options="actionOptions" size="sm" @update:model-value="(v: string) => (s.action = v as Action)" />
             <div class="flex-1 min-w-[240px]"><SearchableSelect :model-value="example" :options="exampleOptions" placeholder="예시 질문 고르기…" @update:model-value="pickExample" /></div>
           </div>
         </ChatComposer>
+        <!-- SQL 직접 실행 — 위 자연어 줄과 같은 부품(같은 높이·글자·버튼 크기). `>_` · mono · secondary 버튼이 "여긴 SQL" 이라고 말한다 -->
         <div class="flex items-center gap-2">
-          <Terminal :size="14" :stroke-width="1.75" style="color: var(--text-muted);" />
-          <input v-model="s.sqlInput" :disabled="s.sqlRunning" placeholder="SELECT 문 직접 실행 · SELECT AI <액션> <질문> 도 됩니다 (WITH 절은 거부됨)" class="flex-1 min-w-0 rounded-md px-3 py-1.5 text-xs font-mono"
-            style="background: var(--bg-elevated); border: 1px solid var(--border-default); color: var(--text-primary);" @keydown.enter.prevent="s.runSql(s.sqlInput)" />
-          <Button variant="secondary" size="sm" :busy="s.sqlRunning" :disabled="!s.sqlInput.trim()" @click="s.runSql(s.sqlInput)">실행</Button>
-          <Button variant="ghost" size="sm" title="대화 비우기" :disabled="!s.asked" @click="s.clear()"><Eraser :size="14" :stroke-width="1.75" /></Button>
+          <ChatComposer v-model="s.sqlInput" class="flex-1 min-w-0" :icon="Terminal" :send-icon="Play" mono send-variant="secondary" :busy="s.sqlRunning" :disabled="!s.profile"
+            placeholder="SELECT 문을 직접 실행 · SELECT AI <액션> <질문> 도 됩니다 (WITH 절은 거부됨)" send-label="실행" @send="s.runSql(s.sqlInput)" />
+          <Button variant="ghost" title="대화 비우기" :disabled="!s.asked" @click="s.clear()"><Eraser :size="14" :stroke-width="1.75" /></Button>
         </div>
         <div class="flex items-center gap-2 text-[11px]" style="color: var(--text-muted);">
           <Badge tone="code">{{ s.action }}</Badge><span>{{ ACTIONS.find((a) => a.value === s.action)?.hint }}</span>

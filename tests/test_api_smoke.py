@@ -279,6 +279,14 @@ class TestSelectAiShorthand:
         assert r["select_ai"] is True and r["profile_name"] == self.PROFILE
         assert r["columns"] == ["RESPONSE"], r["columns"]
         assert "CUSTOMERS" in str(r["data"][0]["RESPONSE"]).upper(), r["data"]
+        assert r["select_ai_action"] == "showsql" and r["select_ai_prompt"] == "고객이 몇 명인가요"
+
+    def test_액션을_생략하면_runsql_로_실제_결과가_온다(self, client):
+        """사용자가 실제로 친 형태 — `select ai 질문`. RESPONSE 한 칸이 아니라 진짜 결과 집합이어야 한다."""
+        r = client.post("/api/execute-sql", json={"sql": "select ai 고객이 몇 명인가요", "profile_name": self.PROFILE}).json()
+        assert r.get("success"), r.get("error")
+        assert r["select_ai_action"] == "runsql" and r["select_ai_prompt"] == "고객이 몇 명인가요"
+        assert r["columns"] != ["RESPONSE"] and r["row_count"] == 1, (r["columns"], r["row_count"])
 
     def test_프로필_없이_보내면_명확한_오류(self, client):
         r = client.post("/api/execute-sql", json={"sql": "select AI showsql 고객이 몇 명인가요"}).json()

@@ -34,6 +34,8 @@ export interface Nl2sqlMessage extends ChatMessage {
   actionLoading?: boolean
   actionLoadingText?: string
   sqlResult?: Rows | null
+  /** 직접 실행창에 친 `SELECT AI …` — 결과는 자연어 답변과 같은 블록(생성된 SQL·표·서술)으로 그린다 */
+  aiDirect?: boolean
 }
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
@@ -239,9 +241,25 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
       const r = await executeSql(sql, profile.value)
       msg.elapsedMs = r.elapsed_ms ?? null
       msg.sqlResult = r.rows
-      if (r.select_ai) msg.profileName = r.profile_name || profile.value   // SqlBlock 배지: 어느 프로필로 번역됐나
-      // 오류는 표 자리(ResultTable 의 error 행)에 한 번만 — 상단 배너까지 겹치면 같은 문장이 두 번 보인다
-      if (!r.success && !r.rows?.error) msg.errorText = r.error || 'SQL 실행에 실패했습니다.'
+      if (r.select_ai) {
+        // `SELECT AI [액션] 질문` 은 자연어 질문과 같은 것이다 — 같은 블록으로 그리고 같은 후속 버튼을 단다.
+        // 친 문장은 위의 「직접 실행한 SQL」 블록(배지: 프로필)에 남고, RESPONSE 한 칸짜리 표는 숨긴다.
+        const act = (r.select_ai_action || 'runsql') as Action
+        msg.aiDirect = true
+        msg.action = act
+        msg.prompt = r.select_ai_prompt || ''
+        msg.profileName = r.profile_name || profile.value
+        msg.cached = {}
+        msg.chartType = 'bar'
+        if (r.success) {
+          const payload: unknown = act === 'runsql' ? r.rows.rows : r.rows.rows[0]?.[r.rows.columns[0]] ?? ''
+          msg.cached[act] = payload
+          processResult(msg, act, payload)
+        } else msg.errorText = r.error || 'SQL 실행에 실패했습니다.'
+      } else if (!r.success && !r.rows?.error) {
+        // 오류는 표 자리(ResultTable 의 error 행)에 한 번만 — 상단 배너까지 겹치면 같은 문장이 두 번 보인다
+        msg.errorText = r.error || 'SQL 실행에 실패했습니다.'
+      }
     } catch (e) { msg.errorText = errorMessage(e) }
     finally { msg.loading = false; sqlRunning.value = false }
   }

@@ -457,6 +457,29 @@ ORA-20046(4-9)과 같은 뿌리, 다른 증상. 오전에 SQL Developer 가 낸 
 브라우저에서 `select ai showsql 고객이 모두 몇 명인가요` → 배지 + RESPONSE, `select foo from nowhere` → ORA-00942 한 번.
 `개발노하우.md` 3.4 · 가이드 01 「직접 SQL 실행」 · CLAUDE.md API 목록 갱신.
 
+## 4-18. 직접 실행한 `SELECT AI` 도 자연어 답변과 같은 블록으로 + 입력줄 두 개 통일 (2026-09-07, Fable 5.1)
+
+**계기** — 사용자 캡처: `select ai showsql 월별 매출 추이` 를 직접 실행하니 생성 SQL 이 `RESPONSE` 한 칸에 **한 줄로 주욱** 나왔다.
+"자연어 질문 결과처럼 들여쓰기된 SQL 로 나올 수 없나? 그리고 자연어 줄과 SQL 직접 실행 줄의 글자 크기가 다르다 — 일관되게, 대신 SQL 을 직접
+넣는 줄이라는 특징은 살려서."
+
+**① 결과 블록** — `SELECT AI [액션] 질문` 은 자연어 질문과 같은 것이므로 **같은 길로 보낸다.**
+- 서버 `execute_raw_sql` 이 액션과 질문을 분리해 `select_ai_action` · `select_ai_prompt` 로 돌려준다(액션 생략 = runsql).
+  액션 7종 목록은 `select_ai.py` 의 `SELECT_AI_ACTIONS` 하나로 모았고 라우터 `VALID_ACTIONS` 는 그것을 쓴다.
+- 스토어 `runSql` 이 `select_ai` 응답이면 `msg.action = 액션`, `msg.prompt = 질문`, `msg.cached[액션] = 응답` 을 채우고
+  **`processResult()` 를 그대로 태운다** → showsql 은 「생성된 SQL」 줄번호 블록, narrate/explainsql 은 마크다운 서술, runsql 은 표 + 차트.
+  친 문장은 위 「직접 실행한 SQL」 블록(배지 `SELECT AI · 프로필`)에 남고, `RESPONSE` 한 칸짜리 표는 `aiDirect` 로 숨긴다.
+- 그래서 **후속 버튼(runsql · narrate · 실행계획 · showprompt …)이 자연어 답변과 똑같이 달린다** — `runAction` 이 `msg.prompt`/`msg.profileName` 으로 `/api/ask` 를 부르므로 추가 코드 없이 동작.
+
+**② 입력줄 통일** — 두 줄이 **같은 부품(`ChatComposer`)** 을 쓰게 했다. 높이 38px · 글자 14px · 버튼 크기가 같아진다(실측).
+성격을 말하는 것만 다르다: 앞 아이콘(말풍선 vs `>_`), SQL 줄은 mono 글꼴, 버튼은 primary 「질문」 vs secondary 「실행」(▶).
+`ChatComposer` 에 `icon` · `sendIcon` · `mono` · `sendVariant` 를 추가했고 기본값은 기존 동작 그대로(Vector 탭 영향 없음).
+덤: `Button` secondary 가 `border` 로 테두리를 그려 옆의 primary 보다 **2px 컸다**(39.7 vs 37.7). inset `box-shadow` 로 바꿔 앱 전체에서
+primary 옆에 놓인 secondary 가 같은 높이가 된다 — 이 화면만이 아니라 모든 탭에 적용되는 변경이다(모양은 동일).
+
+**검증** — 테스트 +1(`select ai 질문` 기본 액션이 진짜 결과 집합을 돌려준다), 57개 통과. 브라우저에서 showsql → 줄번호 SQL 블록 + 후속 4개,
+기본형 → 고객수 55,500 표 + 후속 7개(차트 포함), `RESPONSE` 표 없음. 두 입력줄 computed: 38px/14px, `-apple-system` vs `SF Mono`.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은

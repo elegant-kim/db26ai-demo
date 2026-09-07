@@ -313,7 +313,13 @@ async def get_explain_plan(pool, sql: str) -> dict:
         return {"error": str(e), "sql_used": stripped}
 
 
+# Select AI 액션 7종 — 라우터의 VALID_ACTIONS 가 이것을 그대로 쓴다(정본 한 곳).
+SELECT_AI_ACTIONS = ("runsql", "showsql", "narrate", "explainsql", "showprompt", "summarize", "chat")
 _SELECT_AI_RE = re.compile(r"^SELECT\s+AI\b", re.IGNORECASE)
+# `SELECT AI [액션] 질문` — 액션을 생략하면 runsql. 화면이 결과를 액션에 맞게 그리려고 둘을 분리해 돌려준다.
+_SELECT_AI_PARTS_RE = re.compile(
+    r"^SELECT\s+AI\s+(?:(" + "|".join(SELECT_AI_ACTIONS) + r")\b\s*)?(.*)$", re.IGNORECASE | re.DOTALL
+)
 
 
 async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
@@ -331,6 +337,11 @@ async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
         return {"error": "SELECT 문만 실행할 수 있습니다."}
 
     is_select_ai = bool(_SELECT_AI_RE.match(stripped))
+    ai_action, ai_prompt = "", ""
+    if is_select_ai:
+        m = _SELECT_AI_PARTS_RE.match(stripped)
+        ai_action = (m.group(1) or "runsql").lower() if m else "runsql"
+        ai_prompt = (m.group(2) or "").strip() if m else ""
     if is_select_ai and not profile_name:
         return {"sql_executed": stripped, "error": "SELECT AI 구문은 AI 프로필이 필요합니다 — 페이지 우상단에서 프로필을 고르세요."}
 
@@ -359,6 +370,8 @@ async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
                     "row_count": len(data),
                     "select_ai": is_select_ai,
                     "profile_name": profile_name if is_select_ai else "",
+                    "select_ai_action": ai_action,
+                    "select_ai_prompt": ai_prompt,
                 }
     except Exception as e:
         return {

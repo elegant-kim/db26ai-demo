@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.database import get_pool
 from app.select_ai import (
+    SELECT_AI_ACTIONS,
     apply_annotations,
     ask_select_ai,
     execute_raw_sql,
@@ -24,7 +25,7 @@ from app.select_ai import (
 
 router = APIRouter(prefix="/api", tags=["nl2sql"])
 
-VALID_ACTIONS = {"runsql", "showsql", "narrate", "explainsql", "showprompt", "summarize", "chat"}
+VALID_ACTIONS = set(SELECT_AI_ACTIONS)  # 정본은 app/select_ai.py — 직접 실행창의 SELECT AI 파서와 같은 목록
 
 # 「환경 확인」 버튼 3종. 조회 SQL 정본은 app/select_ai.py 의 ENV_QUERIES 다.
 VALID_ENV_KINDS = {"profile", "acl", "credential"}
