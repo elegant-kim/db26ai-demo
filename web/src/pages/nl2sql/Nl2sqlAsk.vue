@@ -59,7 +59,7 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
         </ChatComposer>
         <div class="flex items-center gap-2">
           <Terminal :size="14" :stroke-width="1.75" style="color: var(--text-muted);" />
-          <input v-model="s.sqlInput" :disabled="s.sqlRunning" placeholder="SELECT 문을 직접 실행 (WITH 절은 거부됨)" class="flex-1 min-w-0 rounded-md px-3 py-1.5 text-xs font-mono"
+          <input v-model="s.sqlInput" :disabled="s.sqlRunning" placeholder="SELECT 문 직접 실행 · SELECT AI <액션> <질문> 도 됩니다 (WITH 절은 거부됨)" class="flex-1 min-w-0 rounded-md px-3 py-1.5 text-xs font-mono"
             style="background: var(--bg-elevated); border: 1px solid var(--border-default); color: var(--text-primary);" @keydown.enter.prevent="s.runSql(s.sqlInput)" />
           <Button variant="secondary" size="sm" :busy="s.sqlRunning" :disabled="!s.sqlInput.trim()" @click="s.runSql(s.sqlInput)">실행</Button>
           <Button variant="ghost" size="sm" title="대화 비우기" :disabled="!s.asked" @click="s.clear()"><Eraser :size="14" :stroke-width="1.75" /></Button>

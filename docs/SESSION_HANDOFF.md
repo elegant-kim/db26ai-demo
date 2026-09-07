@@ -440,6 +440,23 @@ NL2SQL(Select AI)                          [AI 프로필 ▾]   ← 페이지 �
 **실측** — 헤드리스 캡처 `captures/nl2sql_env_{light,dark}.png` · `nl2sql_env_run_light.png`(GEMINI 호출 "네, 준비됐습니다." 4.05초) · `nl2sql_ask_light.png`.
 브라우저 패널에서 조회 SQL 토글 · 전체 11건 토글 · 헤더 셀렉트로 GROQ 전환(스트립이 GROQ_CRED · api.groq.com 으로 바뀜) → 호출 시 ORA-20404 · GEMINI 복귀 · 질문 탭 showsql 왕복 확인.
 
+## 4-17. 「SQL 직접 실행」이 `SELECT AI …` 를 받는다 (2026-09-07, Fable 5.1)
+
+**계기** — 사용자가 직접 실행창에 `select ai 매출 상위 5개 제품을 알려주세요` 를 쳤더니 `ORA-00923: FROM keyword not found`.
+"SQL 직접 실행이면 select AI 도 되어야 하는 것 아닌가?" — 맞다. `execute_raw_sql` 의 주석은 이미 "SELECT 또는 SELECT AI만 허용"이었는데
+세션 프로필을 아무도 안 잡았다.
+
+**원인** — `SELECT AI` 는 DB 가 번역하지만 **그 세션에 프로필이 있어야** 번역이 걸린다. 풀 커넥션에는 없으니 일반 SELECT 로 파싱된다.
+ORA-20046(4-9)과 같은 뿌리, 다른 증상. 오전에 SQL Developer 가 낸 `Unknown Command` 는 이것과 별개 — 클라이언트가 보내기 전에 거른 것.
+
+**수정** — `execute_raw_sql(pool, sql, profile_name)`: 문장이 `^SELECT\s+AI\b` 이면 **같은 커넥션에서 `SET_PROFILE` 후 실행**, 응답에
+`select_ai: true, profile_name` 을 싣는다. 프로필 없이 오면 "페이지 우상단에서 프로필을 고르세요" 오류. 화면은 `SqlBlock` 에 `SELECT AI · 프로필` 배지.
+덤으로 같은 오류가 상단 배너 + 표 오류행에 **두 번** 찍히던 것을 표 자리 한 번으로 정리했다(사용자 캡처에 그대로 보였다).
+
+**검증** — 테스트 3개 추가(`TestSelectAiShorthand`: 프로필 동반 → RESPONSE 열에 CUSTOMERS SQL · 프로필 없음 → 명확한 오류 · 일반 SELECT 는 인자 무시), 56개 통과.
+브라우저에서 `select ai showsql 고객이 모두 몇 명인가요` → 배지 + RESPONSE, `select foo from nowhere` → ORA-00942 한 번.
+`개발노하우.md` 3.4 · 가이드 01 「직접 SQL 실행」 · CLAUDE.md API 목록 갱신.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은

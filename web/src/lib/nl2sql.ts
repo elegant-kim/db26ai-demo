@@ -107,7 +107,9 @@ export const setProfile = (profile_name: string) =>
   api.post<{ success: boolean; profile_name?: string; error?: string; attributes?: any }>('/api/set-profile', { profile_name }).then((r) => r.data)
 export const ask = (prompt: string, action: Action, profile_name: string) =>
   api.post<{ success: boolean; action: Action; result: unknown; elapsed_ms: number; error?: string }>('/api/ask', { prompt, action, profile_name }).then((r) => r.data)
-export const executeSql = (sql: string) => api.post('/api/execute-sql', { sql }).then((r) => ({ ...r.data, rows: fromColumnsData(r.data) as Rows }))
+/** `SELECT AI …` 는 서버가 같은 커넥션에서 SET_PROFILE 을 먼저 부르므로 profile_name 을 같이 보낸다 */
+export const executeSql = (sql: string, profile_name: string) =>
+  api.post('/api/execute-sql', { sql, profile_name }).then((r) => ({ ...r.data, rows: fromColumnsData(r.data) as Rows }))
 export const explainPlan = (sql: string) => api.post<{ success: boolean; plan?: string; sql_used?: string; error?: string }>('/api/explain-plan', { sql }).then((r) => r.data)
 export const getEnvInfo = (kind: EnvKind, profile_name: string) =>
   api.post<{ success: boolean; kind: EnvKind; result: any }>('/api/env-info', { kind, profile_name }).then((r) => r.data)

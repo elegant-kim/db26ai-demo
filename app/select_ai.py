@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 import oracledb
 
@@ -312,8 +313,16 @@ async def get_explain_plan(pool, sql: str) -> dict:
         return {"error": str(e), "sql_used": stripped}
 
 
-async def execute_raw_sql(pool, sql: str) -> dict:
-    """사용자가 입력한 SQL을 실행하고 결과를 반환한다. SELECT 문만 허용."""
+_SELECT_AI_RE = re.compile(r"^SELECT\s+AI\b", re.IGNORECASE)
+
+
+async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
+    """사용자가 입력한 SQL을 실행하고 결과를 반환한다. SELECT 문만 허용.
+
+    `SELECT AI <액션> <질문>` 축약구문은 DB 가 번역하지만 **그 세션에 프로필이 설정돼 있어야** 한다.
+    풀 커넥션에는 없으므로 같은 커넥션에서 SET_PROFILE 을 먼저 부른다 — 안 그러면 일반 SELECT 로
+    파싱돼 ORA-00923 (FROM keyword not found) 이 난다 (2026-09-07 실측, 화면의 「SQL 직접 실행」).
+    """
     stripped = sql.strip().rstrip(';').strip()
     upper = stripped.upper()
 
@@ -321,9 +330,15 @@ async def execute_raw_sql(pool, sql: str) -> dict:
     if not upper.startswith("SELECT"):
         return {"error": "SELECT 문만 실행할 수 있습니다."}
 
+    is_select_ai = bool(_SELECT_AI_RE.match(stripped))
+    if is_select_ai and not profile_name:
+        return {"sql_executed": stripped, "error": "SELECT AI 구문은 AI 프로필이 필요합니다 — 페이지 우상단에서 프로필을 고르세요."}
+
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
+                if is_select_ai:
+                    await cursor.execute("BEGIN DBMS_CLOUD_AI.SET_PROFILE(:p); END;", {"p": profile_name})
                 await cursor.execute(stripped)
                 columns = [col[0] for col in cursor.description]
                 rows = await cursor.fetchall()
@@ -342,6 +357,8 @@ async def execute_raw_sql(pool, sql: str) -> dict:
                     "columns": columns,
                     "data": data,
                     "row_count": len(data),
+                    "select_ai": is_select_ai,
+                    "profile_name": profile_name if is_select_ai else "",
                 }
     except Exception as e:
         return {

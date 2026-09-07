@@ -262,3 +262,30 @@ class TestServing:
     def test_미정의_api_는_JSON_404(self, client):
         r = client.get("/api/nope")
         assert r.status_code == 404 and r.json().get("success") is False
+
+
+class TestSelectAiShorthand:
+    """`SELECT AI …` 축약구문을 /api/execute-sql 이 받는다 (2026-09-07).
+
+    회귀 가드: 풀 커넥션에는 세션 프로필이 없어 축약구문이 일반 SELECT 로 파싱되고
+    ORA-00923 이 났다. 같은 커넥션에서 SET_PROFILE 후 실행해야 한다.
+    """
+
+    PROFILE = "GEMINI_SH_PROFILE"
+
+    def test_프로필과_함께_보내면_번역된다(self, client):
+        r = client.post("/api/execute-sql", json={"sql": "select AI showsql 고객이 몇 명인가요", "profile_name": self.PROFILE}).json()
+        assert r.get("success"), r.get("error")
+        assert r["select_ai"] is True and r["profile_name"] == self.PROFILE
+        assert r["columns"] == ["RESPONSE"], r["columns"]
+        assert "CUSTOMERS" in str(r["data"][0]["RESPONSE"]).upper(), r["data"]
+
+    def test_프로필_없이_보내면_명확한_오류(self, client):
+        r = client.post("/api/execute-sql", json={"sql": "select AI showsql 고객이 몇 명인가요"}).json()
+        assert r.get("success") is False
+        assert "프로필" in r["error"], r["error"]
+
+    def test_일반_SELECT_는_프로필_인자를_무시한다(self, client):
+        r = client.post("/api/execute-sql", json={"sql": "SELECT 1 AS N FROM dual", "profile_name": self.PROFILE}).json()
+        assert r.get("success") and r["data"][0]["N"] == 1
+        assert r["select_ai"] is False and r["profile_name"] == ""

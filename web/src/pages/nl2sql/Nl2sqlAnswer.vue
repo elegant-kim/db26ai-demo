@@ -42,7 +42,7 @@ const chart = computed(() => {
 
         <!-- SQL 직접 실행 -->
         <template v-if="msg.sqlResult">
-          <SqlBlock :code="msg.sqlResult.sql" label="직접 실행한 SQL" />
+          <SqlBlock :code="msg.sqlResult.sql" label="직접 실행한 SQL" :badge="msg.profileName ? `SELECT AI · ${msg.profileName}` : undefined" />
           <ResultTable :rows="msg.sqlResult" dense />
         </template>
 

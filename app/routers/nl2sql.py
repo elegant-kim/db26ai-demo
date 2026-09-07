@@ -41,6 +41,7 @@ class SetProfileRequest(BaseModel):
 
 class ExecuteSqlRequest(BaseModel):
     sql: str
+    profile_name: str = ""  # `SELECT AI …` 일 때만 쓴다 — 같은 커넥션에서 SET_PROFILE 후 실행
 
 
 class EnvInfoRequest(BaseModel):
@@ -233,7 +234,7 @@ async def explain_plan_endpoint(req: ExecuteSqlRequest):
 
 @router.post("/execute-sql")
 async def execute_sql_endpoint(req: ExecuteSqlRequest):
-    """사용자가 입력한 SQL을 직접 실행"""
+    """사용자가 입력한 SQL을 직접 실행. `SELECT AI …` 도 받는다 (profile_name 필요)."""
     pool = await get_pool()
     if pool is None:
         return JSONResponse(
@@ -243,7 +244,7 @@ async def execute_sql_endpoint(req: ExecuteSqlRequest):
 
     start = time.time()
     try:
-        result = await execute_raw_sql(pool, req.sql)
+        result = await execute_raw_sql(pool, req.sql, req.profile_name)
         elapsed_ms = int((time.time() - start) * 1000)
         if result.get("error"):
             return {"success": False, "error": result["error"], "sql_executed": result.get("sql_executed", ""), "elapsed_ms": elapsed_ms}

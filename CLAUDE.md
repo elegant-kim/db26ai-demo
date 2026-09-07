@@ -151,7 +151,7 @@ scripts/deploy.sh
 - `POST /api/apply-annotations` / `POST /api/remove-annotations` — Display Annotation 일괄 적용/제거
 - `POST /api/schema-info` — 프로필의 참조 테이블 스키마 조회
 - `POST /api/explain-plan` — SQL 실행계획
-- `POST /api/execute-sql` — SELECT 문 직접 실행 (**SELECT로 시작하는 문장만 허용 — `WITH` CTE도 거부됨**)
+- `POST /api/execute-sql` — SELECT 문 직접 실행 (**SELECT로 시작하는 문장만 허용 — `WITH` CTE도 거부됨**). `SELECT AI …` 축약구문도 받는다 — `profile_name` 을 주면 **같은 커넥션에서 `SET_PROFILE` 후 실행**(없으면 ORA-00923)
 - `POST /api/env-info` — Select AI 환경 확인 3종 (`kind`: profile/acl/credential). 조회 SQL 정본은 `app/select_ai.py` 의 `ENV_QUERIES`
 
 ### ② AI Vector Search (`app/routers/vector.py`)

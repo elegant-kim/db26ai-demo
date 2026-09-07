@@ -236,10 +236,12 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     const msg = push({ role: 'assistant', content: '', action: 'rawsql', loading: true, loadingText: 'SQL 실행 중…' })
     sqlRunning.value = true
     try {
-      const r = await executeSql(sql)
+      const r = await executeSql(sql, profile.value)
       msg.elapsedMs = r.elapsed_ms ?? null
       msg.sqlResult = r.rows
-      if (!r.success) msg.errorText = r.error || 'SQL 실행에 실패했습니다.'
+      if (r.select_ai) msg.profileName = r.profile_name || profile.value   // SqlBlock 배지: 어느 프로필로 번역됐나
+      // 오류는 표 자리(ResultTable 의 error 행)에 한 번만 — 상단 배너까지 겹치면 같은 문장이 두 번 보인다
+      if (!r.success && !r.rows?.error) msg.errorText = r.error || 'SQL 실행에 실패했습니다.'
     } catch (e) { msg.errorText = errorMessage(e) }
     finally { msg.loading = false; sqlRunning.value = false }
   }
