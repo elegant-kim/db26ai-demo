@@ -1,6 +1,9 @@
 import json
+import logging
 
 import oracledb
+
+logger = logging.getLogger(__name__)
 
 
 async def _lob_to_str(value):
@@ -182,6 +185,94 @@ WHERE profile_name = :profile_name"""
             "row_count": 0,
             "error": str(e),
         }
+
+
+# 「환경 확인」 — Select AI 가 돌려면 세 가지가 맞아야 한다:
+#   프로필(무엇을 보는가) · 네트워크 ACL(밖으로 나갈 수 있는가) · 크리덴셜(키가 있는가)
+# 화면의 버튼 3개가 이 정의를 그대로 쓴다. 새 항목은 여기만 추가한다(정본).
+ENV_QUERIES: dict[str, dict] = {
+    "acl": {
+        "label": "네트워크 ACL",
+        # 없으면 GENERATE 가 ORA-24247 로 죽는다. 아웃바운드에 필요한 권한은 CONNECT·RESOLVE.
+        # 실제 호스트명을 먼저 보여준다 — host='*' 인 DB 내부 계정 ACE 가 위로 올라오면
+        # 정작 봐야 할 LLM 엔드포인트가 아래로 밀린다.
+        "sql": """SELECT host, principal, privilege, grant_type, lower_port, upper_port
+FROM   dba_host_aces
+ORDER  BY CASE WHEN host = '*' THEN 2 ELSE 1 END, host, principal, privilege""",
+        "fallback": """SELECT host, privilege, status, lower_port, upper_port
+FROM   user_network_acl_privileges
+ORDER  BY host, privilege""",
+    },
+    "credential": {
+        "label": "LLM 크리덴셜",
+        # API 키(password)는 어떤 뷰에도 노출되지 않는다 — 이름·사용자·활성 여부만 보인다.
+        # ENABLED='TRUE' 는 "키가 유효하다"는 뜻이 아니다. 만료된 키도 TRUE 로 보인다
+        # (2026-09-07 실측: GROQ_CRED 가 TRUE 인데 호출은 ORA-20404 로 실패).
+        "sql": """SELECT credential_name, username, enabled, comments
+FROM   user_credentials
+ORDER  BY credential_name""",
+        "fallback": None,
+    },
+}
+
+
+async def _run_display_query(pool, sql: str, fallback: str | None = None) -> dict:
+    """조회 SQL 을 실행해 화면 표준 형태(sql_executed/columns/data/row_count)로 돌려준다.
+
+    권한 때문에 DBA_ 뷰가 막히면 fallback(USER_ 뷰)으로 한 번 더 시도한다.
+    """
+    sql_used = sql
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                try:
+                    await cursor.execute(sql)
+                except Exception as e:
+                    if not fallback:
+                        raise
+                    logger.warning("환경 확인 조회 폴백: %s", e)
+                    sql_used = fallback
+                    await cursor.execute(fallback)
+
+                columns = [col[0] for col in cursor.description]
+                data = []
+                for row in await cursor.fetchall():
+                    row_dict = {}
+                    for i, val in enumerate(row):
+                        if hasattr(val, "read"):
+                            val = await _lob_to_str(val)
+                        row_dict[columns[i]] = val
+                    data.append(row_dict)
+                return {
+                    "sql_executed": sql_used,
+                    "columns": columns,
+                    "data": data,
+                    "row_count": len(data),
+                }
+    except Exception as e:
+        return {
+            "sql_executed": sql_used,
+            "columns": [],
+            "data": [],
+            "row_count": 0,
+            "error": str(e),
+        }
+
+
+async def get_env_info(pool, kind: str, profile_name: str = "") -> dict:
+    """Select AI 환경 3종(profile · acl · credential) 중 하나를 조회한다."""
+    if kind == "profile":
+        return await get_profile_attributes(pool, profile_name)
+    spec = ENV_QUERIES.get(kind)
+    if not spec:
+        return {
+            "sql_executed": "",
+            "columns": [],
+            "data": [],
+            "row_count": 0,
+            "error": f"알 수 없는 확인 항목입니다: {kind}",
+        }
+    return await _run_display_query(pool, spec["sql"], spec.get("fallback"))
 
 
 async def get_explain_plan(pool, sql: str) -> dict:

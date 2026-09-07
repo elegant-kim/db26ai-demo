@@ -3,7 +3,7 @@
 > **정본은 라우트 정의와 docstring 이다** (`app/routes.py` + `app/routers/*.py`). 이 문서는
 > `scripts/gen_api_doc.py` 가 생성한다 — **손으로 고치지 말고 코드를 고친 뒤 다시 생성할 것.**
 > 엔드포인트를 추가·변경하면 같은 커밋에서 이 문서와 `CLAUDE.md` API 목록을 함께 갱신한다.
-> 전체 **56개** 엔드포인트 · 공통 prefix `/api`
+> 전체 **57개** 엔드포인트 · 공통 prefix `/api`
 
 ## 공통 규약
 
@@ -35,14 +35,14 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:138` |
-| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:43` |
-| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행 | `app/routers/nl2sql.py:209` |
-| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:188` |
-| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:94` |
-| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:153` |
-| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:169` |
-| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:114` |
+| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:164` |
+| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:69` |
+| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행 | `app/routers/nl2sql.py:235` |
+| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:214` |
+| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:120` |
+| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:179` |
+| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:195` |
+| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:140` |
 
 ## ② AI Vector Search — 검색·문서
 
@@ -130,6 +130,12 @@
 | `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:163` |
 | `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:177` |
 
+## 기타
+
+| Method | 경로 | 요청 | 설명 | 구현 |
+|---|---|---|---|---|
+| `POST` | `/api/env-info` | EnvInfoRequest | Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜). | `app/routers/nl2sql.py:52` |
+
 ---
 
 ## 요청 모델 (Pydantic)
@@ -177,6 +183,13 @@
 
 ```python
     text: str (필수)
+```
+
+### `EnvInfoRequest`
+
+```python
+    kind: str = 'profile'
+    profile_name: str = ''
 ```
 
 ### `ExecuteSqlRequest`

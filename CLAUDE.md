@@ -151,6 +151,7 @@ scripts/deploy.sh
 - `POST /api/schema-info` — 프로필의 참조 테이블 스키마 조회
 - `POST /api/explain-plan` — SQL 실행계획
 - `POST /api/execute-sql` — SELECT 문 직접 실행 (**SELECT로 시작하는 문장만 허용 — `WITH` CTE도 거부됨**)
+- `POST /api/env-info` — Select AI 환경 확인 3종 (`kind`: profile/acl/credential). 조회 SQL 정본은 `app/select_ai.py` 의 `ENV_QUERIES`
 
 ### ② AI Vector Search (`app/routers/vector.py`)
 - `POST /api/vector/upload` — PDF 업로드 (SSE 스트리밍 진행률)

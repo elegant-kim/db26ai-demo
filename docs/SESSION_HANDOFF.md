@@ -373,6 +373,39 @@ scripts/check-secrets.sh                # 커밋 전 필수
 **Annotation 목록은 손으로 옮기지 않았다** — 정본 `web/src/lib/annotations.ts` 에서 생성했다(59건 일치).
 내용을 바꿀 때는 TS 를 먼저 고치고 51번 §5 를 다시 생성한다.
 
+## 4-15. NL2SQL 액션 라벨 `영문(한글)` + 「환경 확인」 3종 (2026-09-07, Opus 5)
+
+**요청** — ① Select AI 옵션 라벨이 전부 한글이라 실제 action 이름을 알 수 없다 → `runsql(실행)` 형태로.
+② 프로필 속성만 보여주지 말고 네트워크 ACL·크리덴셜도 같은 버튼 방식으로 확인하게.
+
+**① 라벨** — `web/src/lib/nl2sql.ts` 의 `ACTIONS` 7종을 `showsql(SQL 보기)`처럼 바꿨다.
+영문이 곧 `DBMS_CLOUD_AI.GENERATE` 의 action 값이자 `SELECT AI <영문> <질문>` 의 이름이라 화면이 그걸 가르쳐야 한다.
+답변 아래 후속 버튼(`ACTION_BUTTONS`)도 영문으로 통일하되 **`차트`·`실행계획`만 한글로 남겼다** —
+그 둘은 Select AI 액션이 아니라 앱이 붙인 기능이라, 표기 차이가 그대로 구분 힌트가 된다.
+1400px 컨테이너에서 7개 버튼 + 프로필 셀렉트 + 예시 셀렉트가 한 줄에 들어가는 것을 캡처로 확인했다.
+
+**② 환경 확인** — 질문 입력창 아래에 세그먼트 버튼 3개(`profile` · `acl` · `credential`).
+누르면 조회 SQL + 결과 표가 대화 스레드에 남는다(무엇을 어떻게 확인했는지가 화면에 남아야 시연에서 설명이 된다).
+
+| 계층 | 추가한 것 |
+|---|---|
+| `app/select_ai.py` | `ENV_QUERIES`(조회 SQL 정본) · `_run_display_query()`(DBA_ 뷰 막히면 USER_ 뷰 폴백) · `get_env_info()` |
+| `app/routers/nl2sql.py` | `POST /api/env-info` (`kind`: profile/acl/credential, 그 외 400) · `VALID_ENV_KINDS` |
+| `web/src/lib/nl2sql.ts` | `ENV_CHECKS` · `getEnvInfo()` |
+| `web/src/stores/nl2sql.ts` | `checkEnv()` · `envRows()` · 메시지 타입에 `envResult` |
+| `Nl2sqlAsk.vue` · `Nl2sqlAnswer.vue` | 세그먼트 행 + 결과 렌더(크리덴셜·ACL 은 주의 문구 동반) |
+
+**설계 판단 2개**
+- ACL 조회는 `host='*'` 인 DB 내부 계정 ACE 를 뒤로 밀었다(`ORDER BY CASE WHEN host='*' THEN 2 ELSE 1 END, …`).
+  안 그러면 정작 봐야 할 LLM 엔드포인트가 아래로 밀린다.
+- 크리덴셜 표 아래에 **"ENABLED='TRUE' 는 키가 유효하다는 뜻이 아니다"** 를 명시했다.
+  실제로 GROQ_CRED 가 TRUE 인데 호출은 ORA-20404 다(열린 과제 7). 이 화면이 그 오해를 만들면 안 된다.
+  API 키 값은 어떤 뷰에도 나오지 않으므로 노출 위험은 없다.
+
+**검증** — pytest 53개 · ruff · `npm run build`(vue-tsc) 통과. `/api/env-info` 3종 + 잘못된 kind(400) 스모크.
+화면에서 버튼 3개를 실제로 눌러 결과가 스레드에 쌓이는 것 확인(브라우저 패널이 숨겨져 있으면 물리 클릭이
+안 되므로 `javascript_tool` 로 눌렀다 — 노하우 3.4 의 그 함정). 캡처 `captures/nl2sql_envcheck_{light,dark}.png`.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은

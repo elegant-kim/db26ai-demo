@@ -19,6 +19,7 @@ const props = defineProps<{ msg: Nl2sqlMessage }>()
 const s = useNl2sqlStore()
 const CHART_TYPES = [{ value: 'bar', label: '막대' }, { value: 'line', label: '라인' }, { value: 'pie', label: '파이' }]
 const attrs = computed(() => s.profileAttrsRows(props.msg))
+const env = computed(() => s.envRows(props.msg))
 const isPrompt = computed(() => props.msg.action === 'showprompt')
 
 /** 차트 데이터 — 첫 문자열 컬럼 = 라벨, 첫 숫자 컬럼(라벨 제외) = 값 (레거시 renderChart 규칙) */
@@ -47,6 +48,19 @@ const chart = computed(() => {
           <div v-if="msg.profileResult.attributes?.error" class="text-xs" style="color: var(--accent-negative);">{{ msg.profileResult.attributes.error }}</div>
           <SqlBlock v-if="msg.profileResult.attributes?.sql_executed" :code="msg.profileResult.attributes.sql_executed" label="프로필 속성 조회 SQL" max-height="140px" />
           <ResultTable v-if="attrs" :rows="attrs" dense hide-footer max-height="260px" />
+        </template>
+
+        <!-- 환경 확인 (프로필 속성 · 네트워크 ACL · 크리덴셜) -->
+        <template v-if="msg.envResult">
+          <div class="text-sm font-semibold" style="color: var(--text-primary);">환경 확인 · <span class="font-mono">{{ msg.envResult.label }}</span></div>
+          <SqlBlock v-if="msg.envResult.result?.sql_executed" :code="msg.envResult.result.sql_executed" label="조회 SQL" max-height="160px" />
+          <ResultTable v-if="env" :rows="env" dense hide-footer max-height="300px" empty-text="행이 없습니다." />
+          <div v-if="msg.envResult.kind === 'credential'" class="text-[11px]" style="color: var(--text-muted);">
+            API 키 값은 어떤 뷰에도 노출되지 않습니다. <strong style="color: var(--text-primary);">ENABLED='TRUE' 는 키가 유효하다는 뜻이 아닙니다</strong> — 만료된 키도 TRUE 로 보입니다.
+          </div>
+          <div v-else-if="msg.envResult.kind === 'acl'" class="text-[11px]" style="color: var(--text-muted);">
+            아웃바운드 호출에 필요한 권한은 <code class="font-mono">CONNECT</code>·<code class="font-mono">RESOLVE</code> 입니다. 없으면 <code class="font-mono">ORA-24247</code> 로 실패합니다.
+          </div>
         </template>
 
         <!-- SQL 직접 실행 -->

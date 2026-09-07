@@ -4,15 +4,32 @@ import { fromColumnsData, type Rows } from './normalize'
 export type Action = 'runsql' | 'showsql' | 'narrate' | 'explainsql' | 'showprompt' | 'summarize' | 'chat'
 export type FollowAction = Action | 'chart' | 'explainplan'
 
-/** 실행 모드 7종 — 순서는 데모 동선(먼저 SQL 을 보고 → 실행 → 설명…). 정본은 app/routers/nl2sql.py 의 VALID_ACTIONS */
+/**
+ * 실행 모드 7종 — 순서는 데모 동선(먼저 SQL 을 보고 → 실행 → 설명…).
+ * 정본은 app/routers/nl2sql.py 의 VALID_ACTIONS.
+ *
+ * 라벨은 `영문(한글)` 형태다. 영문이 곧 DBMS_CLOUD_AI.GENERATE 의 action 값이고
+ * SQL 에서 `SELECT AI <영문> <질문>` 으로 그대로 쓰는 이름이라, 화면이 그 이름을 가르쳐야 한다.
+ */
 export const ACTIONS: { value: Action; label: string; hint: string }[] = [
-  { value: 'showsql', label: 'SQL 보기', hint: '자연어 → SQL 만 생성' },
-  { value: 'runsql', label: '실행', hint: 'SQL 을 만들어 실행하고 표로' },
-  { value: 'narrate', label: '설명', hint: '결과를 자연어로 서술' },
-  { value: 'explainsql', label: 'SQL 해설', hint: '생성된 SQL 을 한국어로 해설' },
-  { value: 'showprompt', label: '프롬프트', hint: 'LLM 에 보낸 프롬프트 원문' },
-  { value: 'summarize', label: '요약', hint: '결과를 요약' },
-  { value: 'chat', label: '대화', hint: 'DB 없이 LLM 과 대화' },
+  { value: 'showsql', label: 'showsql(SQL 보기)', hint: '자연어 → SQL 만 생성' },
+  { value: 'runsql', label: 'runsql(실행)', hint: 'SQL 을 만들어 실행하고 표로' },
+  { value: 'narrate', label: 'narrate(설명)', hint: '결과를 자연어로 서술' },
+  { value: 'explainsql', label: 'explainsql(SQL 해설)', hint: '생성된 SQL 을 한국어로 해설' },
+  { value: 'showprompt', label: 'showprompt(프롬프트)', hint: 'LLM 에 보낸 프롬프트 원문' },
+  { value: 'summarize', label: 'summarize(요약)', hint: '주어진 텍스트를 요약' },
+  { value: 'chat', label: 'chat(대화)', hint: 'DB 없이 LLM 과 대화' },
+]
+
+/**
+ * 「환경 확인」 3종 — Select AI 가 돌려면 세 가지가 맞아야 한다.
+ * 조회 SQL 의 정본은 app/select_ai.py 의 ENV_QUERIES, 허용값은 VALID_ENV_KINDS.
+ */
+export type EnvKind = 'profile' | 'acl' | 'credential'
+export const ENV_CHECKS: { value: EnvKind; label: string; hint: string }[] = [
+  { value: 'profile', label: 'profile(프로필 속성)', hint: '이 프로필이 어느 LLM 으로 어느 테이블을 보는가 — DBA_CLOUD_AI_PROFILE_ATTRIBUTES' },
+  { value: 'acl', label: 'acl(네트워크 ACL)', hint: 'DB 가 LLM 엔드포인트로 나갈 수 있는가 — DBA_HOST_ACES. 없으면 ORA-24247' },
+  { value: 'credential', label: 'credential(크리덴셜)', hint: 'LLM API 키가 등록돼 있는가 — USER_CREDENTIALS. 키 값 자체는 보이지 않는다' },
 ]
 
 export const LOADING_TEXT: Record<Action, string> = {
@@ -25,21 +42,25 @@ export const LOADING_TEXT: Record<Action, string> = {
   chat: 'AI 가 응답을 생성하고 있습니다',
 }
 
-/** 답변 아래 후속 버튼 — 레거시 actionButtonRules 그대로 */
+/**
+ * 답변 아래 후속 버튼 — 레거시 actionButtonRules 그대로.
+ * 영문 라벨 = DBMS_CLOUD_AI 의 action 값. `차트`·`실행계획` 만 한글인데, 그 둘은
+ * Select AI 액션이 아니라 앱이 붙인 기능이라서다(구분이 그대로 힌트가 된다).
+ */
 export const ACTION_BUTTONS: Record<string, { action: FollowAction; label: string }[]> = {
   runsql: [
-    { action: 'showsql', label: 'SQL 보기' }, { action: 'chart', label: '차트' }, { action: 'narrate', label: '설명' },
-    { action: 'explainsql', label: 'SQL 해설' }, { action: 'explainplan', label: '실행계획' }, { action: 'showprompt', label: '프롬프트 보기' }, { action: 'summarize', label: '요약' },
+    { action: 'showsql', label: 'showsql' }, { action: 'chart', label: '차트' }, { action: 'narrate', label: 'narrate' },
+    { action: 'explainsql', label: 'explainsql' }, { action: 'explainplan', label: '실행계획' }, { action: 'showprompt', label: 'showprompt' }, { action: 'summarize', label: 'summarize' },
   ],
   showsql: [
-    { action: 'runsql', label: '실행' }, { action: 'narrate', label: '설명' }, { action: 'explainsql', label: 'SQL 해설' },
-    { action: 'explainplan', label: '실행계획' }, { action: 'showprompt', label: '프롬프트 보기' },
+    { action: 'runsql', label: 'runsql' }, { action: 'narrate', label: 'narrate' }, { action: 'explainsql', label: 'explainsql' },
+    { action: 'explainplan', label: '실행계획' }, { action: 'showprompt', label: 'showprompt' },
   ],
-  narrate: [{ action: 'showsql', label: 'SQL 보기' }, { action: 'runsql', label: '실행' }, { action: 'showprompt', label: '프롬프트 보기' }],
-  explainsql: [{ action: 'showsql', label: 'SQL 보기' }, { action: 'runsql', label: '실행' }, { action: 'showprompt', label: '프롬프트 보기' }],
-  showprompt: [{ action: 'showsql', label: 'SQL 보기' }, { action: 'runsql', label: '실행' }],
-  summarize: [{ action: 'showsql', label: 'SQL 보기' }, { action: 'runsql', label: '실행' }, { action: 'chart', label: '차트' }, { action: 'showprompt', label: '프롬프트 보기' }],
-  explainplan: [{ action: 'showsql', label: 'SQL 보기' }, { action: 'runsql', label: '실행' }, { action: 'narrate', label: '설명' }],
+  narrate: [{ action: 'showsql', label: 'showsql' }, { action: 'runsql', label: 'runsql' }, { action: 'showprompt', label: 'showprompt' }],
+  explainsql: [{ action: 'showsql', label: 'showsql' }, { action: 'runsql', label: 'runsql' }, { action: 'showprompt', label: 'showprompt' }],
+  showprompt: [{ action: 'showsql', label: 'showsql' }, { action: 'runsql', label: 'runsql' }],
+  summarize: [{ action: 'showsql', label: 'showsql' }, { action: 'runsql', label: 'runsql' }, { action: 'chart', label: '차트' }, { action: 'showprompt', label: 'showprompt' }],
+  explainplan: [{ action: 'showsql', label: 'showsql' }, { action: 'runsql', label: 'runsql' }, { action: 'narrate', label: 'narrate' }],
   chat: [],
 }
 
@@ -76,6 +97,8 @@ export const ask = (prompt: string, action: Action, profile_name: string) =>
   api.post<{ success: boolean; action: Action; result: unknown; elapsed_ms: number; error?: string }>('/api/ask', { prompt, action, profile_name }).then((r) => r.data)
 export const executeSql = (sql: string) => api.post('/api/execute-sql', { sql }).then((r) => ({ ...r.data, rows: fromColumnsData(r.data) as Rows }))
 export const explainPlan = (sql: string) => api.post<{ success: boolean; plan?: string; sql_used?: string; error?: string }>('/api/explain-plan', { sql }).then((r) => r.data)
+export const getEnvInfo = (kind: EnvKind, profile_name: string) =>
+  api.post<{ success: boolean; kind: EnvKind; result: any }>('/api/env-info', { kind, profile_name }).then((r) => r.data)
 export const getSchemaInfo = (profile_name: string) => api.post<{ success: boolean; tables: SchemaTable[]; error?: string }>('/api/schema-info', { profile_name }).then((r) => r.data)
 export const applyAnnotations = (annotation_set: Record<string, Record<string, string>>) =>
   api.post<{ success: boolean; applied_count: number; error_count: number; errors: string[]; error?: string }>('/api/apply-annotations', { annotation_set }).then((r) => r.data)

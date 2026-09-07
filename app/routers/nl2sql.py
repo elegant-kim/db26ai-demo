@@ -13,6 +13,7 @@ from app.select_ai import (
     apply_annotations,
     ask_select_ai,
     execute_raw_sql,
+    get_env_info,
     get_explain_plan,
     get_profile_attributes,
     get_schema_info,
@@ -24,6 +25,9 @@ from app.select_ai import (
 router = APIRouter(prefix="/api", tags=["nl2sql"])
 
 VALID_ACTIONS = {"runsql", "showsql", "narrate", "explainsql", "showprompt", "summarize", "chat"}
+
+# 「환경 확인」 버튼 3종. 조회 SQL 정본은 app/select_ai.py 의 ENV_QUERIES 다.
+VALID_ENV_KINDS = {"profile", "acl", "credential"}
 
 class AskRequest(BaseModel):
     prompt: str
@@ -37,6 +41,28 @@ class SetProfileRequest(BaseModel):
 
 class ExecuteSqlRequest(BaseModel):
     sql: str
+
+
+class EnvInfoRequest(BaseModel):
+    kind: str = "profile"
+    profile_name: str = ""
+
+
+@router.post("/env-info")
+async def env_info(req: EnvInfoRequest):
+    """Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜).
+
+    프로필이 무엇을 보는가 / DB 가 LLM 으로 나갈 수 있는가 / 키가 등록돼 있는가를
+    화면에서 바로 확인하기 위한 것이다. 크리덴셜의 API 키 값은 어떤 뷰에도 나오지 않는다.
+    """
+    if req.kind not in VALID_ENV_KINDS:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": f"유효하지 않은 확인 항목입니다: {req.kind}"},
+        )
+    pool = await get_pool()
+    result = await get_env_info(pool, req.kind, req.profile_name)
+    return {"success": "error" not in result, "kind": req.kind, "result": result}
 
 
 @router.post("/ask")

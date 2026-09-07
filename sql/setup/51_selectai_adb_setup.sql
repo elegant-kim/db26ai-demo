@@ -116,6 +116,7 @@ END;
 -- 아웃바운드에 필요한 권한은 connect(접속) 과 resolve(DNS) 두 개다.
 -- (참고: 'http' 는 XDB 인바운드용이라 여기서는 불필요하다. 옛 스크립트가 groq 에
 --        'http' 만 줬던 것은 잘못이고, 그래서 두 호스트 설정이 비대칭이었다.)
+
 BEGIN
     DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
         host => 'api.groq.com',
@@ -141,7 +142,9 @@ END;
 -- §3. 크리덴셜 — LLM API 키를 DB 안에 보관한다
 --     OpenAI 호환 엔드포인트는 username 에 아무 라벨, password 에 API 키를 넣는다.
 -- =============================================================================
+
 -- 3-1. 기존 크리덴셜 제거 (없으면 사유를 찍고 넘어간다 — 조용히 삼키지 않는다)
+
 BEGIN
     DBMS_CLOUD.DROP_CREDENTIAL(credential_name => 'GROQ_CRED');
 EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GROQ_CRED drop skip: ' || SQLERRM);

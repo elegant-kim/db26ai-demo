@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { MessageSquareText, Terminal, Eraser } from 'lucide-vue-next'
+import { MessageSquareText, Terminal, Eraser, ShieldCheck } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -11,7 +11,7 @@ import ChatComposer from '@/components/demo/ChatComposer.vue'
 import Segmented from '@/components/demo/Segmented.vue'
 import VersusBox from '@/components/demo/VersusBox.vue'
 import Nl2sqlAnswer from './Nl2sqlAnswer.vue'
-import { ACTIONS, type Action } from '@/lib/nl2sql'
+import { ACTIONS, ENV_CHECKS, type Action, type EnvKind } from '@/lib/nl2sql'
 import { useNl2sqlStore, type Nl2sqlMessage } from '@/stores/nl2sql'
 
 const s = useNl2sqlStore()
@@ -30,6 +30,10 @@ onMounted(() => {
 
 // 확인 포인트 ① (2026-09-05): 실행 모드 7종은 세그먼트 한 줄로 확정 — B 셀렉트 안은 git 125bfdd 에 남아 있다
 const actionOptions = ACTIONS.map((a) => ({ value: a.value, label: a.label, hint: a.hint }))
+const envOptions = ENV_CHECKS.map((e) => ({ value: e.value, label: e.label, hint: e.hint }))
+// 마지막으로 무엇을 확인했는지만 표시한다 — 세그먼트를 '선택'이 아니라 '버튼'으로 쓴다
+const envPick = ref('')
+function runEnvCheck(v: string) { envPick.value = v; void s.checkEnv(v as EnvKind) }
 const exampleOptions = computed(() => s.examples.map((q) => ({ value: q, label: q })))
 const example = ref('')
 function pickExample(v: string) { example.value = ''; s.input = v }
@@ -70,6 +74,11 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
             <div class="flex-1 min-w-[240px]"><SearchableSelect :model-value="example" :options="exampleOptions" placeholder="예시 질문 고르기…" @update:model-value="pickExample" /></div>
           </div>
         </ChatComposer>
+        <div class="flex flex-wrap items-center gap-2">
+          <ShieldCheck :size="14" :stroke-width="1.75" style="color: var(--text-muted);" />
+          <span class="text-[11px] mr-0.5" style="color: var(--text-muted);">환경 확인</span>
+          <Segmented :model-value="envPick" :options="envOptions" size="sm" @update:model-value="runEnvCheck" />
+        </div>
         <div class="flex items-center gap-2">
           <Terminal :size="14" :stroke-width="1.75" style="color: var(--text-muted);" />
           <input v-model="s.sqlInput" :disabled="s.sqlRunning" placeholder="SELECT 문을 직접 실행 (WITH 절은 거부됨)" class="flex-1 min-w-0 rounded-md px-3 py-1.5 text-xs font-mono"

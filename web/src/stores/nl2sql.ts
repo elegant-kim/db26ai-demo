@@ -4,7 +4,7 @@ import { errorMessage } from '@/lib/api'
 import { annotationSetFor } from '@/lib/annotations'
 import {
   ACTION_BUTTONS, LOADING_TEXT, ask, applyAnnotations, executeSql, exampleQuestionsFor, explainPlan, getProfiles, getSchemaInfo,
-  removeAnnotations, setProfile, type Action, type FollowAction, type Profile, type SchemaTable,
+  removeAnnotations, setProfile, getEnvInfo, ENV_CHECKS, type Action, type EnvKind, type FollowAction, type Profile, type SchemaTable,
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
 import type { ChatMessage } from '@/lib/types/chat'
@@ -34,6 +34,7 @@ export interface Nl2sqlMessage extends ChatMessage {
   actionLoading?: boolean
   actionLoadingText?: string
   profileResult?: { profile_name: string; attributes?: any }
+  envResult?: { kind: EnvKind; label: string; result?: any }
   sqlResult?: Rows | null
 }
 
@@ -102,6 +103,26 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
       system.toast(`프로필 설정 완료: ${name}`, 'success')
     } catch (e) { lastError.value = errorMessage(e) }
     void loadSchema()
+  }
+
+  /**
+   * 「환경 확인」 — 프로필 속성 · 네트워크 ACL · 크리덴셜을 조회해 스레드에 남긴다.
+   * 실행 모드와 같은 세그먼트 버튼으로 고르고, 결과는 조회 SQL + 표로 보여준다
+   * (무엇을 어떻게 확인했는지가 화면에 남아야 시연에서 설명이 된다).
+   */
+  async function checkEnv(kind: EnvKind) {
+    const meta = ENV_CHECKS.find((e) => e.value === kind)
+    const label = meta?.label ?? kind
+    const msg = push({ role: 'assistant', content: '', action: 'env', envResult: { kind, label }, loading: true, loadingText: `${label} 조회 중…` })
+    try {
+      const r = await getEnvInfo(kind, profile.value)
+      msg.envResult = { kind, label, result: r.result ?? null }
+      if (r.result?.error) msg.errorText = r.result.error
+    } catch (e) {
+      msg.errorText = errorMessage(e)
+    } finally {
+      msg.loading = false
+    }
   }
 
   async function loadSchema() {
@@ -220,10 +241,11 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
 
   function clear() { messages.value = messages.value.filter((m) => m.action === 'profile').slice(-1) }
   const profileAttrsRows = (m: Nl2sqlMessage): Rows | null => (m.profileResult?.attributes?.columns ? fromColumnsData(m.profileResult.attributes) : null)
+  const envRows = (m: Nl2sqlMessage): Rows | null => (m.envResult?.result?.columns?.length ? fromColumnsData(m.envResult.result) : null)
 
   return {
     profiles, profile, profilesLoaded, action, messages, input, sqlInput, sending, sqlRunning, schema, schemaLoading, expanded, annoBusy, lastError,
     examples, profileOptions, hasAnnotationSet, asked,
-    init, selectProfile, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear, profileAttrsRows,
+    init, selectProfile, checkEnv, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear, profileAttrsRows, envRows,
   }
 })
