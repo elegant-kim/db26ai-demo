@@ -480,6 +480,32 @@ primary 옆에 놓인 secondary 가 같은 높이가 된다 — 이 화면만이
 **검증** — 테스트 +1(`select ai 질문` 기본 액션이 진짜 결과 집합을 돌려준다), 57개 통과. 브라우저에서 showsql → 줄번호 SQL 블록 + 후속 4개,
 기본형 → 고객수 55,500 표 + 후속 7개(차트 포함), `RESPONSE` 표 없음. 두 입력줄 computed: 38px/14px, `-apple-system` vs `SF Mono`.
 
+## 4-19. Vector 탭 보완 ①②③ — HNSW 실제 사용 · Hybrid Vector Index · DB 안 배치 임베딩 (2026-09-08, Fable 5.1)
+
+**계기** — 사용자 요청 "Vector Search 가 26ai 최신 기능을 충분히 보여주는지 판단해 보완하라". 소스 검토에서 5개를 제안했고 ①②③ 진행(④ Select AI RAG · ⑤ VECTOR_DIMS 는 대화 후 결정).
+셋 다 **만들기 전에 이 ADB 에서 실측**했고, 그 실측이 설계를 바꿨다.
+
+### ① HNSW 인덱스를 5개월간 한 번도 안 탔다
+- 검색 SQL 4종이 전부 `WHERE embedding IS NOT NULL … FETCH FIRST`. 실측: **술어가 붙으면 `FETCH APPROX FIRST` 여도 `TABLE ACCESS FULL`**, 술어를 빼면
+  `VECTOR INDEX HNSW SCAN` — 그리고 이 ADB(23.26) 에선 정확 `FETCH FIRST` 도 인덱스를 탔다. 즉 범인은 정확/근사가 아니라 **술어 하나**.
+- Vector Store 탭 실행계획 카드는 제목이 "APPROX 가 HNSW 를 타는지 본다" 인데 대상 SQL 은 정확 검색 — **제목과 반대되는 계획을 보여주고 있었다**.
+- 수정: `vector_search()` 술어 제거 + `FETCH APPROX FIRST`(의도를 SQL 에 적는다). 실행계획 카드 = `CompareView` **전(술어 있음) vs 후(없음)** — `query_explain_plan` 이 둘 다 EXPLAIN 해 `before/after` + `access`·`uses_index` 를 준다. 수동 하이브리드는 가중합 ORDER BY 라 인덱스를 못 쓴다(원래 그렇다) — 화면 SQL 주석에 명시.
+
+### ② Hybrid Vector Index (26ai) — "하이브리드 (26ai)" 라벨이 가리키던 것이 사실은 23ai 수동 가중합이었다
+- 실측 순서: 임시 테이블에서 문법·SEARCH 확인(OK) → 실제 `doc_chunks` 에 생성 → **ORA-29880** (같은 컬럼에 CONTEXT 인덱스) → 텍스트 쪽 0건 → 원인은 토큰(공백 단위, `보험금`≠`보험금을`)이지 인덱스가 아님 → 앱의 `to_contains_query()` ACCUM 변환을 그대로 쓰면 됨 → 동기화는 `CTX_DDL.SYNC_INDEX`(0.3초).
+- 결정: **CONTEXT 인덱스를 대체**한다(하이브리드 인덱스가 CONTAINS/SCORE 도 서빙 — 키워드 모드 코드 무변경). 이 DB 에서 실행: `DROP INDEX doc_chunks_text_idx` → `CREATE HYBRID VECTOR INDEX doc_chunks_hvi … PARAMETERS('MODEL MULTILINGUAL_E5_BASE LEXER HVI_WORLD_LEXER')` **56.8초, 180청크 → 인덱스 내부 452조각**.
+- 추가: 검색 모드 `hvi`(라벨 "Hybrid Vector Index (26ai)", 옛 hybrid 는 "수동 하이브리드"로 개명) → `DBMS_HYBRID_VECTOR.SEARCH(JSON)` 융합 검색, 청크마다 score/vector_score/text_score(`ChunkCard` hybrid 모드 재사용).
+  `GET /api/vector/hybrid-index` · `POST /api/vector/hybrid-index/create` · Vector Store 탭 카드(상태·생성·실행 DDL). 업로드 5단계가 `SYNC_INDEX` 를 부르고 시간을 단계로 드러낸다(실측 420ms/1청크).
+  빈 테이블이면 기동 시 자동 생성, 청크가 있으면 버튼(청크 × ~0.3초). `sql/setup/60_hybrid_vector_index.sql` 신설, 50번은 "대체됨" 주석.
+
+### ③ "DB 안에서 임베딩" 을 참으로
+- 실측(180청크, 워밍 후): `UPDATE … VECTOR_EMBEDDING` **200ms/행** · `UTL_TO_EMBEDDINGS` 197 · 파이썬 청크별 루프 340. E5_BASE 는 어느 길이든 행당 200ms 가 바닥 → DB 안 UPDATE 가 가장 빠르고 가장 단순.
+- 수정: 4단계 = 본문 일괄 INSERT → **20청크씩 `UPDATE doc_chunks SET embedding = VECTOR_EMBEDDING(model USING DBMS_LOB.SUBSTR(chunk_text,4000,1))`**(진행률 SSE 유지) → 성공 카운트는 `COUNT(embedding IS NOT NULL)` 실측. 외부 API 소스는 옛 루프.
+- 추출은 앱(pdfplumber)에 남겼다 — **쪽 번호를 청크에 남기기 위해**(`UTL_TO_TEXT` 는 문서 전체 한 덩어리). 라벨·헤더 문구를 그에 맞게 정직하게: "추출만 앱에서, 청킹·임베딩·인덱싱은 DB 안에서".
+
+**검증** — 테스트 4개 추가(`TestVectorIndexPaths`: 계획 before FULL/after HNSW · 의미 검색 SQL 이 APPROX·술어 없음 · hvi 융합 점수 3종 · 키워드가 CONTAINS). 실제 PDF 업로드 2회(인덱스 전/후) → 5단계 SYNC 확인 → hvi 로 새 문서 검색(text_score 54) → 테스트 문서 삭제, 데모 문서 2개 그대로.
+`개발노하우.md` 3.2 에 함정 3개 추가(술어가 인덱스를 죽인다 · ORA-29880 · 배치 임베딩 실측). CLAUDE.md 검색 모드 5종·파이프라인·인덱스 구조·Critical Notes 갱신.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은

@@ -201,14 +201,18 @@ scripts/deploy.sh
 
 ## Vector Search 상세
 
-### 검색 모드 4가지
-1. **의미 검색 (vector)**: `VECTOR_DISTANCE(embedding, (SELECT VECTOR_EMBEDDING(model USING :q AS data) FROM dual), COSINE)` — 코사인 유사도
+### 검색 모드 5가지
+1. **의미 검색 (vector)**: `VECTOR_DISTANCE(embedding, (SELECT VECTOR_EMBEDDING(model USING :q AS data) FROM dual), COSINE)` — 코사인 유사도.
+   **`ORDER BY distance FETCH APPROX FIRST :k`, `WHERE embedding IS NOT NULL` 없이** — 2026-09-08 실측: 이 술어가 붙으면 HNSW 인덱스를 안 탄다(아래 Critical Notes)
 2. **키워드 검색 (keyword)**: `CONTAINS(chunk_text, :q, 1)` + `SCORE(1)` (Oracle Text). 인덱스 없거나 실패 시 `LIKE` 폴백
-3. **하이브리드 (hybrid, 26ai 기능)**: 단일 SQL에서 CONTAINS + VECTOR_DISTANCE 결합.
+3. **수동 하이브리드 (hybrid)**: 단일 SQL에서 CONTAINS + VECTOR_DISTANCE 를 앱이 가중합 — 23ai 어디서나 되는 방식.
    `hybrid_score = 0.7 × vector_similarity + 0.3 × keyword_score/100`.
    SCORE는 WHERE에 CONTAINS가 있어야 쓸 수 있는데 WHERE에 두면 키워드 미매칭 청크가 걸러지므로,
    **CONTAINS를 LEFT JOIN 서브쿼리로 분리하고 `NVL(k.kw_score, 0)`으로 0을 채운다.**
-4. **비교 모드 (compare)**: 키워드/벡터 검색 동시 실행, UI에서 좌우 비교 (RAG 미생성)
+4. **Hybrid Vector Index (hvi, 26ai)**: `CREATE HYBRID VECTOR INDEX doc_chunks_hvi ON doc_chunks(chunk_text) PARAMETERS('MODEL … LEXER …')` 하나가
+   청킹·임베딩·텍스트 인덱스·벡터 인덱스를 스스로 만들고, `DBMS_HYBRID_VECTOR.SEARCH(JSON(…))` 가 융합 점수(score·vector_score·text_score)를 돌려준다.
+   **같은 컬럼의 CONTEXT 인덱스를 대체**한다(ORA-29880) — 하이브리드 인덱스가 CONTAINS 도 서빙한다. `sql/setup/60_hybrid_vector_index.sql`
+5. **비교 모드 (compare)**: 키워드/벡터 검색 동시 실행, UI에서 좌우 비교 (RAG 미생성)
 
 ### 임베딩 듀얼 모드
 - **DB 내장 (ONNX)**: `EMBEDDING_SOURCE=database` — `VECTOR_EMBEDDING(model USING text AS data)`
@@ -218,10 +222,12 @@ scripts/deploy.sh
 
 ### PDF 업로드 파이프라인 (SSE 스트리밍)
 1. 문서 레코드 생성 (DOCUMENTS)
-2. pdfplumber로 PDF 텍스트 추출
+2. pdfplumber로 PDF 텍스트 추출 — **추출만 앱**이다(쪽 번호를 청크에 남기려고; `UTL_TO_TEXT` 는 문서 전체를 한 덩어리로 준다)
 3. 청킹: `DBMS_VECTOR_CHAIN.UTL_TO_CHUNKS` 시도 → 실패 시 Python 청킹 (500자, 50 overlap)
-4. 임베딩 생성 + DB 저장 (청크별 진행률 SSE). **임베딩 실패 건수와 첫 오류를 응답에 실어 보낸다**
-5. 문서 상태 → 'indexed'
+4. 본문 일괄 INSERT 후 **DB 안에서 `UPDATE doc_chunks SET embedding = VECTOR_EMBEDDING(model USING chunk_text)` 20청크씩**(진행률 SSE).
+   2026-09-08 실측 180청크: UPDATE ~200ms/행 · UTL_TO_EMBEDDINGS 197 · 파이썬 루프 340 — DB 안 UPDATE 가 가장 빠르다. 외부 API 소스는 청크별 루프.
+   **임베딩 실패 건수와 첫 오류를 응답에 실어 보낸다**(성공 카운트는 `COUNT(embedding IS NOT NULL)` 실측)
+5. 인덱싱: HNSW 는 자동, Hybrid Vector Index 가 있으면 `CTX_DDL.SYNC_INDEX` (새 청크를 인덱스 안에서 다시 임베딩 — 청크 × ~200ms 가 여기 보인다) → 'indexed'
 
 ### DB 테이블·인덱스 구조
 ```sql
@@ -242,10 +248,11 @@ CREATE TABLE doc_chunks (
 CREATE VECTOR INDEX doc_chunks_hnsw_idx ON doc_chunks(embedding)
 ORGANIZATION INMEMORY NEIGHBOR GRAPH DISTANCE COSINE WITH TARGET ACCURACY 95;
 
--- 전문검색 인덱스 (sql/setup/50_oracle_text_index.sql)
-CREATE INDEX doc_chunks_text_idx ON doc_chunks(chunk_text)
-INDEXTYPE IS CTXSYS.CONTEXT
-PARAMETERS ('LEXER CTXSYS.WORLD_LEXER SYNC (ON COMMIT)');
+-- Hybrid Vector Index (sql/setup/60_hybrid_vector_index.sql) — 2026-09-08 부터. CONTEXT 인덱스(50번)를 대체한다
+CREATE HYBRID VECTOR INDEX doc_chunks_hvi ON doc_chunks(chunk_text)
+PARAMETERS ('MODEL MULTILINGUAL_E5_BASE LEXER HVI_WORLD_LEXER');
+-- 내부: DR$DOC_CHUNKS_HVI$I(텍스트 토큰) · $VR(인덱스가 다시 자른 조각 + 임베딩, 180청크 → 452조각) · IVF 벡터 인덱스
+-- CONTAINS(chunk_text, …) 는 이 인덱스로 돈다. 새 청크는 CTX_DDL.SYNC_INDEX('DOC_CHUNKS_HVI')
 ```
 
 ## Environment Variables (.env)
@@ -324,6 +331,18 @@ E5_BASE 5.2초 / E5_SMALL 1.1초, 2회차부터 20~40ms. 풀이 max=5라 데모 
 문서를 읽은 그대로(`_metadata` 포함) 고쳐서 UPDATE 하면 현재 ETag 와 다를 때 `ORA-42699` 로 거부된다 — 이것이 낙관적 잠금이다.
 **원복·무조건 쓰기는 `_metadata` 를 뺀 문서로 보낸다**(검사 생략). 2026-09-05 까지 ETag 시뮬의 원복이 옛 ETag 를 실은 채 UPDATE 해
 조용히 실패했고, 그 결과 고객 5명의 신용한도가 +1 씩 오염돼 있었다(되돌림). `SAMPLE(n)` 절은 테이블 별칭 **앞**에 온다.
+
+### 벡터 컬럼에 술어가 붙으면 HNSW 인덱스를 안 탄다 (2026-09-08 실측)
+`WHERE embedding IS NOT NULL … ORDER BY VECTOR_DISTANCE … FETCH APPROX FIRST` 는 `TABLE ACCESS FULL` 이다.
+술어를 빼면 `VECTOR INDEX HNSW SCAN` — 이 ADB(23.26) 에서는 `FETCH FIRST`(정확) 도 인덱스를 탔다.
+NULL 임베딩 행은 인덱스에 없어 근사 검색에서 자연히 빠지므로 그 술어는 필요도 없었다. 이 앱은 2026-09-08 까지 5개월간 인덱스를 한 번도 안 탔다.
+가중합 ORDER BY(수동 하이브리드)는 인덱스를 못 쓴다 — 그건 원래 그렇고, Hybrid Vector Index 모드가 그 답이다.
+Vector Store 탭 「실행계획」 카드가 술어 유무 두 계획을 나란히 보여준다.
+
+### Hybrid Vector Index 는 같은 컬럼의 CONTEXT 인덱스와 공존하지 못한다 (ORA-29880)
+`CREATE HYBRID VECTOR INDEX` 는 CONTEXT_V2 도메인 인덱스라 컬럼당 하나. 대신 CONTAINS/SCORE 를 그대로 서빙하므로 **대체**한다.
+토큰은 공백 단위(WORLD_LEXER 도 한글은 분절 안 함)라 텍스트 조건은 `to_contains_query()` 의 ACCUM/우측절단을 그대로 쓴다 —
+`'보험금'` 은 `'보험금을'` 과 다르다. 새 청크는 커밋만으로 안 들어가고 `CTX_DDL.SYNC_INDEX` 가 필요하다(업로드 5단계).
 
 ### VECTOR 컬럼에는 집계함수를 직접 못 쓴다
 `COUNT(embedding)` → `ORA-22849`. `COUNT(CASE WHEN embedding IS NOT NULL THEN 1 END)`로 우회.

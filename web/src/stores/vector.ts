@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { getHybridIndex, createHybridIndex, type HybridIndexStatus, type HybridIndexCreate } from '@/lib/vector'
 import { computed, ref } from 'vue'
 import { errorMessage } from '@/lib/api'
 import { postSse } from '@/composables/useSse'
@@ -27,6 +28,9 @@ export interface VectorMessage extends ChatMessage {
   vectorWeight?: number | null
   keywordWeight?: number | null
   hybridNote?: string | null
+  fusion?: string | null
+  scorer?: string | null
+  containsQuery?: string | null
   keywordResults?: SideResult | null
   vectorResults?: SideResult | null
   embeddingInfo?: EmbeddingInfo | null
@@ -40,8 +44,8 @@ export type Extra = 'embedding' | 'index' | 'keyword' | 'viz'
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 const PIPELINE: PipelineStep[] = [
-  { step: 1, label: '문서 등록', status: 'pending' }, { step: 2, label: '텍스트 추출', status: 'pending' }, { step: 3, label: '청크 분할', status: 'pending' },
-  { step: 4, label: '임베딩 & 저장', status: 'pending' }, { step: 5, label: '인덱싱 완료', status: 'pending' },
+  { step: 1, label: '문서 등록', status: 'pending' }, { step: 2, label: '텍스트 추출 (앱 · pdfplumber)', status: 'pending' }, { step: 3, label: '청크 분할', status: 'pending' },
+  { step: 4, label: '임베딩 & 저장', status: 'pending' }, { step: 5, label: '인덱싱', status: 'pending' },
 ]
 
 /**
@@ -174,6 +178,22 @@ export const useVectorStore = defineStore('vector', () => {
   }
   const plan = ref<ExplainPlan | null>(null)
   const planBusy = ref(false)
+  // ── Hybrid Vector Index (26ai) ──
+  const hvi = ref<HybridIndexStatus | null>(null)
+  const hviBusy = ref<'' | 'load' | 'create'>('')
+  const hviResult = ref<HybridIndexCreate | null>(null)
+  async function loadHvi() { hviBusy.value = 'load'; try { hvi.value = await getHybridIndex() } catch (e) { hvi.value = null; system.toast(errorMessage(e), 'error') } finally { hviBusy.value = '' } }
+  /** 청크 수 × ~200ms — 180청크 실측 57초. 옛 CONTEXT 인덱스는 같은 컬럼이라 지워진다(ORA-29880). */
+  async function createHvi(force = false) {
+    hviBusy.value = 'create'; hviResult.value = null
+    try {
+      const r = await createHybridIndex(force); hviResult.value = r
+      if (r.success) { system.toast(r.skipped ? '이미 있습니다.' : `Hybrid Vector Index 생성 (${((r.elapsed_ms || 0) / 1000).toFixed(1)}초)`, 'success'); if (r.status) hvi.value = { success: true, ...r.status } }
+      else system.toast(r.error || '생성 실패', 'error')
+    } catch (e) { hviResult.value = { success: false, error: errorMessage(e) }; system.toast(errorMessage(e), 'error') }
+    finally { hviBusy.value = '' }
+  }
+
   async function loadPlan() { planBusy.value = true; try { plan.value = await explainPlan() } catch (e) { plan.value = { success: false, error: errorMessage(e) } } finally { planBusy.value = false } }
 
   // ── 검색 (RAG) ──
@@ -210,6 +230,7 @@ export const useVectorStore = defineStore('vector', () => {
       else {
         msg.answer = r.answer ?? null; msg.chunks = r.chunks ?? []; msg.sql = r.sql_executed ?? null; msg.elapsedMs = r.elapsed_ms ?? null
         if (m === 'hybrid') { msg.vectorWeight = r.vector_weight ?? null; msg.keywordWeight = r.keyword_weight ?? null; msg.hybridNote = r.hybrid_fallback ? (r.hybrid_note || '') : null }
+        if (m === 'hvi') { msg.fusion = r.fusion ?? null; msg.scorer = r.scorer ?? null; msg.containsQuery = r.contains_query ?? null }
       }
     } catch (e) { msg.errorText = errorMessage(e) }
     finally { window.clearInterval(timer); msg.loading = false; searching.value = false }
@@ -260,5 +281,6 @@ export const useVectorStore = defineStore('vector', () => {
     tableAction, tableBusy, manageTables, resetStore, inspectTarget, inspect, inspectBusy, runInspect, plan, planBusy, loadPlan,
     mode, topK, provider, input, searching, messages, sessions, activeSession, visibleMessages, sourceLabel, send, toggleExtra, saveSession, switchSession, removeSession, clearCurrent,
     onnxTest, onnxBusy, onnxLocalResult, onnxCloudResult, refreshOnnx, testModel, deleteModel, uploadLocal, loadCloud,
+    hvi, hviBusy, hviResult, loadHvi, createHvi,
   }
 })

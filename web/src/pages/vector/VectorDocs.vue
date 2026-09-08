@@ -24,7 +24,7 @@ const tone = (s: string) => (s === 'indexed' ? 'positive' : s === 'processing' ?
 
 <template>
   <div class="flex flex-col gap-5">
-    <Card title="PDF 업로드" subtitle="문서 등록 → 텍스트 추출 → 청크 분할(DBMS_VECTOR_CHAIN, 실패 시 파이썬) → 임베딩 & 저장 → 인덱싱. 진행은 SSE 로 실시간" :icon="UploadCloud">
+    <Card title="PDF 업로드" subtitle="문서 등록 → 텍스트 추출(앱 · pdfplumber, 쪽 번호 보존) → 청크 분할(DBMS_VECTOR_CHAIN.UTL_TO_CHUNKS) → 임베딩(DB 안 UPDATE … VECTOR_EMBEDDING, 20청크씩) → 인덱싱(HNSW 자동 · Hybrid Vector Index 동기화). 진행은 SSE 로 실시간" :icon="UploadCloud">
       <div v-if="v.dimensionWarning" class="mb-3 px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-warm-soft); border-left: 3px solid var(--accent-warm); color: var(--text-primary);">⚠ {{ v.dimensionWarning }}</div>
       <div class="drop rounded-lg flex flex-col items-center justify-center gap-1.5 px-4 py-7 cursor-pointer text-center" :class="{ over, busy: v.uploading }"
         @click="!v.uploading && input?.click()" @dragover.prevent="over = true" @dragleave="over = false" @drop.prevent="over = false; !v.uploading && pick($event.dataTransfer?.files ?? null)">
@@ -35,7 +35,7 @@ const tone = (s: string) => (s === 'indexed' ? 'positive' : s === 'processing' ?
       </div>
       <div v-if="v.uploadError" class="mt-3 px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-negative-soft); border-left: 3px solid var(--accent-negative); color: var(--text-primary);">{{ v.uploadError }}</div>
       <div v-if="v.pipeline.length" class="mt-4 rounded-md p-4" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
-        <PipelineProgress :title="v.uploading ? 'PDF 처리 파이프라인 실행 중' : '파이프라인 완료'" subtitle="문서 → 텍스트 → 청크 → 임베딩 → DB 저장" :steps="steps" :current="current"
+        <PipelineProgress :title="v.uploading ? 'PDF 처리 파이프라인 실행 중' : '파이프라인 완료'" subtitle="추출만 앱에서, 청킹 · 임베딩 · 인덱싱은 DB 안에서" :steps="steps" :current="current"
           :percent="v.ringPercent" :elapsed-sec="v.uploadElapsedSec" :bar-percent="v.uploading && v.currentStep === 4 && v.progress ? v.progress.percent : null" :bar-label="barLabel" />
         <div v-if="v.uploadResult" class="mt-3 flex flex-wrap items-center gap-1.5 text-xs" style="color: var(--text-secondary);">
           <Badge tone="positive">{{ v.uploadResult.filename }}</Badge>

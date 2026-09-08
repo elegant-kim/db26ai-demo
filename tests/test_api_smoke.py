@@ -297,3 +297,34 @@ class TestSelectAiShorthand:
         r = client.post("/api/execute-sql", json={"sql": "SELECT 1 AS N FROM dual", "profile_name": self.PROFILE}).json()
         assert r.get("success") and r["data"][0]["N"] == 1
         assert r["select_ai"] is False and r["profile_name"] == ""
+
+
+class TestVectorIndexPaths:
+    """2026-09-08 — ① 근사 검색이 HNSW 를 타는가 · ② Hybrid Vector Index · ③ DB 안 배치 임베딩 (설계서 05 §6.6 보완)."""
+
+    def test_실행계획_술어_유무로_HNSW_사용이_갈린다(self, client):
+        d = client.post("/api/vector/explain-plan").json()
+        assert d.get("success"), d.get("error")
+        assert d["before"]["uses_index"] is False and "FULL" in d["before"]["access"], d["before"]["access"]
+        assert d["after"]["uses_index"] is True and "HNSW" in d["after"]["access"], d["after"]["access"]
+
+    def test_의미_검색_SQL_은_근사_검색이다(self, client):
+        d = client.post("/api/vector/search", json={"query": "보험금 청구 절차", "mode": "vector", "top_k": 3}).json()
+        assert d.get("success"), d.get("error")
+        assert "FETCH APPROX FIRST" in d["sql_executed"] and "IS NOT NULL" not in d["sql_executed"]
+
+    def test_하이브리드_인덱스가_있고_융합_검색이_점수_3종을_준다(self, client):
+        st = client.get("/api/vector/hybrid-index").json()
+        if not st.get("exists"):
+            pytest.skip("Hybrid Vector Index 없음 — Vector Store 탭에서 생성")
+        assert st["legacy_text_index"] is False, "옛 CONTEXT 인덱스가 남아 있으면 같은 컬럼 중복(ORA-29880)"
+        d = client.post("/api/vector/search", json={"query": "자동차 사고 시 보험금 청구 절차는 어떻게 되나요?", "mode": "hvi", "top_k": 3}).json()
+        assert d.get("success"), d.get("error")
+        assert d["match_count"] > 0 and "DBMS_HYBRID_VECTOR.SEARCH" in d["sql_executed"]
+        c = d["chunks"][0]
+        assert {"hybrid_score", "similarity", "keyword_score"} <= set(c) and 0 < c["hybrid_score"] <= 1
+
+    def test_키워드_검색은_여전히_CONTAINS_로_돈다(self, client):
+        d = client.post("/api/vector/search", json={"query": "보험금 청구", "mode": "keyword", "top_k": 3}).json()
+        assert d.get("success"), d.get("error")
+        assert "CONTAINS" in d["sql_executed"] and "LIKE 폴백" not in d["sql_executed"], d["sql_executed"][:200]

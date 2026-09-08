@@ -3,7 +3,7 @@
 > **정본은 라우트 정의와 docstring 이다** (`app/routes.py` + `app/routers/*.py`). 이 문서는
 > `scripts/gen_api_doc.py` 가 생성한다 — **손으로 고치지 말고 코드를 고친 뒤 다시 생성할 것.**
 > 엔드포인트를 추가·변경하면 같은 커밋에서 이 문서와 `CLAUDE.md` API 목록을 함께 갱신한다.
-> 전체 **57개** 엔드포인트 · 공통 prefix `/api`
+> 전체 **59개** 엔드포인트 · 공통 prefix `/api`
 
 ## 공통 규약
 
@@ -48,38 +48,38 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/vector/documents` | — | 업로드된 문서 목록 조회 | `app/routers/vector.py:194` |
-| `DELETE` | `/api/vector/documents/{doc_id}` | — | 특정 문서 및 관련 청크 삭제 | `app/routers/vector.py:214` |
-| `POST` | `/api/vector/embedding-info` | EmbeddingInfoRequest | 질문 텍스트의 임베딩 과정 정보 반환 | `app/routers/vector.py:254` |
-| `POST` | `/api/vector/explain-plan` | — | 벡터 검색 SQL의 실행 계획 조회 | `app/routers/vector.py:401` |
-| `GET` | `/api/vector/index-info` | — | 벡터 인덱스 메타데이터 조회 | `app/routers/vector.py:234` |
-| `GET` | `/api/vector/recent-queries` | — | V$SQL에서 최근 벡터 관련 쿼리 조회 | `app/routers/vector.py:381` |
-| `POST` | `/api/vector/search` | VectorSearchRequest | 벡터 유사도 검색 / 키워드 검색 / 비교 검색 | `app/routers/vector.py:132` |
-| `POST` | `/api/vector/upload` | multipart 파일 | PDF 파일 업로드 -> SSE 스트리밍으로 실시간 진행 상황 전달 | `app/routers/vector.py:66` |
-| `POST` | `/api/vector/visualize` | VectorVisRequest | 청크 임베딩을 2D PCA로 축소하여 시각화 데이터 반환 | `app/routers/vector.py:426` |
+| `GET` | `/api/vector/documents` | — | 업로드된 문서 목록 조회 | `app/routers/vector.py:232` |
+| `DELETE` | `/api/vector/documents/{doc_id}` | — | 특정 문서 및 관련 청크 삭제 | `app/routers/vector.py:252` |
+| `POST` | `/api/vector/embedding-info` | EmbeddingInfoRequest | 질문 텍스트의 임베딩 과정 정보 반환 | `app/routers/vector.py:292` |
+| `POST` | `/api/vector/explain-plan` | — | 벡터 검색 SQL의 실행 계획 조회 | `app/routers/vector.py:439` |
+| `GET` | `/api/vector/index-info` | — | 벡터 인덱스 메타데이터 조회 | `app/routers/vector.py:272` |
+| `GET` | `/api/vector/recent-queries` | — | V$SQL에서 최근 벡터 관련 쿼리 조회 | `app/routers/vector.py:419` |
+| `POST` | `/api/vector/search` | VectorSearchRequest | 벡터 유사도 검색 / 키워드 검색 / 비교 검색 | `app/routers/vector.py:135` |
+| `POST` | `/api/vector/upload` | multipart 파일 | PDF 파일 업로드 -> SSE 스트리밍으로 실시간 진행 상황 전달 | `app/routers/vector.py:69` |
+| `POST` | `/api/vector/visualize` | VectorVisRequest | 청크 임베딩을 2D PCA로 축소하여 시각화 데이터 반환 | `app/routers/vector.py:464` |
 
 ## ② AI Vector Search — 테이블 관리
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/vector/create-tables` | — | Vector Store 테이블 생성/연결 | `app/routers/vector.py:296` |
-| `POST` | `/api/vector/drop-tables` | — | Vector Store 테이블 삭제 | `app/routers/vector.py:276` |
-| `POST` | `/api/vector/table-data` | TableQueryRequest | 테이블 데이터 조회 | `app/routers/vector.py:341` |
-| `POST` | `/api/vector/table-definition` | TableQueryRequest | 테이블 컬럼 정의 조회 | `app/routers/vector.py:321` |
-| `POST` | `/api/vector/table-indexes` | TableQueryRequest | 테이블 인덱스 조회 | `app/routers/vector.py:361` |
+| `POST` | `/api/vector/create-tables` | — | Vector Store 테이블 생성/연결 | `app/routers/vector.py:334` |
+| `POST` | `/api/vector/drop-tables` | — | Vector Store 테이블 삭제 | `app/routers/vector.py:314` |
+| `POST` | `/api/vector/table-data` | TableQueryRequest | 테이블 데이터 조회 | `app/routers/vector.py:379` |
+| `POST` | `/api/vector/table-definition` | TableQueryRequest | 테이블 컬럼 정의 조회 | `app/routers/vector.py:359` |
+| `POST` | `/api/vector/table-indexes` | TableQueryRequest | 테이블 인덱스 조회 | `app/routers/vector.py:399` |
 
 ## ② 임베딩 · ONNX 모델
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routers/vector.py:454` |
-| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routers/vector.py:467` |
-| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routers/vector.py:502` |
-| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routers/vector.py:578` |
-| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routers/vector.py:637` |
-| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routers/vector.py:525` |
-| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routers/vector.py:617` |
-| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routers/vector.py:667` |
+| `GET` | `/api/vector/embedding-config` | — | 현재 임베딩 설정 반환 | `app/routers/vector.py:492` |
+| `POST` | `/api/vector/embedding-config` | EmbeddingConfigRequest | 임베딩 설정 런타임 변경 (서버 재시작 시 .env 값으로 복원) | `app/routers/vector.py:505` |
+| `GET` | `/api/vector/onnx-models` | — | DB에 로드된 ONNX 임베딩 모델 목록 조회 | `app/routers/vector.py:540` |
+| `POST` | `/api/vector/onnx-models/load-cloud` | raw JSON | OCI Object Storage에서 ONNX 모델을 가져와 DB에 적재 | `app/routers/vector.py:616` |
+| `POST` | `/api/vector/onnx-models/test` | raw JSON | ONNX 모델 테스트 (샘플 임베딩 생성) | `app/routers/vector.py:675` |
+| `POST` | `/api/vector/onnx-models/upload` | multipart 파일 | ONNX 파일 업로드 → DB 모델 적재 | `app/routers/vector.py:563` |
+| `DELETE` | `/api/vector/onnx-models/{model_name}` | — | DB에서 ONNX 모델 삭제 | `app/routers/vector.py:655` |
+| `GET` | `/api/vector/onnx-models/{model_name}/detail` | — | ONNX 모델 상세 정보 조회 | `app/routers/vector.py:705` |
 
 ## ③ JSON Relational Duality
 
@@ -135,6 +135,8 @@
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
 | `POST` | `/api/env-info` | EnvInfoRequest | Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜). | `app/routers/nl2sql.py:54` |
+| `GET` | `/api/vector/hybrid-index` | — | Hybrid Vector Index(26ai) 상태 — 있는가, 내부에 몇 청크가 임베딩돼 있는가, 옛 CONTEXT 인덱스가 남았는가. | `app/routers/vector.py:203` |
+| `POST` | `/api/vector/hybrid-index/create` | HybridIndexRequest | Hybrid Vector Index 생성(옛 Oracle Text 인덱스 대체). 청크 수 × ~200ms — 180청크 약 50초. | `app/routers/vector.py:219` |
 
 ---
 
@@ -203,6 +205,12 @@
 
 ```python
     query_index: int = 0
+```
+
+### `HybridIndexRequest`
+
+```python
+    force: bool = False
 ```
 
 ### `SetProfileRequest`

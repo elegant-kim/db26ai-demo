@@ -17,16 +17,19 @@ from pydantic import BaseModel
 from app.database import get_pool
 from app.vector_search import (
     compare_search,
+    create_hybrid_index,
     create_vector_tables_explicit,
     delete_document,
     drop_onnx_model,
     drop_vector_tables,
     generate_rag_answer,
     get_embedding_info,
+    get_hybrid_index_status,
     get_index_info,
     get_onnx_model_detail,
     get_onnx_models,
     get_vector_visualization,
+    hybrid_index_search,
     hybrid_search,
     keyword_search,
     list_documents,
@@ -51,7 +54,7 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 class VectorSearchRequest(BaseModel):
     query: str
-    mode: str = "vector"  # "vector", "keyword", "compare"
+    mode: str = "vector"  # "vector", "keyword", "hybrid"(수동 가중합), "hvi"(Hybrid Vector Index), "compare"
     top_k: int = 5
     profile_name: str = ""
     provider: str = ""
@@ -152,6 +155,8 @@ async def vector_search_endpoint(req: VectorSearchRequest):
             }
         elif req.mode == "hybrid":
             search_result = await hybrid_search(pool, req.query, req.top_k)
+        elif req.mode == "hvi":
+            search_result = await hybrid_index_search(pool, req.query, req.top_k)
         elif req.mode == "keyword":
             search_result = await keyword_search(pool, req.query, req.top_k)
         else:
@@ -173,6 +178,10 @@ async def vector_search_endpoint(req: VectorSearchRequest):
             "sql_executed": search_result["sql_executed"],
             "elapsed_ms": elapsed_ms,
         }
+        if req.mode == "hvi":
+            result_data["fusion"] = search_result.get("fusion")
+            result_data["scorer"] = search_result.get("scorer")
+            result_data["contains_query"] = search_result.get("contains_query")
         # 하이브리드 검색 추가 정보
         if req.mode == "hybrid":
             result_data["vector_weight"] = search_result.get("vector_weight", 0.7)
@@ -188,6 +197,35 @@ async def vector_search_endpoint(req: VectorSearchRequest):
             status_code=500,
             content={"success": False, "error": str(e), "elapsed_ms": elapsed_ms},
         )
+
+
+@router.get("/hybrid-index")
+async def hybrid_index_status():
+    """Hybrid Vector Index(26ai) 상태 — 있는가, 내부에 몇 청크가 임베딩돼 있는가, 옛 CONTEXT 인덱스가 남았는가."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        return {"success": True, **(await get_hybrid_index_status(pool))}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+class HybridIndexRequest(BaseModel):
+    force: bool = False
+
+
+@router.post("/hybrid-index/create")
+async def hybrid_index_create(req: HybridIndexRequest):
+    """Hybrid Vector Index 생성(옛 Oracle Text 인덱스 대체). 청크 수 × ~200ms — 180청크 약 50초."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        return await create_hybrid_index(pool, force=req.force)
+    except Exception as e:
+        logger.warning("[hvi] 생성 실패: %s", e)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
 @router.get("/documents")

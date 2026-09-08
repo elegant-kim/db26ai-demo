@@ -90,6 +90,18 @@ async def init_vector_tables(pool):
                 END;
             """)
 
+            # Hybrid Vector Index — 청크가 없을 때만 기동 시 만든다(즉시). 청크가 있으면 수십 초라 Vector Store 탭 버튼에 맡긴다.
+            # 같은 컬럼에 옛 CONTEXT 인덱스가 있으면 만들지 않는다(ORA-29880) — 버튼이 대체 절차를 밟는다.
+            try:
+                await cursor.execute("SELECT (SELECT COUNT(*) FROM doc_chunks), (SELECT COUNT(*) FROM user_indexes WHERE index_name IN (:a, :b)) FROM dual",
+                                     {"a": HYBRID_INDEX, "b": LEGACY_TEXT_INDEX})
+                n_chunks, n_idx = await cursor.fetchone()
+                if n_chunks == 0 and n_idx == 0:
+                    await cursor.execute(f"BEGIN BEGIN CTX_DDL.CREATE_PREFERENCE('{HYBRID_LEXER_PREF}', 'WORLD_LEXER'); EXCEPTION WHEN OTHERS THEN IF SQLCODE <> -20000 THEN RAISE; END IF; END; END;")
+                    await cursor.execute(_hybrid_create_sql())
+                    logger.info("[init] Hybrid Vector Index %s 생성(빈 테이블)", HYBRID_INDEX)
+            except Exception as e:
+                logger.warning("[init] Hybrid Vector Index 자동 생성 건너뜀: %s", str(e).splitlines()[0][:160])
             await conn.commit()
 
 
@@ -378,18 +390,19 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
     try:
         # Step 2: PDF 텍스트 추출
         step_start = time.time()
-        await emit("step", {"step": 2, "label": "텍스트 추출", "status": "running"})
+        await emit("step", {"step": 2, "label": "텍스트 추출 (앱 · pdfplumber)", "status": "running"})
         # pdfplumber 는 동기 코드다 — 2026-09-05 실측: 195쪽 PDF 추출 84초 동안 이벤트 루프가 통째로 막혀
         # SSE 는 "1단계 진행 중"에 멈춰 보였고 /api/health 도 응답하지 않았다. 스레드로 보낸다.
         pages = await asyncio.to_thread(extract_text_from_pdf, file_path)
         step_ms = int((time.time() - step_start) * 1000)
-        pipeline.append({"step": "텍스트 추출", "sql": "-- pdfplumber PDF 텍스트 추출", "duration_ms": step_ms})
+        # 추출만 앱(pdfplumber)에서 한다 — 쪽 번호를 청크에 남기기 위해서다(DBMS_VECTOR_CHAIN.UTL_TO_TEXT 는 문서 전체를 한 덩어리로 돌려준다).
+        pipeline.append({"step": "텍스트 추출 (앱 · pdfplumber)", "sql": "-- 앱: pdfplumber 로 쪽별 추출 (쪽 번호 보존을 위해 DB 밖에서)", "duration_ms": step_ms})
 
         if not pages:
             raise ValueError("PDF에서 텍스트를 추출할 수 없습니다.")
 
         total_chars = sum(len(p["text"]) for p in pages)
-        await emit("step", {"step": 2, "label": "텍스트 추출", "status": "done",
+        await emit("step", {"step": 2, "label": "텍스트 추출 (앱 · pdfplumber)", "status": "done",
                              "detail": f"{len(pages)}페이지 / {total_chars:,}자",
                              "duration_ms": step_ms})
 
@@ -414,7 +427,12 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                              "detail": f"{len(all_chunks)}개 청크 생성",
                              "duration_ms": step_ms})
 
-        # Step 4: 임베딩 생성 + DB 저장  (가장 오래 걸림 — 청크별 진행률 전달)
+        # Step 4: 임베딩 & 저장
+        #   DB 내장(ONNX) 소스: 청크 본문을 먼저 전부 INSERT 하고, 임베딩은 DB 안에서
+        #   `UPDATE … SET embedding = VECTOR_EMBEDDING(model USING chunk_text)` 한 문장으로 만든다(20청크씩 잘라 진행률 유지).
+        #   2026-09-08 실측(180청크, 워밍 후): UPDATE 한 문장 ~200ms/행 · UTL_TO_EMBEDDINGS 197ms/행 · 파이썬 루프 340ms/행.
+        #   E5_BASE 는 어느 길이든 행당 200ms 가 바닥이고, DB 안 UPDATE 가 가장 빠르고 "임베딩이 DB 안에서 돈다"를 SQL 한 줄로 보여준다.
+        #   외부 API 소스: 청크마다 API 를 불러야 하므로 옛 루프를 그대로 쓴다.
         step_start_embed = time.time()
         total_chunks = len(all_chunks)
         # embed_count = 임베딩이 실제로 저장된 청크 수. 2026-09-04 이전에는 실패해도
@@ -426,73 +444,94 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "running",
                              "detail": f"0/{total_chunks}", "progress": 0})
 
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                for idx, chunk_info in enumerate(all_chunks):
-                    stored_with_embedding = False
-                    try:
-                        embedding = await get_embedding(pool, chunk_info["text"])
-                        if embedding is not None:
-                            await cursor.execute("""
-                                INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num, embedding)
-                                VALUES (:doc_id, :chunk_text, :source_file, :page_num, TO_VECTOR(:embedding))
-                            """, {
-                                "doc_id": doc_id,
-                                "chunk_text": chunk_info["text"],
-                                "source_file": filename,
-                                "page_num": chunk_info["page_num"],
-                                "embedding": _vec_to_str(embedding),
-                            })
-                            stored_with_embedding = True
-                        else:
-                            if first_embed_error is None:
-                                first_embed_error = "임베딩 생성이 None을 반환했습니다."
-                                logger.warning("[upload] %s", first_embed_error)
-                            await cursor.execute("""
-                                INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
-                                VALUES (:doc_id, :chunk_text, :source_file, :page_num)
-                            """, {
-                                "doc_id": doc_id,
-                                "chunk_text": chunk_info["text"],
-                                "source_file": filename,
-                                "page_num": chunk_info["page_num"],
-                            })
-                    except Exception as e:
-                        # 임베딩 없이라도 본문은 남긴다(키워드 검색은 가능). 다만
-                        # 실패를 조용히 넘기지 않는다 — 첫 예외를 로그와 응답에 싣는다.
-                        if first_embed_error is None:
-                            first_embed_error = str(e).splitlines()[0][:200]
-                            logger.warning("[upload] 임베딩 저장 실패(이후 동일 오류는 생략): %s",
-                                           first_embed_error)
+        if settings.EMBEDDING_SOURCE == "database":
+            BATCH = 20
+            embed_sql = (f"UPDATE doc_chunks\n"
+                         f"SET    embedding = VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING DBMS_LOB.SUBSTR(chunk_text, 4000, 1) AS data)\n"
+                         f"WHERE  doc_id = :doc_id AND chunk_id IN (:ids…)   -- {BATCH}개씩")
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    # 4-1. 본문 일괄 INSERT (임베딩 없이) — 키워드 검색은 이 순간부터 가능하다
+                    id_var = cursor.var(int, arraysize=total_chunks)
+                    ids: list[int] = []
+                    for ci in all_chunks:
                         await cursor.execute("""
                             INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
                             VALUES (:doc_id, :chunk_text, :source_file, :page_num)
-                        """, {
-                            "doc_id": doc_id,
-                            "chunk_text": chunk_info["text"],
-                            "source_file": filename,
-                            "page_num": chunk_info["page_num"],
-                        })
-                    if stored_with_embedding:
-                        embed_count += 1
-                    else:
-                        no_embed_count += 1
-                    # 매 청크마다 또는 적절한 간격으로 진행률 전달
-                    if total_chunks <= 20 or (idx + 1) % max(1, total_chunks // 20) == 0 or idx == total_chunks - 1:
-                        pct = int((idx + 1) / total_chunks * 100)
-                        await emit("progress", {
-                            "step": 4, "current": idx + 1, "total": total_chunks, "percent": pct,
-                        })
-
-                await conn.commit()
+                            RETURNING chunk_id INTO :cid
+                        """, {"doc_id": doc_id, "chunk_text": ci["text"], "source_file": filename,
+                              "page_num": ci["page_num"], "cid": id_var})
+                        ids.append(id_var.getvalue()[0])
+                    await conn.commit()
+                    # 4-2. DB 안에서 임베딩 — 배치마다 UPDATE 한 문장
+                    for b in range(0, total_chunks, BATCH):
+                        batch_ids = ids[b:b + BATCH]
+                        placeholders = ", ".join(f":i{k}" for k in range(len(batch_ids)))
+                        binds = {"doc_id": doc_id, **{f"i{k}": v for k, v in enumerate(batch_ids)}}
+                        try:
+                            await cursor.execute(
+                                f"UPDATE doc_chunks SET embedding = VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} "
+                                f"USING DBMS_LOB.SUBSTR(chunk_text, 4000, 1) AS data) "
+                                f"WHERE doc_id = :doc_id AND chunk_id IN ({placeholders})", binds)
+                            await conn.commit()
+                        except Exception as e:
+                            # 이 배치는 임베딩 없이 남는다(본문은 이미 있다). 실패를 조용히 넘기지 않는다 — 첫 예외를 로그와 응답에.
+                            if first_embed_error is None:
+                                first_embed_error = str(e).splitlines()[0][:200]
+                                logger.warning("[upload] 배치 임베딩 실패(이후 동일 오류는 생략): %s", first_embed_error)
+                            await conn.rollback()
+                        done = min(b + BATCH, total_chunks)
+                        await emit("progress", {"step": 4, "current": done, "total": total_chunks,
+                                                "percent": int(done / total_chunks * 100)})
+                    # 4-3. 성공 카운트는 실제 저장분만 센다
+                    await cursor.execute("SELECT COUNT(CASE WHEN embedding IS NOT NULL THEN 1 END) FROM doc_chunks WHERE doc_id = :d", {"d": doc_id})
+                    embed_count = (await cursor.fetchone())[0]
+                    no_embed_count = total_chunks - embed_count
+        else:
+            embed_sql = f"-- 외부 API ({settings.EMBEDDING_MODEL}) 사용 — 청크마다 API 호출 후 TO_VECTOR 로 저장"
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    for idx, chunk_info in enumerate(all_chunks):
+                        stored_with_embedding = False
+                        try:
+                            embedding = await get_embedding(pool, chunk_info["text"])
+                            if embedding is not None:
+                                await cursor.execute("""
+                                    INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num, embedding)
+                                    VALUES (:doc_id, :chunk_text, :source_file, :page_num, TO_VECTOR(:embedding))
+                                """, {"doc_id": doc_id, "chunk_text": chunk_info["text"], "source_file": filename,
+                                      "page_num": chunk_info["page_num"], "embedding": _vec_to_str(embedding)})
+                                stored_with_embedding = True
+                            else:
+                                if first_embed_error is None:
+                                    first_embed_error = "임베딩 생성이 None을 반환했습니다."
+                                    logger.warning("[upload] %s", first_embed_error)
+                                await cursor.execute("""
+                                    INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
+                                    VALUES (:doc_id, :chunk_text, :source_file, :page_num)
+                                """, {"doc_id": doc_id, "chunk_text": chunk_info["text"], "source_file": filename, "page_num": chunk_info["page_num"]})
+                        except Exception as e:
+                            if first_embed_error is None:
+                                first_embed_error = str(e).splitlines()[0][:200]
+                                logger.warning("[upload] 임베딩 저장 실패(이후 동일 오류는 생략): %s", first_embed_error)
+                            await cursor.execute("""
+                                INSERT INTO doc_chunks (doc_id, chunk_text, source_file, page_num)
+                                VALUES (:doc_id, :chunk_text, :source_file, :page_num)
+                            """, {"doc_id": doc_id, "chunk_text": chunk_info["text"], "source_file": filename, "page_num": chunk_info["page_num"]})
+                        if stored_with_embedding:
+                            embed_count += 1
+                        else:
+                            no_embed_count += 1
+                        if total_chunks <= 20 or (idx + 1) % max(1, total_chunks // 20) == 0 or idx == total_chunks - 1:
+                            await emit("progress", {"step": 4, "current": idx + 1, "total": total_chunks,
+                                                    "percent": int((idx + 1) / total_chunks * 100)})
+                    await conn.commit()
 
         step_ms_embed = int((time.time() - step_start_embed) * 1000)
-        if settings.EMBEDDING_SOURCE == "database":
-            embed_sql = f"SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING :text AS data) FROM dual"
-        else:
-            embed_sql = f"-- 외부 API ({settings.EMBEDDING_MODEL}) 사용"
         pipeline.append({"step": "임베딩 & 저장", "sql": embed_sql, "duration_ms": step_ms_embed})
         embed_detail = f"{embed_count}개 완료"
+        if settings.EMBEDDING_SOURCE == "database" and total_chunks:
+            embed_detail += f" · DB 안 UPDATE {(total_chunks + 19) // 20}문장 ({step_ms_embed // total_chunks}ms/청크)"
         if no_embed_count:
             embed_detail += f" / 임베딩 실패 {no_embed_count}개 — {first_embed_error}"
         await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "done",
@@ -501,9 +540,21 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                              "error": first_embed_error,
                              "duration_ms": step_ms_embed})
 
-        # Step 5: 인덱싱 완료
+        # Step 5: 인덱싱 — HNSW 는 DML 과 함께 유지되고, Hybrid Vector Index(있을 때)는 CTX_DDL.SYNC_INDEX 로 새 청크를 반영한다.
+        #   동기화가 새 청크를 인덱스 안에서 다시 임베딩하므로 청크 수 × ~200ms 가 여기서 보인다 — 숨기지 않고 단계로 드러낸다.
         step_start_idx = time.time()
-        await emit("step", {"step": 5, "label": "인덱싱 완료", "status": "running"})
+        await emit("step", {"step": 5, "label": "인덱싱", "status": "running"})
+        idx_detail = "HNSW 인덱스 자동 반영"
+        idx_sql = "-- HNSW 벡터 인덱스는 INSERT 와 함께 유지된다"
+        try:
+            hv = await get_hybrid_index_status(pool)
+            if hv.get("exists"):
+                sync = await sync_hybrid_index(pool)
+                idx_detail += f" · Hybrid Vector Index 동기화 {sync['elapsed_ms']:,}ms"
+                idx_sql = sync["sql"]
+        except Exception as e:
+            logger.warning("[upload] 하이브리드 인덱스 동기화 실패: %s", e)
+            idx_detail += f" · Hybrid Vector Index 동기화 실패: {str(e).splitlines()[0][:120]}"
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
@@ -514,7 +565,8 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                 await conn.commit()
 
         step_ms_idx = int((time.time() - step_start_idx) * 1000)
-        pipeline.append({"step": "인덱싱 완료", "duration_ms": step_ms_idx})
+        pipeline.append({"step": "인덱싱", "sql": idx_sql, "duration_ms": step_ms_idx})
+        await emit("step", {"step": 5, "label": "인덱싱", "status": "done", "detail": idx_detail, "duration_ms": step_ms_idx})
 
         total_ms = int((time.time() - start_total) * 1000)
         result = {
@@ -550,17 +602,144 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         raise e
 
 
+# === Hybrid Vector Index (Oracle 26ai) ===
+# 텍스트 컬럼 하나에 인덱스 하나 — 청킹·임베딩·텍스트 인덱스·벡터 인덱스를 DB 가 스스로 만든다.
+# 2026-09-08 실측(이 ADB): CREATE 180청크 ~50초(모델로 재임베딩), DBMS_HYBRID_VECTOR.SEARCH 0.6초, CTX_DDL.SYNC_INDEX 0.3초.
+# 같은 컬럼에 CONTEXT 인덱스가 있으면 ORA-29880 → 하이브리드 인덱스가 CONTAINS 도 서빙하므로(CONTEXT_V2) 기존 인덱스를 대체한다.
+# 토큰은 공백 단위(기존 인덱스와 동일)라 텍스트 조건은 to_contains_query() 의 ACCUM/우측절단을 그대로 쓴다.
+
+HYBRID_INDEX = "DOC_CHUNKS_HVI"
+HYBRID_LEXER_PREF = "HVI_WORLD_LEXER"
+LEGACY_TEXT_INDEX = "DOC_CHUNKS_TEXT_IDX"
+
+
+def _hybrid_create_sql() -> str:
+    return (f"CREATE HYBRID VECTOR INDEX {HYBRID_INDEX} ON doc_chunks(chunk_text)\n"
+            f"PARAMETERS ('MODEL {settings.EMBEDDING_MODEL} LEXER {HYBRID_LEXER_PREF}')")
+
+
+async def get_hybrid_index_status(pool) -> dict:
+    """하이브리드 인덱스가 있는가, 상태는, 내부에 몇 청크가 임베딩돼 있는가, 옛 CONTEXT 인덱스가 아직 있는가."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT index_name, status, parameters FROM user_indexes WHERE index_name IN (:a, :b)",
+                                 {"a": HYBRID_INDEX, "b": LEGACY_TEXT_INDEX})
+            found = {r[0]: {"status": r[1], "parameters": r[2]} for r in await cursor.fetchall()}
+            hv = found.get(HYBRID_INDEX)
+            info = {"exists": hv is not None, "index_name": HYBRID_INDEX, "status": hv["status"] if hv else None,
+                    "parameters": hv["parameters"] if hv else None, "legacy_text_index": LEGACY_TEXT_INDEX in found,
+                    "model": settings.EMBEDDING_MODEL, "create_sql": _hybrid_create_sql(), "indexed_chunks": None, "ctx_status": None}
+            if hv:
+                try:
+                    await cursor.execute(f"SELECT COUNT(*) FROM DR${HYBRID_INDEX}$VR")
+                    info["indexed_chunks"] = (await cursor.fetchone())[0]
+                    await cursor.execute("SELECT idx_status FROM ctx_user_indexes WHERE idx_name = :n", {"n": HYBRID_INDEX})
+                    row = await cursor.fetchone()
+                    info["ctx_status"] = row[0] if row else None
+                except Exception as e:
+                    logger.warning("[hvi] 상태 조회 일부 실패: %s", e)
+            return info
+
+
+async def create_hybrid_index(pool, force: bool = False) -> dict:
+    """하이브리드 인덱스를 만든다. 같은 컬럼의 옛 CONTEXT 인덱스는 지운다(ORA-29880). 청크 수 × ~200ms 걸린다."""
+    start = time.time()
+    steps = []
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT index_name FROM user_indexes WHERE index_name IN (:a, :b)", {"a": HYBRID_INDEX, "b": LEGACY_TEXT_INDEX})
+            have = {r[0] for r in await cursor.fetchall()}
+            if HYBRID_INDEX in have and not force:
+                return {"success": True, "skipped": True, "message": "이미 있습니다.", "steps": steps, "elapsed_ms": 0}
+            if LEGACY_TEXT_INDEX in have:
+                await cursor.execute(f"DROP INDEX {LEGACY_TEXT_INDEX}")
+                steps.append({"sql": f"DROP INDEX {LEGACY_TEXT_INDEX}", "note": "같은 컬럼에 도메인 인덱스는 하나 — 하이브리드 인덱스가 CONTAINS 도 서빙한다"})
+            if HYBRID_INDEX in have:
+                await cursor.execute(f"DROP INDEX {HYBRID_INDEX}")
+                steps.append({"sql": f"DROP INDEX {HYBRID_INDEX}", "note": "재생성"})
+            await cursor.execute(f"""
+                BEGIN
+                    BEGIN CTX_DDL.CREATE_PREFERENCE('{HYBRID_LEXER_PREF}', 'WORLD_LEXER');
+                    EXCEPTION WHEN OTHERS THEN IF SQLCODE <> -20000 THEN RAISE; END IF; END;
+                END;""")
+            steps.append({"sql": f"CTX_DDL.CREATE_PREFERENCE('{HYBRID_LEXER_PREF}', 'WORLD_LEXER')", "note": "한글·영문 혼재 문서용 렉서 (기존 인덱스와 동일)"})
+            t = time.time()
+            await cursor.execute(_hybrid_create_sql())
+            steps.append({"sql": _hybrid_create_sql(), "note": "DB 가 청킹 → 임베딩 → 텍스트 인덱스 → 벡터 인덱스를 한 번에", "duration_ms": int((time.time() - t) * 1000)})
+            await conn.commit()
+    status = await get_hybrid_index_status(pool)
+    return {"success": True, "steps": steps, "elapsed_ms": int((time.time() - start) * 1000), "status": status}
+
+
+async def sync_hybrid_index(pool) -> dict:
+    """새로 들어온 청크를 인덱스에 반영한다 — CTX_DDL.SYNC_INDEX (텍스트 + 벡터 둘 다)."""
+    t = time.time()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("BEGIN CTX_DDL.SYNC_INDEX(:n); END;", {"n": HYBRID_INDEX})
+            await conn.commit()
+    return {"sql": f"BEGIN CTX_DDL.SYNC_INDEX('{HYBRID_INDEX}'); END;", "elapsed_ms": int((time.time() - t) * 1000)}
+
+
+async def hybrid_index_search(pool, query: str, top_k: int = 5, fusion: str = "UNION", scorer: str = "rsf") -> dict:
+    """DBMS_HYBRID_VECTOR.SEARCH — JSON 한 덩어리로 텍스트+벡터 융합 검색. 반환 점수: score(융합)·vector_score·text_score (0~100)."""
+    start = time.time()
+    ctx = to_contains_query(query) or query
+    spec = {
+        "hybrid_index_name": HYBRID_INDEX,
+        "search_scorer": scorer,
+        "search_fusion": fusion,
+        "vector": {"search_text": query, "search_mode": "DOCUMENT", "aggregator": "MAX", "score_weight": 1},
+        "text": {"contains": ctx, "score_weight": 1},
+        "return": {"values": ["rowid", "score", "vector_score", "text_score"], "topN": top_k},
+    }
+    spec_json = json.dumps(spec, ensure_ascii=False)
+    sql_executed = f"""-- Hybrid Vector Index (Oracle 26ai): 인덱스 하나가 텍스트 + 벡터를 함께 서빙, 융합은 DB 가
+-- search_fusion={fusion} · search_scorer={scorer} · 텍스트 조건(ACCUM 변환): '{ctx}'
+SELECT DBMS_HYBRID_VECTOR.SEARCH(JSON('{spec_json}')) FROM dual"""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT DBMS_HYBRID_VECTOR.SEARCH(JSON(:j)) FROM dual", {"j": spec_json})
+            raw = (await cursor.fetchone())[0]
+            raw = await _lob_to_str(raw) if hasattr(raw, "read") else raw
+            hits = json.loads(raw) if raw else []
+            chunks = []
+            if hits:
+                rids = [h["rowid"] for h in hits]
+                ph = ", ".join(f":r{i}" for i in range(len(rids)))
+                await cursor.execute(f"SELECT ROWIDTOCHAR(ROWID), chunk_id, chunk_text, source_file, page_num FROM doc_chunks WHERE ROWID IN ({ph})",
+                                     {f"r{i}": r for i, r in enumerate(rids)})
+                by_rid = {}
+                for r in await cursor.fetchall():
+                    by_rid[r[0]] = {"chunk_id": r[1], "chunk_text": await _lob_to_str(r[2]) if hasattr(r[2], "read") else r[2], "source_file": r[3], "page_num": r[4]}
+                for h in hits:
+                    c = by_rid.get(h["rowid"])
+                    if not c:
+                        continue
+                    chunks.append({**c, "similarity": round((h.get("vector_score") or 0) / 100, 4),
+                                   "keyword_score": round(h.get("text_score") or 0, 1),
+                                   "hybrid_score": round((h.get("score") or 0) / 100, 4)})
+    return {"chunks": chunks, "match_count": len(chunks), "sql_executed": sql_executed, "elapsed_ms": int((time.time() - start) * 1000),
+            "fusion": fusion, "scorer": scorer, "contains_query": ctx}
+
+
 # === Search Functions ===
 
 async def vector_search(pool, query: str, top_k: int = 5) -> dict:
-    """벡터 유사도 검색을 수행한다."""
+    """벡터 유사도 검색 — 근사(approximate) 검색으로 HNSW 인덱스를 탄다.
+
+    2026-09-08 실측(설계서 05 §6.6 보완 ①): 그전까지 `WHERE embedding IS NOT NULL … FETCH FIRST` 였다.
+    이 둘이 각각 인덱스를 막았다 — (1) 정확 검색(FETCH FIRST)은 정의상 전체를 훑고,
+    (2) `embedding IS NOT NULL` 술어가 붙으면 `FETCH APPROX FIRST` 여도 옵티마이저가 TABLE ACCESS FULL 을 고른다.
+    술어를 걷어내면 계획이 VECTOR INDEX HNSW SCAN 으로 바뀐다(180청크 100ms → 71ms; 수치보다 계획이 증거다).
+    이 ADB 에서는 술어만 없으면 FETCH FIRST 도 HNSW 를 탔다 — APPROX 는 의도를 SQL 에 적는 것이고, 인덱스를 죽인 건 술어였다.
+    NULL 임베딩 행은 인덱스에 없으므로 근사 검색에서 자연히 빠진다.
+    """
     start = time.time()
 
     if settings.EMBEDDING_SOURCE == "database":
-        # DB 내 임베딩 모델 사용.
         # VECTOR_EMBEDDING 은 반드시 스칼라 서브쿼리 (SELECT ... FROM dual) 로 감싼다.
         # 인라인으로 두면 행마다 재평가되어 79청크에 5.4초가 걸렸다(2026-09-04 실측).
-        # 감싸면 Oracle 이 1회만 평가한다 → 0.05초. hybrid_search 와 동일한 이유.
         sql = f"""
             SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding,
@@ -568,19 +747,18 @@ async def vector_search(pool, query: str, top_k: int = 5) -> dict:
                         FROM dual),
                        COSINE) AS distance
             FROM doc_chunks
-            WHERE embedding IS NOT NULL
             ORDER BY distance
-            FETCH FIRST :top_k ROWS ONLY
+            FETCH APPROX FIRST :top_k ROWS ONLY
         """
-        sql_executed = f"""SELECT chunk_id, chunk_text, source_file, page_num,
+        sql_executed = f"""-- 근사 검색(FETCH APPROX FIRST): HNSW 인덱스 doc_chunks_hnsw_idx 를 탄다 (Vector Store 탭의 실행계획 참조)
+SELECT chunk_id, chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding,
            (SELECT VECTOR_EMBEDDING({settings.EMBEDDING_MODEL} USING '{query}' AS data)
             FROM dual),
            COSINE) AS distance
 FROM doc_chunks
-WHERE embedding IS NOT NULL
 ORDER BY distance
-FETCH FIRST {top_k} ROWS ONLY"""
+FETCH APPROX FIRST {top_k} ROWS ONLY"""
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
@@ -594,17 +772,15 @@ FETCH FIRST {top_k} ROWS ONLY"""
             SELECT chunk_id, chunk_text, source_file, page_num,
                    VECTOR_DISTANCE(embedding, TO_VECTOR(:query_vector), COSINE) AS distance
             FROM doc_chunks
-            WHERE embedding IS NOT NULL
             ORDER BY distance
-            FETCH FIRST :top_k ROWS ONLY
+            FETCH APPROX FIRST :top_k ROWS ONLY
         """
-        sql_executed = f"""-- 외부 임베딩 API ({settings.EMBEDDING_MODEL}) 사용
+        sql_executed = f"""-- 외부 임베딩 API ({settings.EMBEDDING_MODEL}) 사용 · 근사 검색(FETCH APPROX FIRST)
 SELECT chunk_id, chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding, TO_VECTOR('<{len(query_vector)}차원 벡터>'), COSINE) AS distance
 FROM doc_chunks
-WHERE embedding IS NOT NULL
 ORDER BY distance
-FETCH FIRST {top_k} ROWS ONLY"""
+FETCH APPROX FIRST {top_k} ROWS ONLY"""
 
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
@@ -779,8 +955,9 @@ async def hybrid_search(pool, query: str, top_k: int = 5, vector_weight: float =
             FETCH FIRST :top_k ROWS ONLY
         """
         binds = {**qvec_binds, **kw_binds, "top_k": top_k}
-        display = f"""-- 하이브리드 검색 (Oracle 26ai): 단일 SQL 에서 키워드 + 벡터 결합
+        display = f"""-- 수동 하이브리드(가중합): 단일 SQL 에서 키워드 + 벡터 결합
 -- hybrid_score = {vector_weight} × vector_similarity + {keyword_weight} × keyword_score/100
+-- ORDER BY 가 가중합 식이라 근사 검색(APPROX)이 걸리지 않는다 → 정확 검색(전체 스캔). 26ai 의 Hybrid Vector Index 는 「하이브리드 인덱스」 모드.
 {note}
 SELECT c.chunk_id, c.chunk_text, c.source_file, c.page_num,
        VECTOR_DISTANCE(c.embedding, {qvec_display}, COSINE) AS vec_distance,
@@ -1452,47 +1629,53 @@ FETCH FIRST 10 ROWS ONLY"""
         return {"sql_executed": sql, "columns": [], "data": [], "row_count": 0, "error": str(e)}
 
 
-async def query_explain_plan(pool) -> dict:
-    """대표적인 벡터 검색 SQL의 실행 계획을 조회한다."""
-    model_name = settings.EMBEDDING_MODEL
-
-    target_sql = f"""SELECT chunk_text, source_file, page_num,
+_PLAN_TEMPLATE = """SELECT chunk_text, source_file, page_num,
        VECTOR_DISTANCE(embedding,
-           VECTOR_EMBEDDING({model_name} USING 'sample query' AS data),
+           (SELECT VECTOR_EMBEDDING({model} USING '보험금 청구 절차' AS data) FROM dual),
            COSINE) AS distance
-FROM doc_chunks
-WHERE embedding IS NOT NULL
+FROM doc_chunks{where}
 ORDER BY distance
-FETCH FIRST 5 ROWS ONLY"""
+FETCH {approx}FIRST 5 ROWS ONLY"""
 
-    explain_sql = f"EXPLAIN PLAN FOR {target_sql}"
 
+async def _explain(cursor, target_sql: str) -> dict:
+    await cursor.execute("DELETE FROM plan_table")
+    await cursor.execute(f"EXPLAIN PLAN FOR {target_sql}")
+    await cursor.execute("SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, NULL, 'BASIC'))")
+    lines = [str(r[0]) for r in await cursor.fetchall()]
+    ops = [ln.split("|")[2].strip() for ln in lines if ln.count("|") >= 3 and "Operation" not in ln]
+    uses_index = any("VECTOR INDEX" in o for o in ops)
+    access = next((o for o in ops if "VECTOR INDEX" in o), None) or next((o for o in ops if "TABLE ACCESS FULL" in o), None) or next((o for o in ops if "TABLE ACCESS" in o), "")
+    return {"target_sql": target_sql, "plan_text": "\n".join(lines), "plan_lines": lines, "access": access, "uses_index": uses_index}
+
+
+async def query_explain_plan(pool) -> dict:
+    """같은 벡터 검색을 두 가지로 EXPLAIN 해 나란히 돌려준다 — 2026-09-08 까지 앱이 돌리던 SQL(before) 과 지금 SQL(after).
+
+    실측(이 ADB 23.26, 180청크): `WHERE embedding IS NOT NULL` 이 붙으면 FETCH APPROX FIRST 여도 TABLE ACCESS FULL 이고,
+    술어를 빼면 FETCH FIRST 든 APPROX 든 VECTOR INDEX HNSW SCAN 이다. 즉 이 앱에서 인덱스를 죽인 것은 정확/근사 선택이 아니라
+    **술어 하나**였다. 그래서 카드는 "정확 vs 근사"가 아니라 "술어 있음 vs 없음"을 보여준다. 검색은 의도를 명시하려고 APPROX 를 쓴다.
+    """
+    model_name = settings.EMBEDDING_MODEL
+    before_sql = _PLAN_TEMPLATE.format(model=model_name, where="\nWHERE embedding IS NOT NULL", approx="")
+    after_sql = _PLAN_TEMPLATE.format(model=model_name, where="", approx="APPROX ")
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                # EXPLAIN PLAN 실행
-                await cursor.execute(explain_sql)
-
-                # DBMS_XPLAN.DISPLAY로 실행 계획 조회
-                await cursor.execute("SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY())")
-                rows = await cursor.fetchall()
-                plan_lines = [str(row[0]) for row in rows]
-                plan_text = "\n".join(plan_lines)
-
+                before = await _explain(cursor, before_sql)
+                after = await _explain(cursor, after_sql)
         return {
-            "target_sql": target_sql,
-            "explain_sql": explain_sql,
-            "plan_text": plan_text,
-            "plan_lines": plan_lines,
+            "before": before,
+            "after": after,
+            # 옛 필드 — 이식 전 화면과의 호환. 정본은 before/after.
+            "target_sql": after_sql,
+            "explain_sql": f"EXPLAIN PLAN FOR {after_sql}",
+            "plan_text": after["plan_text"],
+            "plan_lines": after["plan_lines"],
         }
     except Exception as e:
-        return {
-            "target_sql": target_sql,
-            "explain_sql": explain_sql,
-            "plan_text": "",
-            "plan_lines": [],
-            "error": str(e),
-        }
+        logger.warning("[explain-plan] 실패: %s", e)
+        return {"target_sql": after_sql, "explain_sql": f"EXPLAIN PLAN FOR {after_sql}", "plan_text": "", "plan_lines": [], "error": str(e)}
 
 
 # === Vector 2D Visualization (Simple PCA) ===

@@ -16,7 +16,8 @@ import { useVectorStore, type VectorMessage } from '@/stores/vector'
 
 const props = defineProps<{ msg: VectorMessage; readonly?: boolean }>()
 const v = useVectorStore()
-const chunkMode = computed(() => (props.msg.mode === 'hybrid' ? 'hybrid' : props.msg.mode === 'keyword' ? 'keyword' : 'vector'))
+// hvi 도 hybrid 카드(융합·벡터·텍스트 점수 3개)를 쓴다 — 점수 의미가 같다(0~1 · 0~1 · 0~100)
+const chunkMode = computed(() => (props.msg.mode === 'hybrid' || props.msg.mode === 'hvi' ? 'hybrid' : props.msg.mode === 'keyword' ? 'keyword' : 'vector'))
 const embeddingKv = computed(() => props.msg.embeddingInfo ? { '모델': props.msg.embeddingInfo.model, '소스': props.msg.embeddingInfo.source, '차원 수': props.msg.embeddingInfo.dimensions, '처리 시간': `${props.msg.embeddingInfo.processing_ms}ms`, '벡터 미리보기': props.msg.embeddingInfo.vector_preview } : null)
 const indexKv = computed(() => { const i = props.msg.indexInfo; if (!i) return null; return { '총 문서': `${i.total_documents}개`, '총 청크': `${i.total_chunks}개`, '임베딩 완료': `${i.embedded_chunks}개`, '임베딩 모델': i.embedding_model, '벡터 차원': i.vector_dimensions, '거리 메트릭': i.distance_metric, '인덱스명': i.index?.index_name ?? '—', '인덱스 타입': i.index?.index_type ?? '—', '상태': i.index?.status ?? '—' } })
 function readVar(name: string, fb: string) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb }
@@ -60,11 +61,11 @@ const vizDatasets = computed(() => {
           <div v-if="msg.answer" class="md-body text-sm rounded-md px-3.5 py-3" style="background: var(--bg-surface); color: var(--text-primary);" v-html="renderMarkdown(msg.answer)" />
           <div v-if="msg.hybridNote" class="px-3 py-2 rounded-md text-xs" style="background: var(--accent-warm-soft); border-left: 3px solid var(--accent-warm); color: var(--text-primary);">⚠ {{ msg.hybridNote }}</div>
           <div v-if="msg.chunks?.length" class="flex flex-col gap-2">
-            <div class="flex items-center gap-1.5 text-xs font-medium" style="color: var(--text-secondary);"><FileText :size="14" :stroke-width="1.75" /> 참조 문서 청크 ({{ msg.mode === 'hybrid' ? '하이브리드 점수 순' : msg.mode === 'keyword' ? 'Oracle Text 점수 순' : '유사도 순' }} · {{ msg.chunks.length }}건)<span v-if="msg.mode === 'hybrid'" class="ml-1" style="color: var(--text-muted);">hybrid = {{ msg.vectorWeight }} × vector + {{ msg.keywordWeight }} × keyword/100</span></div>
+            <div class="flex items-center gap-1.5 text-xs font-medium" style="color: var(--text-secondary);"><FileText :size="14" :stroke-width="1.75" /> 참조 문서 청크 ({{ msg.mode === 'hybrid' || msg.mode === 'hvi' ? '융합 점수 순' : msg.mode === 'keyword' ? 'Oracle Text 점수 순' : '유사도 순' }} · {{ msg.chunks.length }}건)<span v-if="msg.mode === 'hybrid'" class="ml-1" style="color: var(--text-muted);">hybrid = {{ msg.vectorWeight }} × vector + {{ msg.keywordWeight }} × keyword/100 (앱이 계산)</span><span v-else-if="msg.mode === 'hvi'" class="ml-1" style="color: var(--text-muted);">DBMS_HYBRID_VECTOR.SEARCH · fusion {{ msg.fusion }} · scorer {{ msg.scorer }} · 텍스트 조건 '{{ msg.containsQuery }}' (DB 가 계산)</span></div>
             <ChunkCard v-for="(c, i) in msg.chunks" :key="i" :chunk="c" :mode="chunkMode" :rank="i + 1" />
           </div>
           <p v-else-if="!msg.errorText" class="text-sm m-0" style="color: var(--text-muted);">매칭된 청크가 없습니다 — 문서를 올렸는지, 검색 모드가 맞는지 확인하세요.</p>
-          <SqlBlock v-if="msg.sql" :code="msg.sql" label="실행된 SQL" max-height="260px" :badge="msg.mode === 'hybrid' ? 'CONTAINS + VECTOR_DISTANCE' : msg.mode === 'keyword' ? 'CONTAINS' : 'VECTOR_DISTANCE'" />
+          <SqlBlock v-if="msg.sql" :code="msg.sql" label="실행된 SQL" max-height="260px" :badge="msg.mode === 'hvi' ? 'DBMS_HYBRID_VECTOR.SEARCH' : msg.mode === 'hybrid' ? 'CONTAINS + VECTOR_DISTANCE' : msg.mode === 'keyword' ? 'CONTAINS' : 'VECTOR_DISTANCE'" />
 
           <div v-if="!readonly" class="flex flex-wrap items-center gap-1.5">
             <Badge v-if="msg.elapsedMs" tone="code">{{ fmtMs(msg.elapsedMs) }}</Badge>

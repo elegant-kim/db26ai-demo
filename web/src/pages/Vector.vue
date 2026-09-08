@@ -21,7 +21,7 @@ const { sub, set } = useSubTab<TabId>(['search', 'docs', 'store', 'embedding'], 
 
 <template>
   <div class="flex flex-col gap-5">
-    <PageHeader menu="vector" desc="PDF 를 올리면 DB 안에서 청킹 → ONNX 임베딩 → VECTOR 저장이 돌고, 같은 질문을 의미 · 키워드 · 하이브리드로 검색해 RAG 답변까지 봅니다.">
+    <PageHeader menu="vector" desc="PDF 텍스트를 올리면 DB 안에서 청킹(UTL_TO_CHUNKS) → ONNX 임베딩(VECTOR_EMBEDDING) → 인덱싱이 SQL 로 돌고, 같은 질문을 의미 · 키워드 · 수동 하이브리드 · Hybrid Vector Index(26ai)로 검색해 RAG 답변까지 봅니다.">
       <template #actions><RecentQueriesPanel endpoint="/api/vector/recent-queries" hint="V$SQL 에서 VECTOR_DISTANCE · VECTOR_EMBEDDING · CONTAINS 관련 최근 10건" /></template>
     </PageHeader>
     <SubTabs :tabs="TABS" :model-value="sub" @update:model-value="(v: string) => set(v as TabId)" />

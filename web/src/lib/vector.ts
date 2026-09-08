@@ -1,12 +1,13 @@
 import { api } from './api'
 import { fromColumnsData, type Rows } from './normalize'
 
-export type SearchMode = 'vector' | 'keyword' | 'hybrid' | 'compare'
+export type SearchMode = 'vector' | 'keyword' | 'hybrid' | 'hvi' | 'compare'
 /** 검색 모드 4종 — 정본은 app/routers/vector.py 의 분기. 하이브리드가 26ai 의 차별점 */
 export const SEARCH_MODES: { value: SearchMode; label: string; hint: string }[] = [
   { value: 'vector', label: '의미 검색', hint: 'VECTOR_DISTANCE — 단어가 달라도 뜻이 비슷하면 찾는다' },
   { value: 'keyword', label: '키워드 검색', hint: 'Oracle Text CONTAINS / LIKE — 단어가 있어야 찾는다' },
-  { value: 'hybrid', label: '하이브리드 (26ai)', hint: 'CONTAINS + VECTOR_DISTANCE 를 한 SQL 에서 결합' },
+  { value: 'hybrid', label: '수동 하이브리드', hint: 'CONTAINS + VECTOR_DISTANCE 를 한 SQL 에서 직접 가중합 — 23ai 어디서나 되는 방식' },
+  { value: 'hvi', label: 'Hybrid Vector Index (26ai)', hint: 'CREATE HYBRID VECTOR INDEX 하나 + DBMS_HYBRID_VECTOR.SEARCH — 텍스트·벡터 융합을 DB 가 한다' },
   { value: 'compare', label: '비교', hint: '키워드 vs 의미 검색을 나란히' },
 ]
 export const LOADING_STEPS = ['질문 임베딩 중…', '벡터 유사도 검색 중…', '참조 문서 수집 중…', 'RAG 답변 생성 중…']
@@ -23,6 +24,7 @@ export interface SearchResponse {
   success: boolean; mode: SearchMode; error?: string
   answer?: string; chunks?: Chunk[]; match_count?: number; sql_executed?: string; elapsed_ms?: number
   vector_weight?: number; keyword_weight?: number; hybrid_fallback?: boolean; hybrid_note?: string
+  fusion?: string; scorer?: string; contains_query?: string
   keyword_results?: SideResult; vector_results?: SideResult
 }
 export interface EmbeddingInfo { success: boolean; input_text?: string; model?: string; source?: string; dimensions?: number; processing_ms?: number; vector_preview?: string; error?: string }
@@ -37,7 +39,11 @@ export interface TableAction { success: boolean; tables?: { table: string; statu
 export interface EmbeddingConfig { success: boolean; source: 'database' | 'external'; model: string; external_api_url?: string; external_api_key_set?: boolean; message?: string; error?: string }
 export interface OnnxModel { model_name: string; mining_function: string; algorithm: string; creation_date: string }
 export interface OnnxTest { success: boolean; model_name: string; sample_text?: string; sql_executed?: string; dimensions?: number; vector_preview?: string; processing_ms?: number; error?: string }
-export interface ExplainPlan { success: boolean; target_sql?: string; explain_sql?: string; plan_text?: string; error?: string }
+export interface PlanSide { target_sql: string; plan_text: string; access?: string; uses_index?: boolean }
+/** 2026-09-08 까지의 SQL(before: WHERE embedding IS NOT NULL) vs 지금(after) — 술어 하나가 HNSW 를 죽였다. after 만 VECTOR INDEX HNSW SCAN */
+export interface HybridIndexStatus { success: boolean; exists: boolean; index_name: string; status?: string | null; ctx_status?: string | null; parameters?: string | null; indexed_chunks?: number | null; legacy_text_index: boolean; model: string; create_sql: string; error?: string }
+export interface HybridIndexCreate { success: boolean; skipped?: boolean; message?: string; error?: string; elapsed_ms?: number; steps?: { sql: string; note: string; duration_ms?: number }[]; status?: HybridIndexStatus }
+export interface ExplainPlan { success: boolean; before?: PlanSide; after?: PlanSide; target_sql?: string; explain_sql?: string; plan_text?: string; error?: string }
 export interface UploadDone { doc_id?: number; filename: string; chunks_count: number; embedded_count?: number; not_embedded_count?: number; pages_count?: number; total_ms: number; warning?: string }
 export interface PipelineStep { step: number; label: string; status: 'pending' | 'running' | 'done'; detail?: string; duration_ms?: number }
 
@@ -53,6 +59,8 @@ export const createTables = () => api.post<TableAction>('/api/vector/create-tabl
 export const tableDefinition = (table_name: string) => api.post('/api/vector/table-definition', { table_name }).then((r) => fromColumnsData(r.data) as Rows)
 export const tableData = (table_name: string, limit = 50) => api.post('/api/vector/table-data', { table_name, limit }).then((r) => fromColumnsData(r.data) as Rows)
 export const tableIndexes = (table_name: string) => api.post('/api/vector/table-indexes', { table_name }).then((r) => fromColumnsData(r.data) as Rows)
+export const getHybridIndex = () => api.get<HybridIndexStatus>('/api/vector/hybrid-index').then((r) => r.data)
+export const createHybridIndex = (force = false) => api.post<HybridIndexCreate>('/api/vector/hybrid-index/create', { force }, { timeout: 600_000 }).then((r) => r.data)
 export const explainPlan = () => api.post<ExplainPlan>('/api/vector/explain-plan').then((r) => r.data)
 export const getEmbeddingConfig = () => api.get<EmbeddingConfig>('/api/vector/embedding-config').then((r) => r.data)
 export const setEmbeddingConfig = (body: { source?: string; model?: string; reset_model?: boolean }) => api.post<EmbeddingConfig>('/api/vector/embedding-config', body).then((r) => r.data)
