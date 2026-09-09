@@ -324,6 +324,12 @@ class TestVectorIndexPaths:
         c = d["chunks"][0]
         assert {"hybrid_score", "similarity", "keyword_score"} <= set(c) and 0 < c["hybrid_score"] <= 1
 
+    def test_인덱스_정보의_차원은_실측값이다(self, client):
+        """2026-09-09 보완 ⑤: vector_dimensions 가 설정 상수(768 하드코딩)였다 — 저장된 벡터의 VECTOR_DIMS 로 잰다."""
+        d = client.get("/api/vector/index-info").json()
+        assert d["dimensions_measured"] is True and isinstance(d["vector_dimensions"], int) and d["vector_dimensions"] > 0
+        assert "CREATE VECTOR INDEX" in d.get("hnsw_ddl", "")
+
     def test_키워드_검색은_여전히_CONTAINS_로_돈다(self, client):
         d = client.post("/api/vector/search", json={"query": "보험금 청구", "mode": "keyword", "top_k": 3}).json()
         assert d.get("success"), d.get("error")

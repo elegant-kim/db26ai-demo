@@ -386,6 +386,8 @@ Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 �
 
 | 서브탭 | 컴포넌트 |
 |---|---|
+| **환경** (2026-09-09 P3, 기본 진입) | 개요 `VersusBox` › 「검색 준비 완료」 3열 요약(값 + 뜻) › 3열 `Card` 사슬: ① 테이블(컬럼 4개 + 뜻) · ② 모델 + **「이 문장을 벡터로」**(`onnx-models/test` 재사용) · ③ 인덱스 2종(HNSW · Hybrid Vector Index 26ai, DDL 펼침, 생성 버튼). 카드마다 "이게 있어서:" 한 줄 |
+| 적재 | 드롭존 › `PipelineProgress`(SSE) › **단계별 실행 내역**(SQL + 표본 펼침, P2) › 문서 목록 |
 | 검색 | `SessionTabs`(현재 + 보관, 읽기 전용) › `ChatThread`(답변 + `ChunkCard` 목록 + `ScatterChart` 시각화 + 임베딩 과정/인덱스 `KvGrid` + 키워드 비교) + `ChatComposer`(검색모드 세그먼트 **5**(의미·키워드·수동 하이브리드·**Hybrid Vector Index(26ai)**·비교) · top_k · LLM · 예시 질문) — compare 모드는 `CompareView`. 폭은 다른 서브탭과 같은 전체 폭 |
 | 문서·업로드 | 드롭존 › `PipelineProgress`(SSE, **warning 표시**) › 문서 목록 `ResultTable`(삭제) |
 | Vector Store | 정의/데이터/인덱스 3버튼 › `SqlBlock`+`ResultTable` · **Hybrid Vector Index 카드**(상태·생성·실행 DDL, 2026-09-08) · **실행계획 카드 = `CompareView`(술어 있음 vs 없음)** |

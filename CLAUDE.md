@@ -274,7 +274,7 @@ APP_PORT=8247
 # Vector Embedding
 EMBEDDING_SOURCE=database              # "database"(ONNX) 또는 "external"
 EMBEDDING_MODEL=MULTILINGUAL_E5_BASE   # ONNX 모델명 또는 외부 API 모델명
-EMBEDDING_DIM=768                      # 표시용 — 실제 차원은 모델이 결정한다
+EMBEDDING_DIM=768                      # 폴백용 — 화면은 저장된 벡터의 VECTOR_DIMS 실측을 쓴다(2026-09-09), 벡터가 없을 때만 이 값
 EMBEDDING_API_URL=                     # 외부 API 사용 시
 EMBEDDING_API_KEY=
 

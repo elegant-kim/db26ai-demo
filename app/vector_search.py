@@ -635,6 +635,11 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         raise e
 
 
+HNSW_DDL = """CREATE VECTOR INDEX doc_chunks_hnsw_idx ON doc_chunks(embedding)
+ORGANIZATION INMEMORY NEIGHBOR GRAPH
+DISTANCE COSINE
+WITH TARGET ACCURACY 95"""
+
 # === Hybrid Vector Index (Oracle 26ai) ===
 # 텍스트 컬럼 하나에 인덱스 하나 — 청킹·임베딩·텍스트 인덱스·벡터 인덱스를 DB 가 스스로 만든다.
 # 2026-09-08 실측(이 ADB): CREATE 180청크 ~50초(모델로 재임베딩), DBMS_HYBRID_VECTOR.SEARCH 0.6초, CTX_DDL.SYNC_INDEX 0.3초.
@@ -1149,8 +1154,17 @@ async def get_index_info(pool) -> dict:
                         "index_type": idx_row[1],
                         "status": idx_row[2],
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[index-info] 벡터 인덱스 조회 실패: %s", e)
+
+            # 차원은 설정값(EMBEDDING_DIM)이 아니라 실제 저장된 벡터에서 잰다 — 모델을 바꿔도 화면이 거짓말하지 않게 (2026-09-09, 보완 ⑤)
+            actual_dims = None
+            try:
+                await cursor.execute("SELECT VECTOR_DIMS(embedding) FROM doc_chunks WHERE embedding IS NOT NULL FETCH FIRST 1 ROWS ONLY")
+                r = await cursor.fetchone()
+                actual_dims = r[0] if r else None
+            except Exception as e:
+                logger.warning("[index-info] VECTOR_DIMS 실측 실패: %s", e)
 
             return {
                 "total_chunks": total_chunks,
@@ -1158,9 +1172,11 @@ async def get_index_info(pool) -> dict:
                 "total_documents": total_docs,
                 "embedding_model": settings.EMBEDDING_MODEL,
                 "embedding_source": settings.EMBEDDING_SOURCE,
-                "vector_dimensions": 768,
+                "vector_dimensions": actual_dims if actual_dims is not None else settings.EMBEDDING_DIM,
+                "dimensions_measured": actual_dims is not None,
                 "distance_metric": "COSINE",
                 "index": index_info,
+                "hnsw_ddl": HNSW_DDL,
             }
 
 

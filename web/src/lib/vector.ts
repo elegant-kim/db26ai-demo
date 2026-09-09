@@ -11,6 +11,9 @@ export const SEARCH_MODES: { value: SearchMode; label: string; hint: string }[] 
   { value: 'hybrid', label: '수동 하이브리드', hint: 'CONTAINS + VECTOR_DISTANCE 를 한 SQL 에서 직접 가중합 — 23ai 어디서나 되는 방식' },
   { value: 'hvi', label: 'Hybrid Vector Index (26ai)', hint: 'CREATE HYBRID VECTOR INDEX 하나 + DBMS_HYBRID_VECTOR.SEARCH — 텍스트·벡터 융합을 DB 가 한다' },
 ]
+/** 환경 탭 「이 문장을 벡터로」 기본 문장 — 관객이 방금 본 화면 문구라서 결과가 낯설지 않다 */
+export const ENV_EMBED_SAMPLE = '보험금 청구 절차는 어떻게 되나요?'
+
 export const LOADING_STEPS = ['질문 임베딩 중…', '벡터 유사도 검색 중…', '참조 문서 수집 중…', 'RAG 답변 생성 중…']
 export const EXAMPLE_QUESTIONS = [
   '자동차 사고 시 보험금 청구 절차는 어떻게 되나요?', '음주운전 사고도 보험 보상이 되나요?', '피보험자에 보상하지 않는 경우는 어떤 경우인가?',
@@ -31,7 +34,10 @@ export interface SearchResponse {
 export interface EmbeddingInfo { success: boolean; input_text?: string; model?: string; source?: string; dimensions?: number; processing_ms?: number; vector_preview?: string; error?: string }
 export interface IndexInfo {
   success: boolean; total_chunks?: number; embedded_chunks?: number; total_documents?: number; embedding_model?: string; embedding_source?: string
-  vector_dimensions?: number | string; distance_metric?: string; index?: { index_name: string; index_type: string; status: string } | null; error?: string
+  /** 실제 저장된 벡터에서 VECTOR_DIMS 로 잰 값 (2026-09-09). dimensions_measured=false 면 설정값 폴백 */
+  vector_dimensions?: number | string; dimensions_measured?: boolean
+  distance_metric?: string; index?: { index_name: string; index_type: string; status: string } | null; error?: string
+  hnsw_ddl?: string
 }
 export interface VizPoint { chunk_id: number; source_file: string; page_num: number; x: number; y: number; matched: boolean }
 export interface VizData { success: boolean; points: VizPoint[]; query_point?: { x: number; y: number; label: string }; total_chunks?: number; error?: string }

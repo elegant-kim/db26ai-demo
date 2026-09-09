@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getHybridIndex, createHybridIndex, type HybridIndexStatus, type HybridIndexCreate } from '@/lib/vector'
+import { getHybridIndex, createHybridIndex, ENV_EMBED_SAMPLE, type HybridIndexStatus, type HybridIndexCreate } from '@/lib/vector'
 import { computed, ref } from 'vue'
 import { errorMessage } from '@/lib/api'
 import { postSse } from '@/composables/useSse'
@@ -261,6 +261,17 @@ export const useVectorStore = defineStore('vector', () => {
   const onnxLocalResult = ref<{ success: boolean; message?: string; error?: string; size_mb?: number; elapsed_ms?: number } | null>(null)
   const onnxCloudResult = ref<{ success: boolean; message?: string; error?: string; elapsed_ms?: number } | null>(null)
   async function refreshOnnx() { onnxBusy.value = 'refresh'; try { onnxModels.value = await getOnnxModels(); system.toast(`ONNX 모델 ${onnxModels.value.length}개`, 'success') } catch (e) { system.toast(errorMessage(e), 'error') } finally { onnxBusy.value = '' } }
+  // 환경 탭 「이 문장을 벡터로」 — NL2SQL 의 실제 호출 테스트와 대칭. 텍스트가 DB 안에서 숫자 768개가 되는 것을 그 자리에서 보인다
+  const envEmbedText = ref(ENV_EMBED_SAMPLE)
+  const envEmbed = ref<OnnxTest | null>(null)
+  const envEmbedBusy = ref(false)
+  async function testEmbed() {
+    if (envEmbedBusy.value || !model.value) return
+    envEmbedBusy.value = true; envEmbed.value = null
+    try { envEmbed.value = await testOnnx(model.value, envEmbedText.value.trim() || ENV_EMBED_SAMPLE) }
+    catch (e) { envEmbed.value = { success: false, model_name: model.value, error: errorMessage(e) } }
+    finally { envEmbedBusy.value = false }
+  }
   async function testModel(name: string) { onnxBusy.value = 'test'; onnxTest.value = null; try { onnxTest.value = await testOnnx(name, '한국어 임베딩 모델 테스트 문장입니다.') } catch (e) { onnxTest.value = { success: false, model_name: name, error: errorMessage(e) } } finally { onnxBusy.value = '' } }
   async function deleteModel(name: string) { onnxBusy.value = 'delete'; try { const r = await deleteOnnx(name); if (r.success) { system.toast(r.message || '삭제했습니다.', 'success'); await loadConfig(true) } else system.toast(r.error || '삭제 실패', 'error') } catch (e) { system.toast(errorMessage(e), 'error') } finally { onnxBusy.value = '' } }
   async function uploadLocal(file: File, name: string) {
@@ -282,5 +293,6 @@ export const useVectorStore = defineStore('vector', () => {
     mode, topK, provider, input, searching, messages, sessions, activeSession, visibleMessages, sourceLabel, send, toggleExtra, saveSession, switchSession, removeSession, clearCurrent,
     onnxTest, onnxBusy, onnxLocalResult, onnxCloudResult, refreshOnnx, testModel, deleteModel, uploadLocal, loadCloud,
     hvi, hviBusy, hviResult, loadHvi, createHvi,
+    envEmbedText, envEmbed, envEmbedBusy, testEmbed,
   }
 })
