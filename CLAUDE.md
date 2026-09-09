@@ -109,6 +109,7 @@ scripts/deploy.sh
 | `web/src/pages/<tab>/` · `stores/<tab>.ts` · `lib/<tab>.ts` | 이식된 탭마다 이 셋 (graph 5-1 · productivity 5-2). 조립 규칙은 `docs/SESSION_HANDOFF.md` §4-5 — 새 탭은 graph 를 복제해 시작한다 |
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
 | `web/src/pages/*.vue` | 7 페이지 전부 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`). `/` 는 `/nl2sql` 로 리다이렉트 |
+| `web/src/pages/vector/` | 서브탭 4 = 시연 순서 (2026-09-09 재편): **환경**(`VectorEnv`) → **적재**(`VectorLoad` — 단계별 실행 SQL·표본 펼침) → **검색·RAG**(`VectorSearch`, 모드 5) → **내부**(`VectorInternals` = 실행계획·테이블·`VectorEmbedding` 관리). 옛 `?sub=docs/store/embedding` 은 자동 매핑 |
 | `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화) → **스키마·Annotation**. 프로필 셀렉트는 페이지 헤더 공통 (2026-09-07 재설계) |
 | `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5) |
 | `web/src/composables/useSse.ts` | SSE 수신(fetch + ReadableStream) — PDF 업로드 전용 |
@@ -217,7 +218,7 @@ scripts/deploy.sh
 ### 임베딩 듀얼 모드
 - **DB 내장 (ONNX)**: `EMBEDDING_SOURCE=database` — `VECTOR_EMBEDDING(model USING text AS data)`
 - **외부 API**: `EMBEDDING_SOURCE=external` — Google AI Studio OpenAI-compatible embedding API
-- 「임베딩 · ONNX」 서브탭에서 런타임 전환 가능 (인덱스 모델과 다르면 화면이 경고한다)
+- 「내부」 서브탭(임베딩 설정 카드)에서 런타임 전환 가능 (인덱스 모델과 다르면 화면이 경고한다)
 - ⚠ **모델을 바꾸면 벡터 차원이 바뀌고 HNSW 인덱스가 깨진다** — 아래 Critical Notes 참조
 
 ### PDF 업로드 파이프라인 (SSE 스트리밍)
@@ -337,7 +338,7 @@ E5_BASE 5.2초 / E5_SMALL 1.1초, 2회차부터 20~40ms. 풀이 max=5라 데모 
 술어를 빼면 `VECTOR INDEX HNSW SCAN` — 이 ADB(23.26) 에서는 `FETCH FIRST`(정확) 도 인덱스를 탔다.
 NULL 임베딩 행은 인덱스에 없어 근사 검색에서 자연히 빠지므로 그 술어는 필요도 없었다. 이 앱은 2026-09-08 까지 5개월간 인덱스를 한 번도 안 탔다.
 가중합 ORDER BY(수동 하이브리드)는 인덱스를 못 쓴다 — 그건 원래 그렇고, Hybrid Vector Index 모드가 그 답이다.
-Vector Store 탭 「실행계획」 카드가 술어 유무 두 계획을 나란히 보여준다.
+「내부」 서브탭 「실행계획」 카드가 술어 유무 두 계획을 나란히 보여준다.
 
 ### Hybrid Vector Index 는 같은 컬럼의 CONTEXT 인덱스와 공존하지 못한다 (ORA-29880)
 `CREATE HYBRID VECTOR INDEX` 는 CONTEXT_V2 도메인 인덱스라 컬럼당 하나. 대신 CONTAINS/SCORE 를 그대로 서빙하므로 **대체**한다.

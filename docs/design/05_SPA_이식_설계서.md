@@ -141,7 +141,7 @@ web/
     │   └── CommandPalette.vue       investhub 이식 (권한 필터 제거, 레지스트리는 API)
     └── pages/
         ├── Nl2sql.vue     서브탭: 환경 · 질문 · 스키마·Annotation (2026-09-07 재설계)
-        ├── Vector.vue     서브탭: 검색 · 문서·업로드 · Vector Store · 임베딩·ONNX
+        ├── Vector.vue     서브탭: 환경 · 적재 · 검색·RAG · 내부 (2026-09-09 재편 — 순서 = 시연 순서, 기본 진입 환경)
         ├── Duality.vue    서브탭: 뷰 관리 · 관계형 vs JSON · 문서 CRUD · ETag
         ├── Graph.vue      서브탭: 그래프 관리 · SQL vs PGQ · 패턴 탐색 · 시각화
         ├── Productivity.vue  서브탭: Lock-Free · Priority TX
@@ -170,7 +170,7 @@ web/
 |---|---|---|---|
 | `/` | → `/nl2sql` 리다이렉트 | | |
 | `/nl2sql` | Nl2sql | `?sub=env\|ask\|schema` | 기본 진입 = env (2026-09-07). `?profile=` 은 페이지 헤더 셀렉트에 적용, `?sub=env&run=1` 은 실제 호출 테스트 |
-| `/vector` | Vector | `?sub=search\|docs\|store\|embedding` | |
+| `/vector` | Vector | `?sub=env\|load\|search\|internals` | 기본 진입 = env (2026-09-09). 옛 `docs→load`, `store/embedding→internals` 로 자동 매핑 |
 | `/duality` | Duality | `?sub=views\|compare\|crud\|etag` | |
 | `/graph` | Graph | `?sub=manage\|compare\|pattern\|viz` | |
 | `/productivity` | Productivity | `?sub=lockfree\|priority` | |

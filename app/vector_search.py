@@ -404,15 +404,18 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         total_chars = sum(len(p["text"]) for p in pages)
         await emit("step", {"step": 2, "label": "텍스트 추출 (앱 · pdfplumber)", "status": "done",
                              "detail": f"{len(pages)}페이지 / {total_chars:,}자",
+                             "sql": "-- 앱: pdfplumber 로 쪽별 추출 (쪽 번호 보존을 위해 DB 밖에서)",
                              "duration_ms": step_ms})
 
         # Step 3: 청킹
         step_start = time.time()
         await emit("step", {"step": 3, "label": "청크 분할", "status": "running"})
         all_chunks = []
+        db_chunked_pages = 0   # DB 청킹이 실제로 된 쪽 수 — 파이썬 폴백과 구분해 화면에 보인다
         for page in pages:
             db_chunks = await try_db_chunking(pool, page["text"])
             if db_chunks:
+                db_chunked_pages += 1
                 for chunk in db_chunks:
                     all_chunks.append({"text": chunk, "page_num": page["page_num"]})
             else:
@@ -421,10 +424,19 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                     all_chunks.append({"text": chunk, "page_num": page["page_num"]})
 
         step_ms = int((time.time() - step_start) * 1000)
-        chunking_sql = "SELECT DBMS_VECTOR_CHAIN.UTL_TO_CHUNKS(:text, JSON('{\"max_chunk_size\": 500, \"overlap\": 50}')) FROM dual"
-        pipeline.append({"step": "청크 분할", "sql": chunking_sql, "duration_ms": step_ms})
+        chunking_sql = "SELECT DBMS_VECTOR_CHAIN.UTL_TO_CHUNKS(:page_text, JSON('{\"max_chunk_size\": 500, \"overlap\": 50}')) FROM dual"
+        # 화면이 "무엇이 어떻게 잘렸나"를 보여줄 표본 — 앞 3청크만, 본문은 160자로
+        chunk_sample = {
+            "params": {"max_chunk_size": 500, "overlap": 50},
+            "db_chunked_pages": db_chunked_pages, "pages": len(pages),
+            "chunks": [{"page_num": c["page_num"], "chars": len(c["text"]), "text": c["text"][:160]} for c in all_chunks[:3]],
+        }
+        chunk_detail = f"{len(all_chunks)}개 청크 · DB(UTL_TO_CHUNKS) {db_chunked_pages}/{len(pages)}쪽"
+        if db_chunked_pages < len(pages):
+            chunk_detail += f" · 파이썬 폴백 {len(pages) - db_chunked_pages}쪽"
+        pipeline.append({"step": "청크 분할", "sql": chunking_sql, "duration_ms": step_ms, "sample": chunk_sample})
         await emit("step", {"step": 3, "label": "청크 분할", "status": "done",
-                             "detail": f"{len(all_chunks)}개 청크 생성",
+                             "detail": chunk_detail, "sql": chunking_sql, "sample": chunk_sample,
                              "duration_ms": step_ms})
 
         # Step 4: 임베딩 & 저장
@@ -528,14 +540,31 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                     await conn.commit()
 
         step_ms_embed = int((time.time() - step_start_embed) * 1000)
-        pipeline.append({"step": "임베딩 & 저장", "sql": embed_sql, "duration_ms": step_ms_embed})
+        # 표본: 방금 임베딩된 청크 하나 — "텍스트가 숫자 768개가 됐다"를 눈으로 보이게
+        embed_sample = None
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
+                        SELECT chunk_id, page_num, VECTOR_DIMS(embedding), DBMS_LOB.SUBSTR(chunk_text, 120, 1), embedding
+                        FROM doc_chunks WHERE doc_id = :d AND embedding IS NOT NULL
+                        ORDER BY chunk_id FETCH FIRST 1 ROWS ONLY""", {"d": doc_id})
+                    r = await cursor.fetchone()
+                    if r:
+                        vec = list(r[4]) if r[4] is not None else []
+                        embed_sample = {"chunk_id": r[0], "page_num": r[1], "dims": r[2], "text": r[3],
+                                        "preview": [round(float(x), 4) for x in vec[:8]],
+                                        "sample_sql": "SELECT VECTOR_DIMS(embedding), embedding FROM doc_chunks WHERE chunk_id = " + str(r[0])}
+        except Exception as e:
+            logger.warning("[upload] 임베딩 표본 조회 실패: %s", e)
+        pipeline.append({"step": "임베딩 & 저장", "sql": embed_sql, "duration_ms": step_ms_embed, "sample": embed_sample})
         embed_detail = f"{embed_count}개 완료"
         if settings.EMBEDDING_SOURCE == "database" and total_chunks:
             embed_detail += f" · DB 안 UPDATE {(total_chunks + 19) // 20}문장 ({step_ms_embed // total_chunks}ms/청크)"
         if no_embed_count:
             embed_detail += f" / 임베딩 실패 {no_embed_count}개 — {first_embed_error}"
         await emit("step", {"step": 4, "label": "임베딩 & 저장", "status": "done",
-                             "detail": embed_detail,
+                             "detail": embed_detail, "sql": embed_sql, "sample": embed_sample,
                              "embedded": embed_count, "not_embedded": no_embed_count,
                              "error": first_embed_error,
                              "duration_ms": step_ms_embed})
@@ -546,12 +575,16 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
         await emit("step", {"step": 5, "label": "인덱싱", "status": "running"})
         idx_detail = "HNSW 인덱스 자동 반영"
         idx_sql = "-- HNSW 벡터 인덱스는 INSERT 와 함께 유지된다"
+        idx_sample = None
         try:
             hv = await get_hybrid_index_status(pool)
             if hv.get("exists"):
+                before_pieces = hv.get("indexed_chunks")
                 sync = await sync_hybrid_index(pool)
+                after = await get_hybrid_index_status(pool)
                 idx_detail += f" · Hybrid Vector Index 동기화 {sync['elapsed_ms']:,}ms"
                 idx_sql = sync["sql"]
+                idx_sample = {"hybrid_index": HYBRID_INDEX, "pieces_before": before_pieces, "pieces_after": after.get("indexed_chunks"), "sync_ms": sync["elapsed_ms"]}
         except Exception as e:
             logger.warning("[upload] 하이브리드 인덱스 동기화 실패: %s", e)
             idx_detail += f" · Hybrid Vector Index 동기화 실패: {str(e).splitlines()[0][:120]}"
@@ -565,8 +598,8 @@ async def upload_document(pool, file_path: str, filename: str, progress_callback
                 await conn.commit()
 
         step_ms_idx = int((time.time() - step_start_idx) * 1000)
-        pipeline.append({"step": "인덱싱", "sql": idx_sql, "duration_ms": step_ms_idx})
-        await emit("step", {"step": 5, "label": "인덱싱", "status": "done", "detail": idx_detail, "duration_ms": step_ms_idx})
+        pipeline.append({"step": "인덱싱", "sql": idx_sql, "duration_ms": step_ms_idx, "sample": idx_sample})
+        await emit("step", {"step": 5, "label": "인덱싱", "status": "done", "detail": idx_detail, "sql": idx_sql, "sample": idx_sample, "duration_ms": step_ms_idx})
 
         total_ms = int((time.time() - start_total) * 1000)
         result = {

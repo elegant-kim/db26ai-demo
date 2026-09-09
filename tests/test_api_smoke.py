@@ -328,3 +328,18 @@ class TestVectorIndexPaths:
         d = client.post("/api/vector/search", json={"query": "보험금 청구", "mode": "keyword", "top_k": 3}).json()
         assert d.get("success"), d.get("error")
         assert "CONTAINS" in d["sql_executed"] and "LIKE 폴백" not in d["sql_executed"], d["sql_executed"][:200]
+
+
+class TestVectorSubtabLinks:
+    """2026-09-09 P1 — Vector 서브탭 재편(env/load/search/internals). 기능 지도의 딥링크가 존재하는 서브탭만 가리켜야 한다."""
+
+    def test_기능지도_vector_딥링크는_새_서브탭_id_만_쓴다(self, client):
+        d = client.get("/api/guide/features").json()
+        import re
+        subs = set()
+        for g in d["groups"]:
+            for f in g.get("features", g.get("items", [])):
+                m = re.search(r"/vector\?sub=([a-z]+)", f.get("path", ""))
+                if m:
+                    subs.add(m.group(1))
+        assert subs and subs <= {"env", "load", "search", "internals"}, subs

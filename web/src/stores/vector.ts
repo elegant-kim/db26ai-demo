@@ -143,7 +143,7 @@ export const useVectorStore = defineStore('vector', () => {
       await postSse('/api/vector/upload', form, (type, data) => {
         if (type === 'step') {
           const s = pipeline.value.find((p) => p.step === data.step)
-          if (s) { s.status = data.status; if (data.detail) s.detail = data.detail; if (data.duration_ms) s.duration_ms = data.duration_ms }
+          if (s) { s.status = data.status; if (data.detail) s.detail = data.detail; if (data.duration_ms) s.duration_ms = data.duration_ms; if (data.sql) s.sql = data.sql; if (data.sample !== undefined) s.sample = data.sample }
         } else if (type === 'progress') progress.value = data
         else if (type === 'done') { pipeline.value.forEach((p) => { p.status = 'done' }); uploadResult.value = data; system.toast(`${data.filename}: ${data.chunks_count}개 청크 처리 완료 (${(data.total_ms / 1000).toFixed(1)}초)`, data.warning ? 'warn' : 'success') }
         else if (type === 'error') uploadError.value = data.message || '처리 실패'

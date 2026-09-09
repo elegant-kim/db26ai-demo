@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { UploadCloud, FileText, Trash2 } from 'lucide-vue-next'
+import { UploadCloud, FileText, Trash2, ChevronRight, ChevronDown } from 'lucide-vue-next'
+import SqlBlock from '@/components/demo/SqlBlock.vue'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -19,6 +20,10 @@ function pick(files: FileList | null) { const f = files?.[0]; if (f) void v.uplo
 const steps = computed(() => v.pipeline.map((p) => ({ label: p.label, detail: p.detail, time: p.duration_ms ? `${fmtNum(p.duration_ms)}ms` : undefined })))
 const current = computed(() => (v.uploading ? v.currentStep : v.pipeline.length + 1))
 const barLabel = computed(() => (v.progress ? `${v.progress.current}/${v.progress.total} (${v.progress.percent}%)` : undefined))
+// 단계별 실행 내역 — 서버가 단계마다 실행한 SQL 과 결과 표본을 보낸다(2026-09-09 P2). 기본은 접힘, 라벨을 누르면 펼친다.
+const openStep = ref<Record<number, boolean>>({})
+const toggleStep = (n: number) => { openStep.value[n] = !openStep.value[n] }
+const stepsWithSql = computed(() => v.pipeline.filter((p) => p.status === 'done' && (p.sql || p.sample)))
 const tone = (s: string) => (s === 'indexed' ? 'positive' : s === 'processing' ? 'info' : s === 'error' ? 'negative' : 'default')
 </script>
 
@@ -37,6 +42,41 @@ const tone = (s: string) => (s === 'indexed' ? 'positive' : s === 'processing' ?
       <div v-if="v.pipeline.length" class="mt-4 rounded-md p-4" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
         <PipelineProgress :title="v.uploading ? 'PDF 처리 파이프라인 실행 중' : '파이프라인 완료'" subtitle="추출만 앱에서, 청킹 · 임베딩 · 인덱싱은 DB 안에서" :steps="steps" :current="current"
           :percent="v.ringPercent" :elapsed-sec="v.uploadElapsedSec" :bar-percent="v.uploading && v.currentStep === 4 && v.progress ? v.progress.percent : null" :bar-label="barLabel" />
+
+        <!-- 단계별 실행 내역 — 어떤 SQL 이 돌았고 무엇이 나왔나 -->
+        <div v-if="stepsWithSql.length" class="mt-4 flex flex-col gap-1.5">
+          <div class="text-xs font-semibold" style="color: var(--text-secondary);">단계별 실행 내역 — 라벨을 누르면 실행된 SQL 과 결과 표본</div>
+          <div v-for="p in stepsWithSql" :key="p.step" class="rounded-md overflow-hidden" style="border: 1px solid var(--border-default);">
+            <button type="button" class="w-full flex items-center gap-2 px-3 py-2 text-left text-sm" style="background: var(--bg-elevated);" @click="toggleStep(p.step)">
+              <component :is="openStep[p.step] ? ChevronDown : ChevronRight" :size="14" :stroke-width="2" style="color: var(--text-muted);" />
+              <span class="font-semibold" style="color: var(--text-primary);">{{ p.step }}. {{ p.label }}</span>
+              <span class="text-xs truncate" style="color: var(--text-muted);">{{ p.detail }}</span>
+              <Badge v-if="p.duration_ms" tone="code" class="ml-auto">{{ fmtNum(p.duration_ms) }}ms</Badge>
+            </button>
+            <div v-if="openStep[p.step]" class="px-3 py-3 flex flex-col gap-3" style="background: var(--bg-surface);">
+              <SqlBlock v-if="p.sql" :code="p.sql" :label="p.sql.startsWith('--') ? '이 단계는' : '실행된 SQL'" max-height="180px" />
+              <!-- 3단계 표본: 청크가 어떻게 잘렸나 -->
+              <template v-if="p.step === 3 && p.sample?.chunks">
+                <div class="text-xs" style="color: var(--text-secondary);">파라미터 max_chunk_size {{ p.sample.params?.max_chunk_size }} · overlap {{ p.sample.params?.overlap }} · DB 청킹 {{ p.sample.db_chunked_pages }}/{{ p.sample.pages }}쪽 · 앞 {{ p.sample.chunks.length }}청크 표본</div>
+                <div v-for="(c, i) in p.sample.chunks" :key="i" class="rounded-md px-3 py-2 text-xs" style="background: var(--bg-elevated); border: 1px solid var(--border-default);">
+                  <div class="flex items-center gap-1.5 mb-1"><Badge tone="code">#{{ i + 1 }} · p.{{ c.page_num }}</Badge><span style="color: var(--text-muted);">{{ c.chars }}자</span></div>
+                  <div class="whitespace-pre-wrap line-clamp-3" style="color: var(--text-primary);">{{ c.text }}</div>
+                </div>
+              </template>
+              <!-- 4단계 표본: 텍스트가 숫자가 됐다 -->
+              <template v-else-if="p.step === 4 && p.sample?.preview">
+                <div class="text-xs" style="color: var(--text-secondary);">청크 #{{ p.sample.chunk_id }} (p.{{ p.sample.page_num }}) → <strong style="color: var(--text-primary);">{{ p.sample.dims }}차원</strong> 벡터. 앞 8개:</div>
+                <div class="font-mono text-xs px-3 py-2 rounded-md" style="background: var(--bg-elevated); border: 1px solid var(--border-default); color: var(--text-primary);">[{{ p.sample.preview.join(', ') }}, …]</div>
+                <div class="text-xs whitespace-pre-wrap line-clamp-2" style="color: var(--text-muted);">"{{ p.sample.text }}…"</div>
+                <SqlBlock v-if="p.sample.sample_sql" :code="p.sample.sample_sql" label="표본 조회" max-height="80px" />
+              </template>
+              <!-- 5단계 표본: 인덱스가 늘었다 -->
+              <template v-else-if="p.step === 5 && p.sample">
+                <div class="text-xs" style="color: var(--text-secondary);">{{ p.sample.hybrid_index }} 내부 조각 {{ p.sample.pieces_before ?? '—' }} → <strong style="color: var(--text-primary);">{{ p.sample.pieces_after ?? '—' }}</strong> · SYNC {{ fmtNum(p.sample.sync_ms ?? 0) }}ms</div>
+              </template>
+            </div>
+          </div>
+        </div>
         <div v-if="v.uploadResult" class="mt-3 flex flex-wrap items-center gap-1.5 text-xs" style="color: var(--text-secondary);">
           <Badge tone="positive">{{ v.uploadResult.filename }}</Badge>
           <span>{{ v.uploadResult.pages_count ?? '—' }}쪽 · 청크 {{ v.uploadResult.chunks_count }}개 · 임베딩 {{ v.uploadResult.embedded_count ?? v.uploadResult.chunks_count }}개 · {{ ((v.uploadResult.total_ms || 0) / 1000).toFixed(1) }}초</span>

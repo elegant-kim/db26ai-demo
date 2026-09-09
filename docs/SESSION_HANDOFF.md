@@ -506,6 +506,29 @@ primary 옆에 놓인 secondary 가 같은 높이가 된다 — 이 화면만이
 **검증** — 테스트 4개 추가(`TestVectorIndexPaths`: 계획 before FULL/after HNSW · 의미 검색 SQL 이 APPROX·술어 없음 · hvi 융합 점수 3종 · 키워드가 CONTAINS). 실제 PDF 업로드 2회(인덱스 전/후) → 5단계 SYNC 확인 → hvi 로 새 문서 검색(text_score 54) → 테스트 문서 삭제, 데모 문서 2개 그대로.
 `개발노하우.md` 3.2 에 함정 3개 추가(술어가 인덱스를 죽인다 · ORA-29880 · 배치 임베딩 실측). CLAUDE.md 검색 모드 5종·파이프라인·인덱스 구조·Critical Notes 갱신.
 
+## 4-20. Vector 탭 재편 P1+P2 — 서브탭 = 시연 순서, 적재 단계마다 SQL·표본 (2026-09-09, Fable 5.1)
+
+**계기** — 사용자: "헤더 문장은 올리면→청킹→임베딩→인덱싱→검색인데 첫 탭이 검색이다. 결과만이 아니라 어떤 Oracle 함수·메커니즘이 돌아
+이게 되는지를 보여줘야 한다." 진단에서 하나 더 잡았다: **서버는 단계별 SQL 을 `done` 이벤트에 실어 보내는데 화면이 버리고 있었다.**
+종합 플랜 P1~P7 + 장표(PPT/PDF) 연동 방식 확정(A: PDF→쪽 이미지 사전 변환 + 꼬리표 `VS-12` 앵커, B: PDF iframe 임시 경로,
+`docs/slides/` gitignore) — 이견 없음. 4탭 구성·기본 모드 의미 검색 유지 확정.
+
+**P1 골격** — `Vector.vue` 서브탭 **환경 → 적재 → 검색·RAG → 내부**, 기본 진입 환경. 옛 `?sub=docs/store/embedding` 은 `LEGACY` 맵으로 자동 이동.
+`VectorDocs.vue → VectorLoad.vue`, `VectorStore.vue → VectorInternals.vue`(소개·HVI 카드를 떼고 `<VectorEmbedding/>` 을 관리 카드로 붙임),
+`VectorEnv.vue` 신설(P1 판: 소개 카드 + 「지금 설정」 칩 + HVI 카드 — **P3 에서 상태 스트립 + 사슬로 재구성**).
+검색 모드 순서를 학습 순서로: 키워드 → 의미 → 비교 → 수동 하이브리드 → HVI(기본 선택은 의미 유지). 헤더 문구를 ①→③ 순서로.
+
+**P2 적재 메커니즘** — `upload_document` 가 단계 `done` 이벤트에 `sql` + `sample` 을 싣는다:
+3단계 `UTL_TO_CHUNKS` 파라미터·DB/파이썬 청킹 쪽 수·앞 3청크 / 4단계 청크 하나의 `VECTOR_DIMS` + 벡터 앞 8개 / 5단계 하이브리드 인덱스 조각 전→후 + SYNC 시간.
+화면(`VectorLoad`)은 파이프라인 아래 「단계별 실행 내역」 — 라벨을 누르면 실행된 SQL 과 표본이 펼쳐진다.
+
+**함정 1개 추가** — uvicorn 자동 리로드가 `Waiting for background tasks to complete` 에서 멈춰 8247 이 죽는다(브라우저·캡처·테스트가 한꺼번에 타임아웃).
+`launchctl kickstart -k` 로 복구. `개발노하우.md` 3.4.
+
+**검증** — 테스트 +1(기능 지도의 vector 딥링크가 새 id 만 쓴다). 브라우저: 옛 `?sub=store` → 내부 자동 이동 · 환경/내부 카드 분배 ·
+모드 순서 · 적재 화면에서 실제 PDF 업로드 후 단계 펼침(SQL·청크 표본·768차원 미리보기·인덱스 조각) · 테스트 문서 삭제.
+남은 것: P3 환경 탭(상태 스트립·사슬·테스트 임베딩·`VECTOR_DIMS`) → P4 내부 표본 → P5 장표 기반 → P7. ④ Select AI RAG 는 P1–P4 뒤 논의.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은

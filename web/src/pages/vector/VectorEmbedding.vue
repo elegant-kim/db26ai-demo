@@ -62,7 +62,7 @@ function pickOnnx(files: FileList | null) {
         <Badge tone="info">{{ v.onnxModels.length }}개 등록</Badge>
       </div>
       <KvGrid :data="configKv" />
-      <p class="text-xs mt-3 mb-0" style="color: var(--text-muted);">모델을 바꾸면 벡터 차원이 바뀝니다. <code class="font-mono">embedding VECTOR</code> 컬럼은 차원 무제약이지만 HNSW 인덱스가 첫 데이터의 차원으로 고정되므로, 바꾼 뒤에는 Vector Store 초기화 → 재업로드가 순서입니다 (ORA-51932 함정).</p>
+      <p class="text-xs mt-3 mb-0" style="color: var(--text-muted);">모델을 바꾸면 벡터 차원이 바뀝니다. <code class="font-mono">embedding VECTOR</code> 컬럼은 차원 무제약이지만 HNSW 인덱스가 첫 데이터의 차원으로 고정되므로, 바꾼 뒤에는 위 「테이블 생성 · 초기화」로 초기화 → 「적재」에서 재업로드가 순서입니다 (ORA-51932 함정).</p>
     </Card>
 
     <Card title="ONNX 임베딩 모델 (USER_MINING_MODELS)" subtitle="DB 안에 적재된 모델 — 선택하면 임베딩 모델이 바뀌고, 테스트는 VECTOR_EMBEDDING 을 한 번 실행합니다" :icon="Boxes">

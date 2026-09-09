@@ -3,12 +3,13 @@ import { fromColumnsData, type Rows } from './normalize'
 
 export type SearchMode = 'vector' | 'keyword' | 'hybrid' | 'hvi' | 'compare'
 /** 검색 모드 4종 — 정본은 app/routers/vector.py 의 분기. 하이브리드가 26ai 의 차별점 */
+/** 검색 모드 5종 — 순서는 학습 순서(2026-09-09 P1): 아는 것(키워드) → 새것(의미) → 나란히(비교) → 합치기(수동) → 26ai(HVI). 기본 선택은 의미 검색 */
 export const SEARCH_MODES: { value: SearchMode; label: string; hint: string }[] = [
-  { value: 'vector', label: '의미 검색', hint: 'VECTOR_DISTANCE — 단어가 달라도 뜻이 비슷하면 찾는다' },
   { value: 'keyword', label: '키워드 검색', hint: 'Oracle Text CONTAINS / LIKE — 단어가 있어야 찾는다' },
+  { value: 'vector', label: '의미 검색', hint: 'VECTOR_DISTANCE — 단어가 달라도 뜻이 비슷하면 찾는다' },
+  { value: 'compare', label: '비교', hint: '키워드 vs 의미 검색을 나란히' },
   { value: 'hybrid', label: '수동 하이브리드', hint: 'CONTAINS + VECTOR_DISTANCE 를 한 SQL 에서 직접 가중합 — 23ai 어디서나 되는 방식' },
   { value: 'hvi', label: 'Hybrid Vector Index (26ai)', hint: 'CREATE HYBRID VECTOR INDEX 하나 + DBMS_HYBRID_VECTOR.SEARCH — 텍스트·벡터 융합을 DB 가 한다' },
-  { value: 'compare', label: '비교', hint: '키워드 vs 의미 검색을 나란히' },
 ]
 export const LOADING_STEPS = ['질문 임베딩 중…', '벡터 유사도 검색 중…', '참조 문서 수집 중…', 'RAG 답변 생성 중…']
 export const EXAMPLE_QUESTIONS = [
@@ -45,7 +46,7 @@ export interface HybridIndexStatus { success: boolean; exists: boolean; index_na
 export interface HybridIndexCreate { success: boolean; skipped?: boolean; message?: string; error?: string; elapsed_ms?: number; steps?: { sql: string; note: string; duration_ms?: number }[]; status?: HybridIndexStatus }
 export interface ExplainPlan { success: boolean; before?: PlanSide; after?: PlanSide; target_sql?: string; explain_sql?: string; plan_text?: string; error?: string }
 export interface UploadDone { doc_id?: number; filename: string; chunks_count: number; embedded_count?: number; not_embedded_count?: number; pages_count?: number; total_ms: number; warning?: string }
-export interface PipelineStep { step: number; label: string; status: 'pending' | 'running' | 'done'; detail?: string; duration_ms?: number }
+export interface PipelineStep { step: number; label: string; status: 'pending' | 'running' | 'done'; detail?: string; duration_ms?: number; sql?: string; sample?: any }
 
 export const search = (query: string, mode: SearchMode, top_k: number, provider: string) =>
   api.post<SearchResponse>('/api/vector/search', { query, mode, top_k, provider: provider || '' }).then((r) => r.data)
