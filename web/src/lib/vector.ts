@@ -50,6 +50,13 @@ export interface PlanSide { target_sql: string; plan_text: string; access?: stri
 /** 2026-09-08 까지의 SQL(before: WHERE embedding IS NOT NULL) vs 지금(after) — 술어 하나가 HNSW 를 죽였다. after 만 VECTOR INDEX HNSW SCAN */
 export interface HybridIndexStatus { success: boolean; exists: boolean; index_name: string; status?: string | null; ctx_status?: string | null; parameters?: string | null; indexed_chunks?: number | null; legacy_text_index: boolean; model: string; create_sql: string; error?: string }
 export interface HybridIndexCreate { success: boolean; skipped?: boolean; message?: string; error?: string; elapsed_ms?: number; steps?: { sql: string; note: string; duration_ms?: number }[]; status?: HybridIndexStatus }
+export interface HybridInternals {
+  success: boolean; exists: boolean; index_name: string; error?: string
+  tables?: { name: string; rows: number | null; role: string }[]
+  token_total?: number; tokens?: { text: string; count: number }[]
+  pieces?: { chunk_id: number; length: number; text: string; dims: number }[]
+  sql?: { tables: string; tokens: string; pieces: string }
+}
 export interface ExplainPlan { success: boolean; before?: PlanSide; after?: PlanSide; target_sql?: string; explain_sql?: string; plan_text?: string; error?: string }
 export interface UploadDone { doc_id?: number; filename: string; chunks_count: number; embedded_count?: number; not_embedded_count?: number; pages_count?: number; total_ms: number; warning?: string }
 export interface PipelineStep { step: number; label: string; status: 'pending' | 'running' | 'done'; detail?: string; duration_ms?: number; sql?: string; sample?: any }
@@ -68,6 +75,7 @@ export const tableData = (table_name: string, limit = 50) => api.post('/api/vect
 export const tableIndexes = (table_name: string) => api.post('/api/vector/table-indexes', { table_name }).then((r) => fromColumnsData(r.data) as Rows)
 export const getHybridIndex = () => api.get<HybridIndexStatus>('/api/vector/hybrid-index').then((r) => r.data)
 export const createHybridIndex = (force = false) => api.post<HybridIndexCreate>('/api/vector/hybrid-index/create', { force }, { timeout: 600_000 }).then((r) => r.data)
+export const getHybridInternals = () => api.get<HybridInternals>('/api/vector/hybrid-index/internals').then((r) => r.data)
 export const explainPlan = () => api.post<ExplainPlan>('/api/vector/explain-plan').then((r) => r.data)
 export const getEmbeddingConfig = () => api.get<EmbeddingConfig>('/api/vector/embedding-config').then((r) => r.data)
 export const setEmbeddingConfig = (body: { source?: string; model?: string; reset_model?: boolean }) => api.post<EmbeddingConfig>('/api/vector/embedding-config', body).then((r) => r.data)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 「내부」 서브탭 — 증명·관리 도구: 실행계획 전/후 · 테이블 생성/조회 · ONNX 모델·임베딩 소스 관리. 시연 중 자주 안 열지만 DBA 가 반드시 묻는 것들 (2026-09-09 재편 P1) */
 import { ref } from 'vue'
-import { Table2, ListTree } from 'lucide-vue-next'
+import { Table2, ListTree, Layers } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -11,6 +11,7 @@ import ResultTable from '@/components/demo/ResultTable.vue'
 import Segmented from '@/components/demo/Segmented.vue'
 import VectorEmbedding from './VectorEmbedding.vue'
 import CompareView from '@/components/demo/CompareView.vue'
+import { fmtNum } from '@/lib/format'
 import { useVectorStore } from '@/stores/vector'
 
 const v = useVectorStore()
@@ -50,6 +51,47 @@ const KINDS = [{ k: 'def', label: '컬럼 정의', hint: 'USER_TAB_COLUMNS' }, {
       </div>
     </Card>
 
+    <!-- P4: 인덱스 하나가 실제로는 테이블 여러 개 — 무엇이 들어 있나 -->
+    <Card title="Hybrid Vector Index 안 들여다보기" subtitle="인덱스 하나를 만들면 DB 가 테이블 여러 개를 만든다 — 단어는 어디에, 벡터는 어디에 있나" :icon="Layers">
+      <template #actions><Button size="sm" :busy="v.hviInternalsBusy" @click="v.loadHviInternals()">{{ v.hviInternals ? '새로고침' : '들여다보기' }}</Button></template>
+      <p v-if="!v.hviInternals" class="text-sm m-0" style="color: var(--text-muted);">버튼을 누르면 내부 테이블 목록, 가장 자주 나온 단어 15개, 조각 표본 5개를 보여줍니다.</p>
+      <div v-else-if="v.hviInternals.error" class="px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-negative-soft); border-left: 3px solid var(--accent-negative); color: var(--text-primary);">{{ v.hviInternals.error }}</div>
+      <p v-else-if="!v.hviInternals.exists" class="text-sm m-0" style="color: var(--text-muted);">Hybrid Vector Index 가 없습니다 — 「환경」 서브탭에서 만드세요.</p>
+      <div v-else class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <div>
+          <div class="text-xs font-semibold mb-1.5" style="color: var(--text-secondary);">내부 테이블 {{ v.hviInternals.tables?.length }}개</div>
+          <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border-default);">
+            <div v-for="t in v.hviInternals.tables" :key="t.name" class="row px-2.5 py-1.5" style="background: var(--bg-elevated);">
+              <div class="flex items-baseline gap-2"><span class="font-mono text-xs truncate" style="color: var(--text-primary);" :title="t.name">{{ t.name.replace('VECTOR$DR$DOC_CHUNKS_HVI$VI$', 'VECTOR$…$').replace('DR$DOC_CHUNKS_HVI', 'DR$…') }}</span><span class="ml-auto text-xs tabular-nums shrink-0" style="color: var(--text-secondary);">{{ t.rows == null ? '—' : fmtNum(t.rows) }}행</span></div>
+              <div class="text-[11px]" style="color: var(--text-muted);">{{ t.role }}</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold mb-1.5" style="color: var(--text-secondary);">가장 자주 나온 단어 15 — 토큰 {{ fmtNum(v.hviInternals.token_total ?? 0) }}개 중</div>
+          <div class="flex flex-wrap gap-1.5">
+            <span v-for="tk in v.hviInternals.tokens" :key="tk.text" class="inline-flex items-baseline gap-1 rounded-md px-2 py-1 text-xs" style="background: var(--bg-elevated); border: 1px solid var(--border-default);"><span class="font-mono" style="color: var(--text-primary);">{{ tk.text }}</span><span class="tabular-nums" style="color: var(--text-muted);">{{ tk.count }}</span></span>
+          </div>
+          <p class="text-[11px] mt-2 m-0" style="color: var(--text-secondary); line-height: 1.5;">단어가 <span class="font-mono">카드사는</span> · <span class="font-mono">회원이</span> 처럼 <strong style="color: var(--text-primary);">조사가 붙은 채</strong> 저장됩니다(공백 단위). 그래서 키워드 검색은 <span class="font-mono">카드%</span> 처럼 앞부분으로 묻습니다 — 「검색」의 실행된 SQL 에 그 변환이 보입니다.</p>
+        </div>
+        <div>
+          <div class="text-xs font-semibold mb-1.5" style="color: var(--text-secondary);">조각 표본 5 — 인덱스가 스스로 자르고 벡터로 바꾼 것</div>
+          <div class="flex flex-col gap-1.5">
+            <div v-for="p in v.hviInternals.pieces" :key="p.chunk_id" class="rounded-md px-2.5 py-1.5 text-xs" style="background: var(--bg-elevated); border: 1px solid var(--border-default);">
+              <div class="flex items-center gap-1.5 mb-0.5"><Badge tone="code">#{{ p.chunk_id }}</Badge><span style="color: var(--text-muted);">{{ p.length }}자 → 숫자 {{ p.dims }}개</span></div>
+              <div class="line-clamp-2" style="color: var(--text-primary);">{{ p.text }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template v-if="v.hviInternals?.exists && v.hviInternals.sql">
+        <p class="text-xs mt-3 mb-2" style="color: var(--text-secondary); line-height: 1.5;"><strong style="color: var(--text-primary);">이게 있어서:</strong> <span class="font-mono">CONTAINS</span> 는 $I 에서 단어를, 벡터 검색은 $VR 에서 조각을 찾습니다. 둘을 한 인덱스가 갖고 있어서 <span class="font-mono">DBMS_HYBRID_VECTOR.SEARCH</span> 의 융합이 DB 안에서 끝납니다.</p>
+        <details class="text-xs"><summary class="cursor-pointer" style="color: var(--text-muted);">조회 SQL 3개</summary>
+          <div class="mt-2 flex flex-col gap-2"><SqlBlock :code="v.hviInternals.sql.tables" label="내부 테이블" max-height="100px" /><SqlBlock :code="v.hviInternals.sql.tokens" label="상위 토큰 ($I)" max-height="100px" /><SqlBlock :code="v.hviInternals.sql.pieces" label="조각 표본 ($VR)" max-height="100px" /></div>
+        </details>
+      </template>
+    </Card>
+
     <Card title="벡터 검색 실행계획 — 술어 하나가 인덱스를 죽인다" subtitle="같은 검색을 두 가지로 EXPLAIN: 2026-09-08 까지 앱이 돌리던 SQL(WHERE embedding IS NOT NULL) 과 지금 SQL. HNSW 인덱스를 타는 쪽은 하나뿐이다">
       <template #actions><Button size="sm" :busy="v.planBusy" @click="v.loadPlan()">실행계획 조회</Button></template>
       <div v-if="v.plan" class="flex flex-col gap-2">
@@ -86,3 +128,7 @@ const KINDS = [{ k: 'def', label: '컬럼 정의', hint: 'USER_TAB_COLUMNS' }, {
     </ConfirmModal>
   </div>
 </template>
+
+<style scoped>
+.row + .row { border-top: 1px solid var(--border-default); }
+</style>

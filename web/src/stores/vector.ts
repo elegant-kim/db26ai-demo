@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getHybridIndex, createHybridIndex, ENV_EMBED_SAMPLE, type HybridIndexStatus, type HybridIndexCreate } from '@/lib/vector'
+import { getHybridIndex, createHybridIndex, getHybridInternals, ENV_EMBED_SAMPLE, type HybridIndexStatus, type HybridIndexCreate, type HybridInternals } from '@/lib/vector'
 import { computed, ref } from 'vue'
 import { errorMessage } from '@/lib/api'
 import { postSse } from '@/composables/useSse'
@@ -194,6 +194,11 @@ export const useVectorStore = defineStore('vector', () => {
     finally { hviBusy.value = '' }
   }
 
+  // 「내부」 — 하이브리드 인덱스 안 들여다보기 (P4)
+  const hviInternals = ref<HybridInternals | null>(null)
+  const hviInternalsBusy = ref(false)
+  async function loadHviInternals() { hviInternalsBusy.value = true; try { hviInternals.value = await getHybridInternals() } catch (e) { hviInternals.value = { success: false, exists: false, index_name: '', error: errorMessage(e) } } finally { hviInternalsBusy.value = false } }
+
   async function loadPlan() { planBusy.value = true; try { plan.value = await explainPlan() } catch (e) { plan.value = { success: false, error: errorMessage(e) } } finally { planBusy.value = false } }
 
   // ── 검색 (RAG) ──
@@ -294,5 +299,6 @@ export const useVectorStore = defineStore('vector', () => {
     onnxTest, onnxBusy, onnxLocalResult, onnxCloudResult, refreshOnnx, testModel, deleteModel, uploadLocal, loadCloud,
     hvi, hviBusy, hviResult, loadHvi, createHvi,
     envEmbedText, envEmbed, envEmbedBusy, testEmbed,
+    hviInternals, hviInternalsBusy, loadHviInternals,
   }
 })

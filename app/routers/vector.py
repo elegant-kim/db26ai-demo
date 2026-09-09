@@ -24,6 +24,7 @@ from app.vector_search import (
     drop_vector_tables,
     generate_rag_answer,
     get_embedding_info,
+    get_hybrid_index_internals,
     get_hybrid_index_status,
     get_index_info,
     get_onnx_model_detail,
@@ -213,6 +214,19 @@ async def hybrid_index_status():
 
 class HybridIndexRequest(BaseModel):
     force: bool = False
+
+
+@router.get("/hybrid-index/internals")
+async def hybrid_index_internals():
+    """Hybrid Vector Index 안 들여다보기 — 내부 테이블 목록·행 수, 상위 토큰 15($I), 조각 표본 5($VR). 없으면 exists=false."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        return {"success": True, **(await get_hybrid_index_internals(pool))}
+    except Exception as e:
+        logger.warning("[hvi-internals] 실패: %s", e)
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
 @router.post("/hybrid-index/create")

@@ -164,7 +164,8 @@ scripts/deploy.sh
 - `POST /api/vector/drop-tables` · `POST /api/vector/create-tables` — Vector Store 테이블 삭제/생성
 - `POST /api/vector/table-definition` · `table-data` · `table-indexes` — 테이블 정의/데이터/인덱스 조회
 - `GET /api/vector/recent-queries` — V$SQL 최근 벡터 쿼리
-- `POST /api/vector/explain-plan` — 벡터 검색 실행계획
+- `POST /api/vector/explain-plan` — 벡터 검색 실행계획 (before/after 두 계획)
+- `GET /api/vector/hybrid-index` · `POST /api/vector/hybrid-index/create` · `GET /api/vector/hybrid-index/internals` — Hybrid Vector Index 상태 / 생성(CONTEXT 인덱스 대체) / 내부 표본(테이블·상위 토큰·조각)
 - `POST /api/vector/visualize` — 벡터 시각화 데이터
 
 ### 임베딩 & ONNX 관리 (`app/routers/vector.py`)

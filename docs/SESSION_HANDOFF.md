@@ -548,6 +548,22 @@ primary 옆에 놓인 secondary 가 같은 높이가 된다 — 이 화면만이
 
 **함정** — `lib/vector.ts` 인터페이스를 문자열 슬라이스로 바꾸다 안쪽 `}` 에서 잘라 빌드가 깨졌다(`index?: {…} | null` 의 중괄호). 다음 `export ` 선언 직전까지를 범위로 잡아 복구. 여러 줄 타입은 정규식으로 자르지 말고 파일을 읽고 고칠 것.
 
+## 4-22. 「내부」 탭 P4 — Hybrid Vector Index 안 들여다보기 (2026-09-09, Fable 5.1)
+
+**내용** — 인덱스 하나를 만들면 DB 가 테이블 12개를 만든다는 것을 표본으로 보여준다(P3 와 같은 원칙: 값마다 뜻, "이게 있어서" 한 줄).
+`GET /api/vector/hybrid-index/internals` → 내부 테이블 목록 + 행 수 + 역할(확실한 것만: `$I` 토큰 · `$VR` 조각+임베딩 · `$K` docid↔rowid · `$N` 삭제 대기 ·
+IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COUNT 순) · 조각 표본 5(`$VR`, 본문 100자 + `VECTOR_DIMS`).
+카드 안내: 단어가 `카드사는`·`회원이` 처럼 **조사가 붙은 채** 저장되므로 키워드 검색이 `카드%` 로 묻는다 — 「검색」의 실행 SQL 과 이어진다.
+"이게 있어서: CONTAINS 는 $I 에서, 벡터 검색은 $VR 에서 — 한 인덱스가 둘을 가져 융합이 DB 안에서 끝난다."
+
+**실측(이 ADB)** — 토큰 3,803개(고유 3,803) · 조각 451 · IVF 중심점 34. 컬럼명은 추측하지 않고 `user_tab_columns` 로 확인:
+`$I(TOKEN_TEXT, TOKEN_TYPE, TOKEN_COUNT …)` · `$VR(DOC_DOCID, DOC_ROWID, DOC_CHUNK_ID, DOC_CHUNK_TEXT, DOC_EMBEDDING …)`.
+
+**함정** — SFC 에 `<style>` 을 붙이려고 첫 `</template>` 뒤에 넣었더니 **카드 슬롯의 `</template>`** 뒤(템플릿 안)에 들어갔다. 빌드는 통과한다(HTML 요소로 취급) —
+파일 끝에 붙여야 한다. `rstrip().endswith('</template>')` 로 확인하고 붙일 것.
+
+**남은 것** — P5 장표 기반(변환 스크립트 · `/slides` 마운트 · 뷰어 · `?slide=` · 레지스트리 `slides` 필드) → P7 마무리(RAG 출처 배지 등). ④ Select AI RAG 논의.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은

@@ -330,6 +330,17 @@ class TestVectorIndexPaths:
         assert d["dimensions_measured"] is True and isinstance(d["vector_dimensions"], int) and d["vector_dimensions"] > 0
         assert "CREATE VECTOR INDEX" in d.get("hnsw_ddl", "")
 
+    def test_하이브리드_인덱스_내부_표본(self, client):
+        """P4 (2026-09-09): 인덱스 하나 = 테이블 여러 개. $I 토큰 · $VR 조각(벡터 차원 포함)이 표본으로 온다."""
+        d = client.get("/api/vector/hybrid-index/internals").json()
+        assert d.get("success"), d.get("error")
+        if not d["exists"]:
+            pytest.skip("Hybrid Vector Index 없음")
+        names = [t["name"] for t in d["tables"]]
+        assert any(n.endswith("$I") for n in names) and any(n.endswith("$VR") for n in names), names
+        assert d["tokens"] and d["tokens"][0]["count"] >= d["tokens"][-1]["count"]
+        assert d["pieces"] and all(p["dims"] > 0 and p["text"] for p in d["pieces"])
+
     def test_키워드_검색은_여전히_CONTAINS_로_돈다(self, client):
         d = client.post("/api/vector/search", json={"query": "보험금 청구", "mode": "keyword", "top_k": 3}).json()
         assert d.get("success"), d.get("error")

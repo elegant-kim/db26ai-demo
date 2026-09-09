@@ -719,6 +719,71 @@ async def sync_hybrid_index(pool) -> dict:
     return {"sql": f"BEGIN CTX_DDL.SYNC_INDEX('{HYBRID_INDEX}'); END;", "elapsed_ms": int((time.time() - t) * 1000)}
 
 
+# 하이브리드 인덱스 내부 테이블의 역할 — 확실한 것만 적는다. 모르는 것은 "보조"라고 부른다.
+_HVI_TABLE_ROLES = {
+    "$I": "텍스트 토큰 — 단어 하나가 어느 조각에 몇 번 나오나 (CONTAINS 가 여기서 찾는다)",
+    "$VR": "조각 + 임베딩 — 인덱스가 스스로 잘라 벡터로 바꾼 것 (벡터 검색이 여기서 찾는다)",
+    "$K": "DOCID ↔ ROWID 매핑 — 인덱스 내부 번호를 원본 행으로",
+    "$N": "삭제 대기 목록 — 지운 행을 다음 동기화 때 정리",
+}
+
+
+def _hvi_role(table_name: str) -> str:
+    if "IVF_FLAT_CENTROIDS" in table_name:
+        return "벡터 인덱스(IVF) 중심점 — 조각들을 묶은 대표 벡터"
+    if "IVF_FLAT_CENTROID_PARTITIONS" in table_name:
+        return "벡터 인덱스(IVF) 배정 — 조각이 어느 중심점에 속하나"
+    suffix = table_name.rsplit("$", 1)[-1]
+    return _HVI_TABLE_ROLES.get("$" + suffix, "인덱스 보조 테이블")
+
+
+async def get_hybrid_index_internals(pool) -> dict:
+    """하이브리드 인덱스 하나가 실제로는 테이블 여러 개다 — 무엇을 만들어 놓았고 안에 무엇이 들었나 (「내부」 탭, 2026-09-09 P4).
+
+    표본만 보여준다: 내부 테이블 목록 + 행 수, 가장 자주 나온 토큰 15개($I), 조각 5개($VR, 본문 100자 + 차원).
+    토큰이 '카드사는'·'회원이' 처럼 조사가 붙은 꼴로 저장되는 것이 그대로 보인다 — 앱이 '카드%' 로 묻는 이유.
+    """
+    t_i, t_vr = f"DR${HYBRID_INDEX}$I", f"DR${HYBRID_INDEX}$VR"
+    sql_tables = f"""SELECT table_name FROM user_tables
+WHERE  table_name LIKE 'DR${HYBRID_INDEX}$%' OR table_name LIKE 'VECTOR$DR${HYBRID_INDEX}%'
+ORDER  BY table_name"""
+    sql_tokens = f"""SELECT token_text, token_count
+FROM   {t_i}
+ORDER  BY token_count DESC
+FETCH FIRST 15 ROWS ONLY"""
+    sql_pieces = f"""SELECT doc_chunk_id, doc_chunk_length, doc_chunk_text, VECTOR_DIMS(doc_embedding)
+FROM   {t_vr}
+ORDER  BY doc_docid, doc_chunk_id
+FETCH FIRST 5 ROWS ONLY"""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT COUNT(*) FROM user_indexes WHERE index_name = :n", {"n": HYBRID_INDEX})
+            if (await cursor.fetchone())[0] == 0:
+                return {"exists": False, "index_name": HYBRID_INDEX}
+            await cursor.execute(sql_tables)
+            names = [r[0] for r in await cursor.fetchall()]
+            tables = []
+            for n in names:
+                try:
+                    await cursor.execute(f'SELECT COUNT(*) FROM "{n}"')
+                    cnt = (await cursor.fetchone())[0]
+                except Exception as e:
+                    logger.warning("[hvi-internals] %s 행 수 조회 실패: %s", n, e)
+                    cnt = None
+                tables.append({"name": n, "rows": cnt, "role": _hvi_role(n)})
+            await cursor.execute(f"SELECT COUNT(*) FROM {t_i}")
+            token_total = (await cursor.fetchone())[0]
+            await cursor.execute(sql_tokens)
+            tokens = [{"text": r[0], "count": r[1]} for r in await cursor.fetchall()]
+            await cursor.execute(sql_pieces)
+            pieces = [{"chunk_id": r[0], "length": r[1], "text": (r[2] or "")[:100], "dims": r[3]} for r in await cursor.fetchall()]
+    return {
+        "exists": True, "index_name": HYBRID_INDEX, "tables": tables,
+        "token_total": token_total, "tokens": tokens, "pieces": pieces,
+        "sql": {"tables": sql_tables, "tokens": sql_tokens, "pieces": sql_pieces},
+    }
+
+
 async def hybrid_index_search(pool, query: str, top_k: int = 5, fusion: str = "UNION", scorer: str = "rsf") -> dict:
     """DBMS_HYBRID_VECTOR.SEARCH — JSON 한 덩어리로 텍스트+벡터 융합 검색. 반환 점수: score(융합)·vector_score·text_score (0~100)."""
     start = time.time()
