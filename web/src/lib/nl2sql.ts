@@ -76,6 +76,7 @@ export const ACTION_BUTTONS: Record<string, { action: FollowAction; label: strin
   chat: [],
 }
 
+/** 2026-09-29 부터 정본은 DB 의 AI_PROMPT_PRESET(sql/setup/72 시드) — 이 상수는 API 가 실패했을 때의 폴백이다 */
 export const EXAMPLE_QUESTIONS: Record<'SH' | 'SSB' | 'DEFAULT', string[]> = {
   SH: [
     '매출 상위 5개 제품을 알려주세요', '월별 매출 추이를 알려주세요', '국가별 고객 수를 알려주세요', '연도별 총 매출액을 알려주세요', '채널별 주문 건수를 알려주세요',
@@ -130,3 +131,14 @@ export const applyAnnotations = (annotation_set: Record<string, Record<string, s
   api.post<{ success: boolean; applied_count: number; error_count: number; errors: string[]; error?: string }>('/api/apply-annotations', { annotation_set }).then((r) => r.data)
 export const removeAnnotations = (table_names: string[], owner: string) =>
   api.post<{ success: boolean; removed_count: number; errors?: string[]; error?: string }>('/api/remove-annotations', { table_names, owner }).then((r) => r.data)
+
+// ── 저장 질문 프리셋 (PoC 1-D) — 정본 app/presets.py ──
+export interface Preset { ID: number; PROFILE_NAME: string | null; TITLE: string; QUESTION: string; ACTION: Action | null; SORT_ORDER: number; CREATED_AT: string }
+export interface PresetInput { title: string; question: string; action: Action; profile_name: string | null }
+export const getPresets = (profile: string) => api.get<{ success: boolean; presets: Preset[]; error?: string }>('/api/nl2sql/presets', { params: { profile } }).then((r) => r.data)
+export const createPreset = (p: PresetInput) => api.post<{ success: boolean; id?: number; error?: string }>('/api/nl2sql/presets', p).then((r) => r.data)
+export const updatePreset = (id: number, p: PresetInput) => api.put<{ success: boolean; error?: string }>(`/api/nl2sql/presets/${id}`, p).then((r) => r.data)
+export const deletePreset = (id: number) => api.delete<{ success: boolean; error?: string }>(`/api/nl2sql/presets/${id}`).then((r) => r.data)
+/** 프로필 이름 → 시드가 쓰는 LIKE 패턴 (SH → '%SH%'). 새 프리셋의 기본 범위 */
+export const presetPatternFor = (profile: string): string | null => { const p = (profile || '').toUpperCase(); return p.includes('SSB') ? '%SSB%' : p.includes('SH') ? '%SH%' : null }
+

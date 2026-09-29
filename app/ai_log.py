@@ -64,7 +64,8 @@ async def _rows(cur) -> list[dict]:
             if hasattr(v, "read"):
                 v = await _lob_to_str(v)
             elif hasattr(v, "isoformat"):
-                v = v.isoformat(sep=" ", timespec="seconds")
+                # TIMESTAMP(tz 없음)에 SYSTIMESTAMP(=UTC on ADB) 가 들어 있다 → 'Z' 를 붙여 브라우저가 현지 시각으로 바꾸게
+                v = v.isoformat(timespec="seconds") + ("Z" if v.tzinfo is None else "")
             d[c] = v
         out.append(d)
     return out

@@ -485,3 +485,33 @@ class TestQueryHistory:
             assert x["success"] and "QUESTION" in x and isinstance(x["feedback"], list)
         assert client.get("/api/nl2sql/history/999999999").status_code == 404
 
+
+class TestPromptPresets:
+    """PoC 1-D (2026-09-29) — 저장 질문 프리셋 CRUD. 시드(72번)가 들어 있으면 SH 프로필에 14건 이상."""
+
+    def test_프로필별_목록(self, client):
+        d = client.get("/api/nl2sql/presets", params={"profile": "GEMINI_SH_PROFILE"}).json()
+        assert d["success"] and isinstance(d["presets"], list)
+        for p in d["presets"]:
+            assert p["PROFILE_NAME"] is None or "SH" in p["PROFILE_NAME"], p
+            assert p["TITLE"] and p["QUESTION"]
+
+    def test_추가_수정_삭제(self, client):
+        r = client.post("/api/nl2sql/presets", json={"title": "pytest 프리셋", "question": "pytest 질문입니다", "action": "showsql", "profile_name": "%PYTEST%"}).json()
+        assert r["success"] and r["id"], r
+        pid = r["id"]
+        try:
+            got = [p for p in client.get("/api/nl2sql/presets", params={"profile": "MY_PYTEST_PROFILE"}).json()["presets"] if p["ID"] == pid]
+            assert got and got[0]["ACTION"] == "showsql"
+            assert not [p for p in client.get("/api/nl2sql/presets", params={"profile": "GEMINI_SH_PROFILE"}).json()["presets"] if p["ID"] == pid], "패턴이 안 맞는 프로필에 보이면 안 된다"
+            u = client.put(f"/api/nl2sql/presets/{pid}", json={"title": "수정", "question": "수정된 질문", "action": "runsql", "profile_name": None}).json()
+            assert u["success"]
+            assert [p for p in client.get("/api/nl2sql/presets", params={"profile": "GEMINI_SH_PROFILE"}).json()["presets"] if p["ID"] == pid and p["TITLE"] == "수정"], "NULL 패턴은 모든 프로필에 보여야 한다"
+        finally:
+            assert client.delete(f"/api/nl2sql/presets/{pid}").json()["success"]
+        assert client.delete(f"/api/nl2sql/presets/{pid}").status_code == 404
+
+    def test_검증_400(self, client):
+        assert client.post("/api/nl2sql/presets", json={"title": "", "question": "q"}).status_code == 400
+        assert client.post("/api/nl2sql/presets", json={"title": "t", "question": "q", "action": "dropdb"}).status_code == 400
+

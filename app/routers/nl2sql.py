@@ -10,6 +10,8 @@ from pydantic import BaseModel
 
 from app.ai_log import VALID_FEEDBACK, VALID_STATUS, get_query_log, list_query_log, query_log_summary
 from app.database import get_pool
+from app.presets import create_preset, delete_preset, list_presets, update_preset
+from app.presets import validate as validate_preset
 from app.select_ai import (
     SELECT_AI_ACTIONS,
     apply_annotations,
@@ -42,6 +44,13 @@ class AskRequest(BaseModel):
 
 class ConversationRequest(BaseModel):
     title: str = ""
+
+
+class PresetRequest(BaseModel):
+    title: str
+    question: str
+    action: str = "runsql"
+    profile_name: str | None = None   # NULL = 모든 프로필, '%SH%' 같은 LIKE 패턴
 
 
 class SetProfileRequest(BaseModel):
@@ -319,6 +328,73 @@ async def nl2sql_history_detail(log_id: int):
         if d is None:
             return JSONResponse(status_code=404, content={"success": False, "error": f"이력이 없습니다: {log_id}"})
         return {"success": True, **d}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+# ── 저장 질문 프리셋 (PoC 1-D) — 정본 app/presets.py, 시드 sql/setup/72 ──
+
+def _db_or_503():
+    return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+
+
+@router.get("/nl2sql/presets")
+async def presets_list(profile: str = ""):
+    """예시 질문 프리셋 — profile 을 주면 NULL(전체) + LIKE 패턴이 맞는 것만. 화면의 「예시 질문 고르기」 소스."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, "presets": await list_presets(pool, profile)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/nl2sql/presets")
+async def presets_create(req: PresetRequest):
+    """프리셋 추가 (제목·질문·action·profile_name 패턴)."""
+    err = validate_preset(req.title, req.question, req.action)
+    if err:
+        return JSONResponse(status_code=400, content={"success": False, "error": err})
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        pid = await create_preset(pool, req.title, req.question, req.action, req.profile_name)
+        return {"success": True, "id": pid}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.put("/nl2sql/presets/{preset_id}")
+async def presets_update(preset_id: int, req: PresetRequest):
+    """프리셋 수정."""
+    err = validate_preset(req.title, req.question, req.action)
+    if err:
+        return JSONResponse(status_code=400, content={"success": False, "error": err})
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        ok = await update_preset(pool, preset_id, req.title, req.question, req.action, req.profile_name)
+        if not ok:
+            return JSONResponse(status_code=404, content={"success": False, "error": f"프리셋이 없습니다: {preset_id}"})
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.delete("/nl2sql/presets/{preset_id}")
+async def presets_delete(preset_id: int):
+    """프리셋 삭제."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        ok = await delete_preset(pool, preset_id)
+        if not ok:
+            return JSONResponse(status_code=404, content={"success": False, "error": f"프리셋이 없습니다: {preset_id}"})
+        return {"success": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

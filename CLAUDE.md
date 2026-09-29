@@ -83,6 +83,7 @@ scripts/deploy.sh
 | `app/routers/awr.py` | ~200 | ⑥ AWR 3개 엔드포인트 + 세션 캐시 (5-4 에서 분리). **분석은 SSE 가 아니라 JSON 1회** |
 | `app/routers/nl2sql.py` | ~330 | ① NL2SQL 13개 엔드포인트(ask · profiles · set-profile · annotations 2 · schema-info · explain-plan · execute-sql · env-info · conversations 2 · history 3) + 요청 모델 + `VALID_ACTIONS` |
 | `app/ai_log.py` | ~130 | AI_QUERY_LOG **읽기** — 이력 표(바인드 필터·페이징)·요약·상세 (2026-09-29 PoC 1-C). 쓰기는 `select_ai.py` |
+| `app/presets.py` | ~90 | AI_PROMPT_PRESET CRUD — 예시 질문 프리셋 (PoC 1-D) |
 | `app/routers/vector.py` | ~640 | ② Vector 22개 엔드포인트 — 업로드(SSE)·검색·문서·테이블·임베딩 설정·ONNX (5-6 에서 분리) |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
@@ -130,6 +131,7 @@ scripts/deploy.sh
 | `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
 | `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
+| `sql/setup/70_poc_ai_tables.sql` · `71_…_rollback.sql` · `72_poc_prompt_preset_seed.sql` | 고객사 PoC 확장(2026-09-29): 이력·피드백·프리셋 표 3개 + 롤백 + 예시 질문 시드 27건(멱등). 이 DB 에 적용 완료 |
 | `sql/setup/51_selectai_adb_setup.sql`<br>`52_..._demo.sql` · `53_..._teardown.sql` | **앱 없이 SQLcl 만으로** Select AI 를 세팅·시연·원복하는 ADB 전용 3종 세트 (2026-09-07). Annotation 목록의 정본은 `web/src/lib/annotations.ts` 이고 51번 §5 는 거기서 생성한 것이다. 옛 `selectAI_설정.sql`·`selectAI_demo.sql` 은 **다른 환경용**이라 보존만 한다 |
 | `docs/` | 사람이 읽는 문서 — 아래 "문서 체계" 참조 |
 
@@ -153,6 +155,7 @@ scripts/deploy.sh
 ### ① NL2SQL (Select AI) (`app/routers/nl2sql.py`)
 - `POST /api/ask` — Select AI 쿼리 실행 (action: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). `conversation_id` 를 주면 **멀티턴**(`GENERATE(params => conversation_id)`), 응답에 `log_id`(AI_QUERY_LOG) · `conversation_id` · `model`
 - `POST /api/conversations` · `DELETE /api/conversations/{id}` — 멀티턴 대화 발급(`CREATE_CONVERSATION`, retention 7일)/삭제. 「새 대화」는 ID 만 버리고 DROP 은 안 한다
+- `GET/POST /api/nl2sql/presets` · `PUT/DELETE /api/nl2sql/presets/{id}` — 저장 질문 프리셋(AI_PROMPT_PRESET). `profile_name` NULL = 전체, `%SH%` 같은 LIKE 패턴. 정본 `app/presets.py`, 시드 `sql/setup/72`
 - `GET /api/nl2sql/history` · `/history/summary` · `/history/{id}` — 호출 이력(AI_QUERY_LOG) 표(필터 q·date_from·date_to·profile·action·status·feedback, 페이징)·요약(성공률·평균/최대 elapsed·피드백 비율·프로필별)·상세(+피드백 목록). 읽기 전용, 정본 `app/ai_log.py`
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회
@@ -394,7 +397,7 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - `explainsql` action은 한국어 지시 자동 추가: `"(Please explain in Korean / 한국어로 설명해 주세요)"`
 - `execute_raw_sql()` — SELECT 문만 허용 (보안). `WITH` CTE도 거부되니 주의
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
-- 프로필 이름에 'SH' 포함 시 SH 스키마용 예시 질문/Annotation 세트 적용 (`web/src/lib/annotations.ts` · `lib/nl2sql.ts`)
+- 프로필 이름에 'SH' 포함 시 SH 스키마용 Annotation 세트 적용 (`web/src/lib/annotations.ts`). **예시 질문은 2026-09-29 부터 DB 의 `AI_PROMPT_PRESET`** 이 정본(프로필 이름 LIKE 패턴 `%SH%`·`%SSB%`·NULL) — 화면에서 추가·수정·삭제. `lib/nl2sql.ts` 의 `EXAMPLE_QUESTIONS` 는 API 실패 시 폴백 + 시드(72번) 원천
 - **딥링크 규약 3층**: `?sub=` 서브탭 · `&run=1` mount 직후 기본 동작 · `&slide=VS-12` 장표 뷰어(꼬리표 또는 `deck:page`). 시연 대본의 링크 하나가 화면+결과+장표를 연다
 - 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
 - AWR 결과 탭과 벡터 검색 세션 탭은 같은 `SessionTabs` 컴포넌트를 쓴다

@@ -603,6 +603,13 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 화면 `Nl2sqlHistory.vue` + `stores/aiLog.ts` + `lib/aiLog.ts`: Stat 4 → 프로필(모델)별 소요(3-C 절반) → 필터 폼(「조회」 버튼, 자동 재조회 없음) → 표(행 클릭 모달: 질문·KvGrid·생성 SQL·오류 전문·답변 앞부분·피드백 목록 — 편집은 1-B 자리) → Pagination. `?sub=history&run=1`.
 테스트 +5(LLM 무관). 1-A 에서 남은 실패 이력이 그대로 첫 데이터가 됐다.
 
+## 4-26. PoC 1-D 저장 질문 프리셋 (2026-09-29, Fable 5.1)
+
+`app/presets.py` + `GET/POST/PUT/DELETE /api/nl2sql/presets` · `sql/setup/72_poc_prompt_preset_seed.sql`(옛 하드코딩 27건 → `%SH%` 14 · `%SSB%` 10 · NULL 3, 표가 비어 있을 때만).
+화면: 「예시 질문 고르기」 = 제목 + 질문(sub), 고르면 질문·실행 모드가 입력줄로. 아래 줄에 「저장할 제목」 + 추가/수정/삭제(삭제는 ConfirmModal). 새 프리셋의 범위는 `presetPatternFor(profile)`(SH → `%SH%`).
+`EXAMPLE_QUESTIONS` 상수는 폴백으로만 남긴다. 이력 시각은 UTC `Z` 를 붙여 현지로(개발노하우 3.3). 테스트 +3.
+**Phase 1 남은 것: 1-B 피드백뿐** — LLM(Gemini) 할당량이 풀려야 FEEDBACK 벡터 인덱스(임베딩)까지 실측할 수 있다.
+
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 

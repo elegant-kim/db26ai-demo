@@ -17,7 +17,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import EmptyState from '@/components/demo/EmptyState.vue'
 import SqlBlock from '@/components/demo/SqlBlock.vue'
 import KvGrid from '@/components/demo/KvGrid.vue'
-import { fmtMs } from '@/lib/format'
+import { fmtDateTime, fmtMs } from '@/lib/format'
 import { ACTIONS, shortConv } from '@/lib/nl2sql'
 import { FEEDBACK_OPTIONS, STATUS_OPTIONS } from '@/lib/aiLog'
 import { useAiLogStore } from '@/stores/aiLog'
@@ -35,11 +35,11 @@ function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && h.detail) h.close()
 
 const profileOptions = computed(() => [{ value: '', label: '프로필 전체' }, ...s.profiles.map((p) => ({ value: p.profile_name, label: p.profile_name }))])
 const actionOptions = [{ value: '', label: '액션 전체' }, ...ACTIONS.map((a) => ({ value: a.value, label: a.value }))]
-const summaryHint = computed(() => (h.summary?.first_at ? `${String(h.summary.first_at).slice(0, 16)} 부터` : ''))
+const summaryHint = computed(() => (h.summary?.first_at ? `${fmtDateTime(h.summary.first_at)} 부터` : ''))
 async function copy(v: string) { try { await navigator.clipboard.writeText(v); system.toast('복사했습니다', 'success') } catch { system.toast(v, 'info') } }
 const detailKv = computed(() => {
   const d = h.detail; if (!d) return {}
-  return { 시작: d.STARTED_AT, 출처: d.SOURCE, 프로필: d.PROFILE_NAME ?? '—', 모델: d.MODEL ?? '—', 액션: d.ACTION ?? '—', 상태: d.STATUS,
+  return { 시작: fmtDateTime(d.STARTED_AT), 출처: d.SOURCE, 프로필: d.PROFILE_NAME ?? '—', 모델: d.MODEL ?? '—', 액션: d.ACTION ?? '—', 상태: d.STATUS,
     소요: fmtMs(d.ELAPSED_MS), 행수: d.ROW_COUNT ?? '—', conversation_id: d.CONVERSATION_ID ?? '—', sql_id: d.SQL_ID ?? '—', 실행자: d.CREATED_BY ?? '—' }
 })
 </script>
@@ -91,7 +91,7 @@ const detailKv = computed(() => {
           </tr></thead>
           <tbody>
             <tr v-for="r in h.rows" :key="r.ID" class="row cursor-pointer" :title="`#${r.ID} 상세 보기`" @click="h.open(r.ID)">
-              <td class="px-3 py-2 whitespace-nowrap font-mono text-xs" style="color: var(--text-secondary);">{{ String(r.STARTED_AT).slice(0, 19) }}</td>
+              <td class="px-3 py-2 whitespace-nowrap font-mono text-xs" style="color: var(--text-secondary);">{{ fmtDateTime(r.STARTED_AT) }}</td>
               <td class="px-3 py-2 whitespace-nowrap text-xs" style="color: var(--text-secondary);">{{ r.PROFILE_NAME ?? '—' }}<span v-if="r.SOURCE !== 'GENERATE'" class="ml-1 text-[10px] font-mono" style="color: var(--text-muted);">{{ r.SOURCE }}</span></td>
               <td class="px-3 py-2"><Badge tone="code">{{ r.ACTION ?? '—' }}</Badge></td>
               <td class="px-3 py-2 max-w-[420px] truncate" style="color: var(--text-primary);">{{ r.QUESTION }}</td>
@@ -127,7 +127,7 @@ const detailKv = computed(() => {
               <div class="rounded-md px-3 py-2.5 text-sm" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
                 <div class="flex items-center gap-2 mb-1"><span class="font-medium" style="color: var(--text-primary);">피드백</span><Badge>{{ h.detail.feedback.length }}</Badge></div>
                 <div v-if="h.detail.feedback.length" class="flex flex-col gap-1.5">
-                  <div v-for="f in h.detail.feedback" :key="f.ID" class="flex items-start gap-2 text-xs"><component :is="f.FEEDBACK_TYPE === 'positive' ? ThumbsUp : ThumbsDown" :size="13" :stroke-width="1.75" :style="{ color: f.FEEDBACK_TYPE === 'positive' ? 'var(--accent-positive)' : 'var(--accent-negative)' }" class="mt-0.5 shrink-0" /><div class="min-w-0"><span style="color: var(--text-primary);">{{ f.FEEDBACK_CONTENT || '(사유 없음)' }}</span><span class="ml-2" style="color: var(--text-muted);">{{ String(f.CREATED_AT).slice(0, 16) }} · {{ f.SOURCE }}</span></div></div>
+                  <div v-for="f in h.detail.feedback" :key="f.ID" class="flex items-start gap-2 text-xs"><component :is="f.FEEDBACK_TYPE === 'positive' ? ThumbsUp : ThumbsDown" :size="13" :stroke-width="1.75" :style="{ color: f.FEEDBACK_TYPE === 'positive' ? 'var(--accent-positive)' : 'var(--accent-negative)' }" class="mt-0.5 shrink-0" /><div class="min-w-0"><span style="color: var(--text-primary);">{{ f.FEEDBACK_CONTENT || '(사유 없음)' }}</span><span class="ml-2" style="color: var(--text-muted);">{{ fmtDateTime(f.CREATED_AT) }} · {{ f.SOURCE }}</span></div></div>
                 </div>
                 <p v-else class="text-xs m-0" style="color: var(--text-muted);">아직 피드백이 없습니다. 답변 아래 👍/👎 (1-B) 로 남기면 여기서도 보입니다.</p>
               </div>

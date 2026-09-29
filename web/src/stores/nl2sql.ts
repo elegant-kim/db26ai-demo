@@ -4,7 +4,8 @@ import { errorMessage } from '@/lib/api'
 import { annotationSetFor } from '@/lib/annotations'
 import {
   ACTION_BUTTONS, LOADING_TEXT, ask, applyAnnotations, executeSql, exampleQuestionsFor, explainPlan, getProfiles, getSchemaInfo,
-  removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, createConversation, GREETING, type Action, type FollowAction, type Profile, type SchemaTable,
+  removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, createConversation, GREETING,
+  getPresets, createPreset, updatePreset, deletePreset, presetPatternFor, type Preset, type PresetInput, type Action, type FollowAction, type Profile, type SchemaTable,
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
 import type { ChatMessage } from '@/lib/types/chat'
@@ -101,7 +102,31 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   function pushGreeting() { push({ role: 'assistant', content: '', action: 'greeting', textResult: GREETING }) }
   let seq = 0
 
-  const examples = computed(() => exampleQuestionsFor(profile.value))
+  // 예시 질문 = DB 프리셋(PoC 1-D). API 가 실패하면 옛 하드코딩으로 폴백
+  const presets = ref<Preset[]>([])
+  const presetsLoadedFor = ref('')
+  const presetBusy = ref(false)
+  const examples = computed(() => (presets.value.length ? presets.value.map((p) => p.QUESTION) : exampleQuestionsFor(profile.value)))
+  async function loadPresets(force = false) {
+    if (!profile.value || (!force && presetsLoadedFor.value === profile.value)) return
+    try { const r = await getPresets(profile.value); presets.value = r.presets ?? []; presetsLoadedFor.value = profile.value }
+    catch (e) { presets.value = []; system.toast(`프리셋을 못 읽어 내장 예시로 대신합니다: ${errorMessage(e)}`, 'warn') }
+  }
+  async function savePreset(input: Omit<PresetInput, 'profile_name'> & { profile_name?: string | null }, id?: number): Promise<boolean> {
+    presetBusy.value = true
+    try {
+      const body: PresetInput = { ...input, profile_name: input.profile_name === undefined ? presetPatternFor(profile.value) : input.profile_name }
+      const r = id ? await updatePreset(id, body) : await createPreset(body)
+      if (!r.success) { system.toast(r.error || '저장 실패', 'error'); return false }
+      system.toast(id ? '프리셋을 수정했습니다' : '프리셋을 추가했습니다', 'success'); await loadPresets(true); return true
+    } catch (e) { system.toast(errorMessage(e), 'error'); return false } finally { presetBusy.value = false }
+  }
+  async function removePreset(id: number): Promise<boolean> {
+    presetBusy.value = true
+    try { const r = await deletePreset(id); if (!r.success) { system.toast(r.error || '삭제 실패', 'error'); return false }
+      system.toast('프리셋을 삭제했습니다', 'success'); await loadPresets(true); return true }
+    catch (e) { system.toast(errorMessage(e), 'error'); return false } finally { presetBusy.value = false }
+  }
   const profileOptions = computed(() => profiles.value.map((p) => ({ value: p.profile_name, label: p.profile_name })))
   const hasAnnotationSet = computed(() => annotationSetFor(profile.value) !== null)
   const asked = computed(() => messages.value.some((m) => m.role === 'user'))
@@ -219,7 +244,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     envTest.value = { busy: false, response: null, elapsedMs: null, error: null }
     lastError.value = null
     if (changed) system.toast(`프로필 선택: ${name}`, 'success')
-    await Promise.all([loadEnv(true), loadSchema()])
+    await Promise.all([loadEnv(true), loadSchema(), loadPresets(true)])
   }
 
   async function loadSchema() {
@@ -367,6 +392,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     examples, profileOptions, hasAnnotationSet, asked,
     env, envLoading, envTest, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
     multiTurn, chain, resetOnSuccess, conversationId, convTurns, ensureConversation, newConversation,
+    presets, presetBusy, loadPresets, savePreset, removePreset,
     init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,
   }
 })
