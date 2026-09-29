@@ -1,0 +1,65 @@
+# 실측 검증한 Oracle 시그니처·뷰 (고객사 PoC 확장)
+
+> `docs/_private/POC_UPGRADE_PROMPT.md (비공개 — 저장소가 공개라 고객명이 든 요청서는 추적하지 않는다)` 공통 원칙 4: **패키지 시그니처는 추측하지 않는다.** 대상 DB 에서 확인한 것만 쓴다.
+> 대상: `db26aidemo` ADB — `Oracle AI Database 26ai EE 23.26.3.3.0` (2026-09-29 실측). 확인 SQL 은 각 절에 그대로 둔다.
+> 패키지 스펙(`ALL_SOURCE`, owner `C##CLOUD$SERVICE`)이 **wrapped 가 아니라 읽힌다** — 파라미터 설명은 거기서 옮겼다.
+
+## 1. 확인 SQL
+
+```sql
+-- 프로시저·오버로드·파라미터 (owner 는 C##CLOUD$SERVICE)
+SELECT object_name, overload, argument_name, data_type, in_out, defaulted
+FROM   all_arguments
+WHERE  package_name = 'DBMS_CLOUD_AI' AND object_name IN ('GENERATE','FEEDBACK','CREATE_CONVERSATION','SET_CONVERSATION_ID','DROP_CONVERSATION')
+ORDER  BY object_name, overload, position;
+
+-- 스펙 주석 (파라미터 의미)
+SELECT line, text FROM all_source WHERE owner='C##CLOUD$SERVICE' AND name='DBMS_CLOUD_AI' AND type='PACKAGE' ORDER BY line;
+
+-- 뷰와 컬럼
+SELECT table_name, LISTAGG(column_name, ', ') WITHIN GROUP (ORDER BY column_id)
+FROM   all_tab_columns WHERE table_name IN ('USER_CLOUD_AI_CONVERSATIONS','USER_CLOUD_AI_CONVERSATION_PROMPTS','USER_AI_AGENT_TEAM_HISTORY','USER_AI_AGENT_TASK_HISTORY','USER_AI_AGENT_TOOL_HISTORY')
+GROUP  BY table_name;
+
+-- 권한
+SELECT table_name, privilege FROM user_tab_privs WHERE table_name IN ('DBMS_CLOUD_AI','DBMS_CLOUD_AI_AGENT','V_$MAPPED_SQL','V_$SESSION');
+```
+
+## 2. `DBMS_CLOUD_AI` (2026-09-29)
+
+| 대상 | 실측 | 비고 |
+|---|---|---|
+| `GENERATE` 오버로드 1 | `(prompt CLOB, profile_name VARCHAR2 DEFAULT NULL, action VARCHAR2 DEFAULT NULL, attributes CLOB DEFAULT NULL, params CLOB) RETURN CLOB` | **`params => '{"conversation_id": "…"}'` 가 대화를 켠다** (스펙 주석 520행: "Parameters such as 'conversation_id' which enables conversation feature if provided"). 상수 `PARAM_CONV_ID := 'conversation_id'` |
+| `GENERATE` 오버로드 2 | 위에서 `params` 없음 | 앱이 지금 쓰는 것(단발) |
+| `CREATE_CONVERSATION` | 함수 `(attributes CLOB DEFAULT NULL) RETURN VARCHAR2` + 프로시저 오버로드 | 속성 키: `title`·`description`·`retention_days`·`tags`. **실측 호출 성공** → `5C9B2B3E-…` (36자 GUID). 곧바로 `DROP_CONVERSATION(force=>TRUE)` 로 지웠다 |
+| `SET_CONVERSATION_ID(conversation_id)` · `GET_CONVERSATION_ID` · `DROP_CONVERSATION(conversation_id, force BOOLEAN DEFAULT FALSE)` · `UPDATE_CONVERSATION(conversation_id, attributes)` · `ADD/REMOVE_CONVERSATION_TAG` · `DELETE_CONVERSATION_PROMPT` | 존재 | 세션 고정 방식(`SET_CONVERSATION_ID`)은 풀 커넥션에 안 맞는다 → **`params` 방식 채택** |
+| `FEEDBACK` 오버로드 1 | `(profile_name, sql_id VARCHAR2, feedback_type DEFAULT NULL, response CLOB, feedback_content CLOB, operation DEFAULT 'add')` | `sql_id` = `V$MAPPED_SQL` 의 SQL 식별자 |
+| `FEEDBACK` 오버로드 2 | `(profile_name, sql_text CLOB, …같음)` | `sql_text` = 자연어 `select ai …` 원문. 상수 `OPT_ADD='add'`·`OPT_DELETE='delete'` |
+| 오류 상수 | `-20046` 프로필 없음 · `-20047` 속성 · `-20050` **대화 없음** | 화면 오류 힌트에 쓴다 |
+| 없는 것 | `ENABLE/DISABLE_CONVERSATION`, `USER_CLOUD_AI_VECTOR_INDEXES` | 요청서·기억 속 이름을 그대로 쓰면 ORA-00942/06550 |
+| 앱의 옛 `submit_feedback()` | `FEEDBACK(profile_name, prompt, feedback)` 로 호출 | **DB 에 없는 시그니처** — 미사용 코드. Phase 1 에서 삭제 |
+
+프로필 속성 실측(`USER_CLOUD_AI_PROFILE_ATTRIBUTES`): `GEMINI_SH_PROFILE`·`GROQ_SH_PROFILE` 모두 `provider=openai`, `conversation=true`, `annotations=true`, `comments=true`. `embedding_model` 속성은 **없다**(피드백 벡터 인덱스가 어떤 임베딩 모델을 쓰는지 Phase 1 첫 호출에서 확인 — 아래 열린 항목).
+
+## 3. 뷰 (컬럼 실측)
+
+| 뷰 | 컬럼 |
+|---|---|
+| `USER_CLOUD_AI_CONVERSATIONS` | CONVERSATION_ID, CONVERSATION_TITLE, DESCRIPTION, CREATED, MODIFIED, RETENTION_DAYS, CONVERSATION_LENGTH, TAGS |
+| `USER_CLOUD_AI_CONVERSATION_PROMPTS` | CONVERSATION_PROMPT_ID, CONVERSATION_ID, CONVERSATION_TITLE, PROFILE_NAME, PROMPT_ACTION, PROMPT, PROMPT_RESPONSE, CREATED, MODIFIED, CLIENT_IDENTIFIER, CLIENT_IP, SID, SERIAL# |
+| `USER_AI_AGENT_TEAM_HISTORY` | TEAM_EXEC_ID, TEAM_NAME, STATE, START_DATE, END_DATE, CONVERSATION_ID, PARAMS |
+| `USER_AI_AGENT_TASK_HISTORY` | TEAM_EXEC_ID, TEAM_NAME, TASK_ORDER, AGENT_NAME, TASK_NAME, CONVERSATION_PARAMS, INPUT, RESULT, STATE, START_DATE, END_DATE |
+| `USER_AI_AGENT_TOOL_HISTORY` | INVOCATION_ID, TEAM_EXEC_ID, TASK_ORDER, TOOL_NAME, AGENT_NAME, TASK_NAME, START_DATE, END_DATE, INPUT, OUTPUT, TOOL_OUTPUT |
+| `V$MAPPED_SQL` | SQL_TEXT, SQL_FULLTEXT, SQL_ID, HASH_VALUE, MAPPED_SQL_TEXT, MAPPED_SQL_FULLTEXT, MAPPED_SQL_ID, … USE_COUNT — ADMIN 에 `SELECT` 권한 있음(8행) |
+
+그 밖에 존재: `USER_AI_AGENTS/_TASKS/_TEAMS/_TOOLS(+_ATTRIBUTES)`, `USER_AI_AGENT_TASK_STATES`, `DBA_*` 동형, `SESSION_CLOUD_AI_CONVERSATION_PROMPTS`.
+
+## 4. `DBMS_CLOUD_AI_AGENT` (Phase 4 용, 존재만 확인)
+
+`CREATE_TOOL/CREATE_TASK/CREATE_AGENT/CREATE_TEAM(name, attributes CLOB, status, description)` · `RUN_TEAM(team_name, user_prompt CLOB, params CLOB) RETURN CLOB` (오버로드 2 는 `team_exec_id OUT`) · `SQL_TOOL(tool_name, query CLOB, action) RETURN CLOB` · `GET_TEAM_STATE(team_name, params)` · `RAG_TOOL`·`HUMAN_TOOL`·`WEB_SEARCH_TOOL`·`SEND_EMAIL_TOOL`·`SLACK_TOOL`·`EXPORT/IMPORT_TEAM`·`SHOW_AGENT_PROMPT` 등 46개. ADMIN 에 `EXECUTE` 있음. 팀·툴 0개(빈 상태).
+
+## 5. 열린 항목 (실측 못 한 것)
+
+- `GENERATE(params => conversation_id)` 의 **실제 동작**(두 번째 질문이 앞 질문을 기억하는지) — 2026-09-29 는 GEMINI 경유 GENERATE 가 90초 타임아웃(핸드오프 열린 과제 9)이라 LLM 이 필요한 호출은 하나도 못 돌렸다. Phase 1 첫 작업으로 확인.
+- `FEEDBACK` 의 벡터 인덱스(`<PROFILE>_FEEDBACK_VECINDEX`)가 어떤 임베딩 모델로 만들어지는지 — 프로필에 `embedding_model` 이 없고 provider 가 `openai`(Gemini 호환 엔드포인트)라 기본 모델명이 맞지 않으면 첫 FEEDBACK 이 실패할 수 있다. 같은 시점에 확인.
+- `sql_id` 오버로드 vs `sql_text` 오버로드 중 어느 쪽이 이 DB 에서 안정적인지 — 위와 같이 실측 후 채택.

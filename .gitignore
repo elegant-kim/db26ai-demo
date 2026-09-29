@@ -43,3 +43,6 @@ docs/slides/**
 !docs/slides/src/
 docs/slides/src/**
 !docs/slides/src/sample.pdf
+
+# ── 고객명이 든 요청서·메모 (2026-09-29) — 저장소가 공개다 ──
+docs/_private/

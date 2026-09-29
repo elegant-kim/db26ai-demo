@@ -604,7 +604,7 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
-| 9 | **GEMINI 경유 `SELECT AI` 가 2026-09-29 에 응답 없음** — 서버 밖에서 python-oracledb 로 직접 `SET_PROFILE` → `SELECT AI chat 안녕하세요` 를 보내도 `DPY-4024`(90초 call timeout). 앱 코드와 무관(P5 는 select_ai 미접촉, 같은 날 다른 62건 통과). DB→Gemini 아웃바운드 경로(ACL·키·Gemini 측)를 다음 세션에 다시 확인. 그동안 `TestSelectAiShorthand` 2건 + `TestNL2SQL::test_showsql` 이 ReadTimeout 으로 실패한다(셋 다 GEMINI 경유 GENERATE) | 4-23 |
+| 9 | ~~GEMINI 경유 `SELECT AI` 응답 없음~~ — 2026-09-29 오전 90초 무응답(`DPY-4024`)이었으나 같은 날 오후 `GENERATE(chat)` 4.6초 정상, 테스트 5건 통과. ACL·크리덴셜 정상 → **Gemini/ADB 아웃바운드 일시 장애**로 종결. 재발하면 `docs/POC_PHASE0_갭보고.md` §6 진단 절차 | 4-23 |
 
 ## 7. 새 세션 첫 단계 권장
 
