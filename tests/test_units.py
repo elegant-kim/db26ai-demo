@@ -88,3 +88,25 @@ class TestSlidesCatalog:
         anchors, unresolved = mod.resolve_anchors(decks)
         assert [(a["tag"], a["deck"], a["page"], a["feature"]) for a in anchors] == [("VS-01", "vector", 3, "A")]
         assert [u["tag"] for u in unresolved] == ["VS-99"]
+
+
+class TestSelectAiLogSummary:
+    """run_select_ai 가 이력에 남길 요약 — 액션별로 무엇을 generated_sql / response_text / row_count 로 보내는가 (PoC 1-A)."""
+
+    def test_showsql_은_generated_sql(self):
+        from app.select_ai import _summarize_result
+        assert _summarize_result("showsql", "SELECT 1 FROM dual") == ("SELECT 1 FROM dual", None, None)
+
+    def test_runsql_은_행수와_JSON_앞부분(self):
+        from app.select_ai import _summarize_result
+        gen, resp, rows = _summarize_result("runsql", '[{"A": 1}, {"A": 2}]')
+        assert gen is None and rows == 2 and resp.startswith("[")
+
+    def test_runsql_이_JSON_이_아니면_텍스트(self):
+        from app.select_ai import _summarize_result
+        assert _summarize_result("runsql", "no rows")[1] == "no rows"
+
+    def test_없는_결과는_전부_None(self):
+        from app.select_ai import _summarize_result
+        assert _summarize_result("chat", None) == (None, None, None)
+

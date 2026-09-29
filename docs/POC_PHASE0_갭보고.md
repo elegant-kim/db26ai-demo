@@ -133,3 +133,4 @@ CREATE TABLE ai_prompt_preset (
 | ⑥ | runsql 답변의 SQL 은 버튼(캐시) 유지 + 접기만 추가 |
 
 **③ 진단 결과** — ACL(`generativelanguage.googleapis.com` · `api.groq.com` 에 CONNECT/HTTP/RESOLVE) 정상, 크리덴셜 둘 다 ENABLED. 같은 날 오후 `GENERATE(chat)` 이 **4.6초에 정상 응답** — 오전의 90초 무응답은 Gemini 또는 ADB 아웃바운드 쪽의 **일시 장애**였다. Mac 에서 Gemini 직접 호출도 정상(200). 앱 코드 원인 아님. GROQ 는 여전히 키 문제(열린 과제 7).
+**같은 날 저녁 확정**: `AI_QUERY_LOG` 에 `ORA-20429 … HTTP 429` 가 500초 elapsed 로 남았다 — **Gemini 키 할당량 초과**가 진짜 원인(DBMS_CLOUD_AI 가 재시도하며 버틴다). 키·결제는 사용자 영역(핸드오프 과제 9).

@@ -12,7 +12,8 @@ from app.database import get_pool
 from app.select_ai import (
     SELECT_AI_ACTIONS,
     apply_annotations,
-    ask_select_ai,
+    create_conversation,
+    drop_conversation,
     execute_raw_sql,
     get_env_info,
     get_explain_plan,
@@ -20,6 +21,7 @@ from app.select_ai import (
     get_schema_info,
     list_profiles,
     remove_annotations,
+    run_select_ai,
     set_profile,
 )
 
@@ -34,6 +36,11 @@ class AskRequest(BaseModel):
     prompt: str
     action: str = "runsql"
     profile_name: str = ""
+    conversation_id: str = ""   # 멀티턴 — 브라우저가 들고 매 요청 보낸다 (POST /api/conversations 로 발급)
+
+
+class ConversationRequest(BaseModel):
+    title: str = ""
 
 
 class SetProfileRequest(BaseModel):
@@ -87,35 +94,46 @@ async def ask(req: AskRequest):
     if req.action == "explainsql":
         prompt = f"{req.prompt} (Please explain in Korean / 한국어로 설명해 주세요)"
 
-    start = time.time()
+    r = await run_select_ai(pool, prompt, req.action, req.profile_name, conversation_id=req.conversation_id)
+    meta = {"action": req.action, "elapsed_ms": r["elapsed_ms"], "log_id": r["log_id"], "conversation_id": r["conversation_id"],
+            "model": r["model"], "profile_name": r["profile_name"]}
+    if r.get("error"):
+        return JSONResponse(status_code=500, content={"success": False, "error": r["error"], **meta})
+
+    # runsql의 경우 JSON 결과를 파싱 시도
+    parsed_result = r["result"]
+    if req.action == "runsql" and parsed_result:
+        try:
+            parsed_result = json.loads(parsed_result)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {"success": True, "result": parsed_result, **meta}
+
+
+@router.post("/conversations")
+async def conversation_create(req: ConversationRequest):
+    """멀티턴 대화 발급 — DBMS_CLOUD_AI.CREATE_CONVERSATION. 돌려준 conversation_id 를 /api/ask 에 실어 보내면 앞 질문을 이어받는다."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
     try:
-        result = await ask_select_ai(pool, prompt, req.action, req.profile_name)
-        elapsed_ms = int((time.time() - start) * 1000)
-
-        # runsql의 경우 JSON 결과를 파싱 시도
-        parsed_result = result
-        if req.action == "runsql" and result:
-            try:
-                parsed_result = json.loads(result)
-            except (json.JSONDecodeError, TypeError):
-                parsed_result = result
-
-        return {
-            "success": True,
-            "action": req.action,
-            "result": parsed_result,
-            "elapsed_ms": elapsed_ms,
-        }
+        cid = await create_conversation(pool, req.title)
+        return {"success": True, "conversation_id": cid}
     except Exception as e:
-        elapsed_ms = int((time.time() - start) * 1000)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e),
-                "elapsed_ms": elapsed_ms,
-            },
-        )
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.delete("/conversations/{conversation_id}")
+async def conversation_drop(conversation_id: str):
+    """대화 삭제 — DBMS_CLOUD_AI.DROP_CONVERSATION(force). 「새 대화」는 이걸 부르지 않는다(이력 뷰에 남기려고); 정리용."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        await drop_conversation(pool, conversation_id)
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 
 @router.get("/profiles")

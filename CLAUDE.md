@@ -74,7 +74,7 @@ scripts/deploy.sh
 | `main.py` | ~85 | FastAPI 엔트리, static 마운트, 라우터 등록, DB 풀 + 벡터 테이블 초기화 + **커넥션 풀 워밍** + keepalive 스케줄러 |
 | `app/config.py` | 40 | `.env` → Settings 클래스 (DB, 임베딩, LLM 설정) |
 | `app/database.py` | 56 | oracledb 비동기 커넥션 풀 (min=1, max=5, 120초 타임아웃) |
-| `app/select_ai.py` | 463 | Select AI 핵심: `DBMS_CLOUD_AI.GENERATE`, 프로필 관리, raw SQL 실행, 스키마 정보, Annotation, EXPLAIN PLAN |
+| `app/select_ai.py` | ~700 | Select AI 핵심. **모든 GENERATE 는 `run_select_ai()` 한 곳**(프로필 해석 → 대화 params → 실행 → `AI_QUERY_LOG` 기록, 2026-09-29 PoC 1-A) · 대화 발급/삭제 · 프로필 관리 · raw SQL 실행(`SELECT AI` 는 RAWSQL 로 로그) · 스키마 정보 · Annotation · EXPLAIN PLAN |
 | `app/routes.py` | ~200 | 공통 6개 — health · llm/providers · guide 4(docs·docs/{key}·features·**slides**). 6탭 API 는 전부 `app/routers/<tab>.py` (D8 완료) |
 | `app/slides.py` | ~110 | **장표(PPT/PDF) 카탈로그** (2026-09-29, P5) — `docs/slides/` 의 덱(이미지/PDF 모드)과 기능 레지스트리 `slides` 앵커를 (deck, page) 로 푼다. 규칙은 `docs/slides/README.md` |
 | `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
@@ -111,7 +111,7 @@ scripts/deploy.sh
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
 | `web/src/pages/*.vue` | 7 페이지 전부 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`). `/` 는 `/nl2sql` 로 리다이렉트 |
 | `web/src/pages/vector/` | 서브탭 4 = 시연 순서 (2026-09-09 재편): **환경**(`VectorEnv`) → **적재**(`VectorLoad` — 단계별 실행 SQL·표본 펼침) → **검색·RAG**(`VectorSearch`, 모드 5) → **내부**(`VectorInternals` = 실행계획·테이블·`VectorEmbedding` 관리). 옛 `?sub=docs/store/embedding` 은 자동 매핑 |
-| `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화) → **스키마·Annotation**. 프로필 셀렉트는 페이지 헤더 공통 (2026-09-07 재설계) |
+| `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화 — **멀티턴** Multi Turn·이어서 질문하기·정상답변시 초기화·새 대화, 답변 메타 줄, SQL/프롬프트 접기; 2026-09-29 PoC 1-A) → **스키마·Annotation**. 프로필 셀렉트는 페이지 헤더 공통. conversation_id 와 토글은 브라우저(localStorage)가 들고 매 요청 보낸다 — 서버 무상태 |
 | `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5). 장표 항목(`장표: 제목 p3 · VS-03`)도 여기 |
 | `web/src/components/demo/SlideViewer.vue` · `SlideAnchor.vue` · `stores/slides.ts` · `lib/slides.ts` · `pages/manual/ManualSlides.vue` | **장표 연동**(2026-09-29 P5): 뷰어는 AppShell 에 하나(오른쪽 슬라이드오버, 이미지/PDF 양쪽, ←→ 키, `?slide=` 양방향 동기화) · 「장표 n」 버튼은 `PageHeader` 가 자동으로 넣고 이 화면(경로+`?sub=`)에 연결된 앵커가 없으면 숨는다 · 매뉴얼 › 장표 = 덱 목록·앵커 표·덱에 없는 꼬리표 |
 | `web/src/composables/useSse.ts` | SSE 수신(fetch + ReadableStream) — PDF 업로드 전용 |
@@ -150,7 +150,8 @@ scripts/deploy.sh
 - `GET /api/llm/providers` — 사용 가능한 LLM 제공자 목록
 
 ### ① NL2SQL (Select AI) (`app/routers/nl2sql.py`)
-- `POST /api/ask` — Select AI 쿼리 실행 (action: runsql/showsql/narrate/explainsql/showprompt/summarize/chat)
+- `POST /api/ask` — Select AI 쿼리 실행 (action: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). `conversation_id` 를 주면 **멀티턴**(`GENERATE(params => conversation_id)`), 응답에 `log_id`(AI_QUERY_LOG) · `conversation_id` · `model`
+- `POST /api/conversations` · `DELETE /api/conversations/{id}` — 멀티턴 대화 발급(`CREATE_CONVERSATION`, retention 7일)/삭제. 「새 대화」는 ID 만 버리고 DROP 은 안 한다
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회
 - `POST /api/apply-annotations` / `POST /api/remove-annotations` — Display Annotation 일괄 적용/제거
@@ -258,6 +259,9 @@ CREATE TABLE doc_chunks (
 -- 벡터 인덱스 (main.py 기동 시 자동 생성)
 CREATE VECTOR INDEX doc_chunks_hnsw_idx ON doc_chunks(embedding)
 ORGANIZATION INMEMORY NEIGHBOR GRAPH DISTANCE COSINE WITH TARGET ACCURACY 95;
+
+-- PoC 확장 (sql/setup/70_poc_ai_tables.sql, 2026-09-29): AI_QUERY_LOG(모든 Select AI 호출 이력 — source GENERATE|RAWSQL|RUN_TEAM) ·
+-- AI_FEEDBACK_LOG(답변 피드백, Oracle FEEDBACK 과 같이 기록) · AI_PROMPT_PRESET(저장 질문). 롤백 71번. 컬럼 정본은 그 파일
 
 -- Hybrid Vector Index (sql/setup/60_hybrid_vector_index.sql) — 2026-09-08 부터. CONTEXT 인덱스(50번)를 대체한다
 CREATE HYBRID VECTOR INDEX doc_chunks_hvi ON doc_chunks(chunk_text)

@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { MessageSquareText, Terminal, Play, Eraser } from 'lucide-vue-next'
+import { MessageSquareText, Terminal, Play, Eraser, MessageSquarePlus, Copy } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Toggle from '@/components/ui/Toggle.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import ChatThread from '@/components/demo/ChatThread.vue'
 import ChatComposer from '@/components/demo/ChatComposer.vue'
 import Segmented from '@/components/demo/Segmented.vue'
 import Nl2sqlAnswer from './Nl2sqlAnswer.vue'
-import { ACTIONS, type Action } from '@/lib/nl2sql'
+import { ACTIONS, shortConv, type Action } from '@/lib/nl2sql'
+import { useSystemStore } from '@/stores/system'
 import { useNl2sqlStore, type Nl2sqlMessage } from '@/stores/nl2sql'
 
 const s = useNl2sqlStore()
+const system = useSystemStore()
 const route = useRoute()
+async function copyConv() { if (!s.conversationId) return; try { await navigator.clipboard.writeText(s.conversationId); system.toast('conversation_id 복사', 'success') } catch { system.toast(s.conversationId, 'info') } }
 // `?profile=…&action=runsql&q=…&run=1` — 딥링크·캡처·시연용 (설계서 05 §3.3 의 run 규약 확장). 프로필은 스토어 init 이 받는다.
 onMounted(() => {
   const a = route.query.action
@@ -51,10 +55,23 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
       </ChatThread>
 
       <div class="mt-4 pt-4 flex flex-col gap-3" style="border-top: 1px solid var(--border-default);">
-        <ChatComposer v-model="s.input" :icon="MessageSquareText" :busy="s.sending" :disabled="!s.profile" placeholder="자연어로 질문하세요…" send-label="질문" @send="s.send(s.input)">
+        <ChatComposer v-model="s.input" :icon="MessageSquareText" :busy="s.sending" :disabled="!s.profile" multiline placeholder="자연어로 질문하세요… (Enter 전송 · Shift+Enter 줄바꿈)" send-label="질문" @send="s.send(s.input)">
           <div class="flex flex-wrap items-center gap-2">
             <Segmented :model-value="s.action" :options="actionOptions" size="sm" @update:model-value="(v: string) => (s.action = v as Action)" />
             <div class="flex-1 min-w-[240px]"><SearchableSelect :model-value="example" :options="exampleOptions" placeholder="예시 질문 고르기…" @update:model-value="pickExample" /></div>
+          </div>
+          <!-- 멀티턴 (PoC 1-A): 대화 ID 는 DB 의 conversation 객체, 브라우저가 들고 매 질문에 실어 보낸다 -->
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <Toggle v-model="s.multiTurn" label="Multi Turn" hint="ON 이면 앞 질문·답을 이어받는 대화(conversation)로 묻는다 — GENERATE(params => conversation_id)" />
+            <label class="inline-flex items-center gap-1.5 text-xs select-none" :style="{ color: s.multiTurn ? 'var(--text-secondary)' : 'var(--text-muted)', opacity: s.multiTurn ? 1 : 0.5 }" title="OFF 면 이번 질문만 대화 없이 독립 실행한다 (대화는 그대로 보관)">
+              <input v-model="s.chain" type="checkbox" :disabled="!s.multiTurn" class="accent-[var(--accent-primary)]" /> 이어서 질문하기
+            </label>
+            <Toggle v-model="s.resetOnSuccess" :disabled="!s.multiTurn" label="정상답변시 대화초기화" hint="ON 이면 성공한 답변 뒤에 conversation 을 버리고 다음 질문은 새 대화로 시작한다" />
+            <Button size="sm" variant="secondary" :disabled="!s.multiTurn" title="conversation_id 를 버리고 새로 시작 (DB 의 대화 객체는 이력 뷰에 남는다)" @click="s.newConversation()"><MessageSquarePlus :size="13" :stroke-width="1.75" /> 새 대화</Button>
+            <button v-if="s.conversationId" type="button" class="inline-flex items-center gap-1 text-[11px] font-mono" style="color: var(--text-muted);" :title="`conversation_id ${s.conversationId} — 클릭하면 복사`" @click="copyConv">
+              <Copy :size="11" :stroke-width="1.75" /> {{ shortConv(s.conversationId) }} · {{ s.convTurns }}턴
+            </button>
+            <span v-else class="text-[11px]" style="color: var(--text-muted);">{{ s.multiTurn ? '대화 없음 — 첫 질문에서 발급' : '단발 실행' }}</span>
           </div>
         </ChatComposer>
         <!-- SQL 직접 실행 — 위 자연어 줄과 같은 부품(같은 높이·글자·버튼 크기). `>_` · mono · secondary 버튼이 "여긴 SQL" 이라고 말한다 -->

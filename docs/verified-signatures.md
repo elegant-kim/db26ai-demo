@@ -58,8 +58,20 @@ SELECT table_name, privilege FROM user_tab_privs WHERE table_name IN ('DBMS_CLOU
 
 `CREATE_TOOL/CREATE_TASK/CREATE_AGENT/CREATE_TEAM(name, attributes CLOB, status, description)` · `RUN_TEAM(team_name, user_prompt CLOB, params CLOB) RETURN CLOB` (오버로드 2 는 `team_exec_id OUT`) · `SQL_TOOL(tool_name, query CLOB, action) RETURN CLOB` · `GET_TEAM_STATE(team_name, params)` · `RAG_TOOL`·`HUMAN_TOOL`·`WEB_SEARCH_TOOL`·`SEND_EMAIL_TOOL`·`SLACK_TOOL`·`EXPORT/IMPORT_TEAM`·`SHOW_AGENT_PROMPT` 등 46개. ADMIN 에 `EXECUTE` 있음. 팀·툴 0개(빈 상태).
 
-## 5. 열린 항목 (실측 못 한 것)
+## 5. 멀티턴 실측 (2026-09-29 오후, GEMINI_SH_PROFILE)
 
-- `GENERATE(params => conversation_id)` 의 **실제 동작**(두 번째 질문이 앞 질문을 기억하는지) — 2026-09-29 는 GEMINI 경유 GENERATE 가 90초 타임아웃(핸드오프 열린 과제 9)이라 LLM 이 필요한 호출은 하나도 못 돌렸다. Phase 1 첫 작업으로 확인.
+`CREATE_CONVERSATION` → `GENERATE(prompt, profile, action, attributes => NULL, params => '{"conversation_id": "<id>"}')` 로 두 번:
+
+| 턴 | 질문 | 결과 |
+|---|---|---|
+| 1 (커넥션 A) | 2000년 매출 상위 3개 제품 이름과 매출액 | 정상 SQL (7.1초) |
+| 2 (**다른 풀 커넥션 B**) | 그중 1위 제품만 월별 매출로 보여줘 | `WHERE CALENDAR_YEAR = 2000 AND PROD_NAME = …` — 앞 턴의 연도·제품을 이어받음 (8.3초) |
+| 2' (대화 없이) | 같은 질문 | 제품을 서브쿼리로 추측 — 연도 조건 없음 (10.5초) |
+| 3 (chat) | 방금 내가 처음 물어본 게 뭐였지? | **자기 질문을 되읊음**(56.8초) — SQL 액션의 문맥은 이어지지만 chat 의 회상은 이 실측에서 틀렸다. 화면 안내에 과장하지 말 것 |
+
+`USER_CLOUD_AI_CONVERSATION_PROMPTS` 에 세 턴이 전부 남았다(SID 가 턴마다 달라도 무관). 결론: **세션 고정 없이 params 방식으로 충분** — 앱은 `run_select_ai()` 가 이 방식을 쓴다.
+
+## 6. 열린 항목 (실측 못 한 것)
+
 - `FEEDBACK` 의 벡터 인덱스(`<PROFILE>_FEEDBACK_VECINDEX`)가 어떤 임베딩 모델로 만들어지는지 — 프로필에 `embedding_model` 이 없고 provider 가 `openai`(Gemini 호환 엔드포인트)라 기본 모델명이 맞지 않으면 첫 FEEDBACK 이 실패할 수 있다. 같은 시점에 확인.
 - `sql_id` 오버로드 vs `sql_text` 오버로드 중 어느 쪽이 이 DB 에서 안정적인지 — 위와 같이 실측 후 채택.

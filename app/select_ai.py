@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 
 import oracledb
 
@@ -53,47 +54,138 @@ async def resolve_profile(pool, profile_name: str) -> str:
 
 
 async def ask_select_ai(pool, prompt: str, action: str, profile_name: str) -> str:
-    """Select AI에 자연어 질문을 전달하고 결과를 반환한다."""
-    profile_name = await resolve_profile(pool, profile_name)
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            sql = """
-                SELECT DBMS_CLOUD_AI.GENERATE(
-                    prompt       => :prompt,
-                    profile_name => :profile,
-                    action       => :action
-                ) FROM dual
-            """
-            await cursor.execute(sql, {
-                "prompt": prompt,
-                "profile": profile_name,
-                "action": action,
-            })
-            row = await cursor.fetchone()
-            if row is None:
-                return None
-            return await _lob_to_str(row[0])
+    """(하위 호환) 단발 GENERATE — 새 코드는 run_select_ai 를 쓴다. 이 함수도 로그를 남긴다."""
+    r = await run_select_ai(pool, prompt, action, profile_name)
+    if r.get("error"):
+        raise RuntimeError(r["error"])
+    return r["result"]
 
 
-async def submit_feedback(pool, prompt: str, feedback: str, profile_name: str) -> bool:
-    """Select AI에 피드백을 제출한다."""
+_PROFILE_MODEL_CACHE: dict[str, str] = {}
+
+
+async def profile_model(pool, profile_name: str) -> str:
+    """프로필의 model 속성(이력에 남길 모델명). 프로필당 한 번 읽고 캐시한다 — 프로필 속성은 시연 중 바뀌지 않는다."""
+    if not profile_name:
+        return ""
+    if profile_name in _PROFILE_MODEL_CACHE:
+        return _PROFILE_MODEL_CACHE[profile_name]
+    model = ""
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT attribute_value FROM user_cloud_ai_profile_attributes "
+                    "WHERE profile_name = :p AND attribute_name = 'model'", {"p": profile_name})
+                row = await cur.fetchone()
+                if row:
+                    model = str(await _lob_to_str(row[0]) or "")
+    except Exception as e:
+        logger.warning("[select_ai] 프로필 model 조회 실패 (%s): %s", profile_name, e)
+    _PROFILE_MODEL_CACHE[profile_name] = model
+    return model
+
+
+async def create_conversation(pool, title: str = "", retention_days: int = 7) -> str:
+    """DBMS_CLOUD_AI.CREATE_CONVERSATION — 멀티턴 대화 객체(36자 GUID). 대화는 DB 에 남고 앱은 ID 만 들고 다닌다.
+
+    2026-09-29 실측: 같은 conversation_id 를 `GENERATE(params => '{"conversation_id": …}')` 로 넘기면 **다른 풀 커넥션에서도**
+    앞 질문을 이어받는다("그중 1위 제품만 월별로" → 앞 답의 제품명으로 WHERE 절). 세션 고정(SET_CONVERSATION_ID)이 필요 없다.
+    """
+    attrs = json.dumps({"title": title or "db26ai-demo", "retention_days": retention_days}, ensure_ascii=False)
     async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            sql = """
-                BEGIN
-                    DBMS_CLOUD_AI.FEEDBACK(
-                        profile_name => :profile,
-                        prompt       => :prompt,
-                        feedback     => :feedback
-                    );
-                END;
-            """
-            await cursor.execute(sql, {
-                "profile": profile_name,
-                "prompt": prompt,
-                "feedback": feedback,
-            })
-            return True
+        async with conn.cursor() as cur:
+            out = cur.var(str)
+            await cur.execute("BEGIN :cid := DBMS_CLOUD_AI.CREATE_CONVERSATION(attributes => :a); END;", {"cid": out, "a": attrs})
+            return str(out.getvalue())
+
+
+async def drop_conversation(pool, conversation_id: str) -> None:
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("BEGIN DBMS_CLOUD_AI.DROP_CONVERSATION(conversation_id => :c, force => TRUE); END;", {"c": conversation_id})
+
+
+_LOG_COLS = ("source", "profile_name", "action", "question", "generated_sql", "response_text", "status",
+             "error_msg", "elapsed_ms", "conversation_id", "row_count", "model", "sql_id")
+
+
+async def _insert_query_log(conn, **f) -> int | None:
+    """AI_QUERY_LOG 한 행. 로그 실패가 본 호출을 깨면 안 되므로 예외는 삼키되 warning 은 남긴다(개발노하우 3.1)."""
+    try:
+        async with conn.cursor() as cur:
+            out = cur.var(int)
+            cols = ", ".join(_LOG_COLS)
+            binds = ", ".join(f":{c}" for c in _LOG_COLS)
+            vals = {c: f.get(c) for c in _LOG_COLS}
+            for k in ("response_text", "error_msg"):
+                if vals[k] is not None:
+                    vals[k] = str(vals[k])[:4000]
+            await cur.execute(f"INSERT INTO ai_query_log ({cols}) VALUES ({binds}) RETURNING id INTO :out", {**vals, "out": out})
+            await conn.commit()
+            v = out.getvalue()
+            return int(v[0] if isinstance(v, list) else v)
+    except Exception as e:
+        logger.warning("[select_ai] AI_QUERY_LOG 기록 실패: %s", e)
+        return None
+
+
+def _summarize_result(action: str, result: str | None) -> tuple[str | None, str | None, int | None]:
+    """(generated_sql, response_text, row_count) — 이력 표에 보일 만큼만."""
+    if result is None:
+        return None, None, None
+    text = str(result)
+    if action in ("showsql",):
+        return text, None, None
+    if action == "runsql":
+        try:
+            data = json.loads(text)
+            if isinstance(data, list):
+                return None, text[:4000], len(data)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return None, text[:4000], None
+
+
+async def run_select_ai(pool, prompt: str, action: str, profile_name: str, conversation_id: str = "",
+                        source: str = "GENERATE") -> dict:
+    """**모든 Select AI 호출이 거치는 한 곳** (PoC 확장 공통 원칙 5) — 프로필 해석 → GENERATE(대화 포함) → 이력 기록 → 결과.
+
+    conversation_id 가 있으면 GENERATE 오버로드 1 의 `params` 로 넘긴다(세션 상태 없음, 풀 커넥션 무관).
+    반환: result · elapsed_ms · log_id · conversation_id · model · profile_name, 실패 시 error(+ 같은 메타).
+    """
+    profile = await resolve_profile(pool, profile_name)
+    model = await profile_model(pool, profile)
+    t0 = time.time()
+    params = json.dumps({"conversation_id": conversation_id}) if conversation_id else None
+    async with pool.acquire() as conn:
+        try:
+            async with conn.cursor() as cursor:
+                if params:
+                    await cursor.execute(
+                        "SELECT DBMS_CLOUD_AI.GENERATE(prompt => :prompt, profile_name => :profile, action => :action, "
+                        "attributes => NULL, params => :params) FROM dual",
+                        {"prompt": prompt, "profile": profile, "action": action, "params": params})
+                else:
+                    await cursor.execute(
+                        "SELECT DBMS_CLOUD_AI.GENERATE(prompt => :prompt, profile_name => :profile, action => :action) FROM dual",
+                        {"prompt": prompt, "profile": profile, "action": action})
+                row = await cursor.fetchone()
+                result = await _lob_to_str(row[0]) if row else None
+            elapsed_ms = int((time.time() - t0) * 1000)
+            gen_sql, resp, rows = _summarize_result(action, result)
+            log_id = await _insert_query_log(conn, source=source, profile_name=profile, action=action, question=prompt,
+                                             generated_sql=gen_sql, response_text=resp, status="SUCCEEDED", elapsed_ms=elapsed_ms,
+                                             conversation_id=conversation_id or None, row_count=rows, model=model)
+            return {"result": result, "elapsed_ms": elapsed_ms, "log_id": log_id, "conversation_id": conversation_id,
+                    "model": model, "profile_name": profile}
+        except Exception as e:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            log_id = await _insert_query_log(conn, source=source, profile_name=profile, action=action, question=prompt,
+                                             status="FAILED", error_msg=str(e), elapsed_ms=elapsed_ms,
+                                             conversation_id=conversation_id or None, model=model)
+            return {"error": str(e), "elapsed_ms": elapsed_ms, "log_id": log_id, "conversation_id": conversation_id,
+                    "model": model, "profile_name": profile}
 
 
 async def list_profiles(pool) -> list:
@@ -345,6 +437,7 @@ async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
     if is_select_ai and not profile_name:
         return {"sql_executed": stripped, "error": "SELECT AI 구문은 AI 프로필이 필요합니다 — 페이지 우상단에서 프로필을 고르세요."}
 
+    t0 = time.time()
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cursor:
@@ -363,6 +456,12 @@ async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
                             val = val.isoformat()
                         row_dict[columns[i]] = val
                     data.append(row_dict)
+                if is_select_ai:
+                    resp = json.dumps(data, ensure_ascii=False, default=str) if ai_action == "runsql" else str((data[0] or {}).get(columns[0]) if data else "")
+                    await _insert_query_log(conn, source="RAWSQL", profile_name=profile_name, action=ai_action, question=ai_prompt,
+                                            response_text=resp, status="SUCCEEDED", elapsed_ms=int((time.time() - t0) * 1000),
+                                            row_count=len(data) if ai_action == "runsql" else None,
+                                            model=await profile_model(pool, profile_name))
                 return {
                     "sql_executed": stripped,
                     "columns": columns,
@@ -374,6 +473,13 @@ async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
                     "select_ai_prompt": ai_prompt,
                 }
     except Exception as e:
+        if is_select_ai:
+            try:
+                async with pool.acquire() as conn:
+                    await _insert_query_log(conn, source="RAWSQL", profile_name=profile_name, action=ai_action, question=ai_prompt,
+                                            status="FAILED", error_msg=str(e), elapsed_ms=int((time.time() - t0) * 1000))
+            except Exception as le:
+                logger.warning("[select_ai] SELECT AI 실패 이력 기록 실패: %s", le)
         return {
             "sql_executed": stripped,
             "columns": [],

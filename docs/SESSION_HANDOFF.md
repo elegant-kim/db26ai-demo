@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-29 (Vector 탭 재편 P5 = 장표 연동 기반 완료. 남은 것 P6·P7, ④ Select AI RAG 논의) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-29 (고객사 PoC 확장 Phase 1-A 멀티턴 완료 · Phase 0 보고 승인. Vector P6·P7·Select AI RAG 논의는 **사용자 지시로 보류**) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -582,6 +582,21 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 
 **남은 것** — **P6** 실제 덱이 오면 레지스트리 `slides` 에 꼬리표만 적고(코드 변경 없음) 시연 대본에 `&slide=` 링크 → **P7** RAG 출처 배지 · 가이드/설계서 최종 · 캡처. ④ Select AI RAG 논의(OCI Object Storage 전제).
 
+## 4-24. 고객사 PoC 확장 — Phase 0 승인 · Phase 1-A 멀티턴 + 이력 기반 (2026-09-29, Fable 5.1)
+
+**요청서** `docs/_private/POC_UPGRADE_PROMPT.md`(고객명 포함 → 비공개, 3730351 로 한 번 GitHub 에 올라갔다가 8cb980f 로 추적 해제 — 이력에는 남아 있음).
+**Phase 0** `docs/POC_PHASE0_갭보고.md` §6 에 결정 6건. **실측 시그니처** `docs/verified-signatures.md`(스펙 주석이 읽히는 DB — `ALL_SOURCE` 로 파라미터 의미까지 확인).
+
+**1-A 만든 것**
+- `sql/setup/70_poc_ai_tables.sql`(+71 롤백): `AI_QUERY_LOG` · `AI_FEEDBACK_LOG` · `AI_PROMPT_PRESET`. 이 DB 에 적용 완료.
+- `app/select_ai.py` **`run_select_ai()`** — 모든 GENERATE 의 단일 통로(프로필 해석 → `params => conversation_id` → 실행 → 로그). `create/drop_conversation`, `profile_model`(캐시), `_insert_query_log`(실패해도 본 호출은 안 깨고 warning). `execute_raw_sql` 의 `SELECT AI` 도 `source=RAWSQL` 로 로그. 옛 `submit_feedback()`(DB 에 없는 시그니처) 삭제.
+- `POST /api/conversations` · `DELETE /api/conversations/{id}`. `/api/ask` 가 `conversation_id` 를 받고 `log_id · conversation_id · model · profile_name` 을 돌려준다(실패 500 에도).
+- 화면: `Toggle.vue`(신규) · `ChatComposer` `multiline`(textarea, Enter 전송/Shift+Enter 줄바꿈) · `Nl2sqlAsk` 토글 줄(Multi Turn · 이어서 질문하기 · 정상답변시 대화초기화 · 새 대화 · conversation 칩) · `Nl2sqlAnswer` 메타 줄 + 「생성 SQL 보기」「프롬프트 보기」 접기 + 초기화 안내 · 그리팅 메시지. 상태는 `localStorage['db26ai.nl2sql.conv']`.
+
+**실측** — 다른 풀 커넥션에서도 conversation_id 만으로 앞 턴을 이어받는다("그중 1위 제품만 월별로" → 앞 턴의 2000년·제품 조건). chat 액션의 "처음 질문이 뭐였지" 회상은 틀렸다(과장 금지). 브라우저에서 2턴 → runsql 후속(48행) → 접기 → 정상답변시 초기화 → 칩 「대화 없음」까지 확인. 테스트 +8(단위 4 · 통합 4) — 통합 4 중 LLM 을 부르는 2건은 이날 오후 **Gemini 429** 로 ReadTimeout(과제 9). 같은 호출이 curl 로 오후 초에는 6.9초에 성공(log #1)했으니 코드가 아니라 할당량이다. **새 이력 테이블이 첫 진단 도구가 됐다** — 화면에서 안 보이던 `ORA-20429` 가 `AI_QUERY_LOG.error_msg` 에 그대로 남았다.
+
+**남은 Phase 1** — 1-B 피드백(`FEEDBACK` sql_id vs sql_text 실측 · 임베딩 모델 확인 · 환경 배지) → 1-C 이력 탭 → 1-D 프리셋. 그 다음 Phase 2~4. 보류: Vector P6·P7·④ RAG.
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -604,7 +619,7 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
-| 9 | ~~GEMINI 경유 `SELECT AI` 응답 없음~~ — 2026-09-29 오전 90초 무응답(`DPY-4024`)이었으나 같은 날 오후 `GENERATE(chat)` 4.6초 정상, 테스트 5건 통과. ACL·크리덴셜 정상 → **Gemini/ADB 아웃바운드 일시 장애**로 종결. 재발하면 `docs/POC_PHASE0_갭보고.md` §6 진단 절차 | 4-23 |
+| 9 | **GEMINI 경유 GENERATE 가 수백 초 걸리거나 타임아웃 — 원인은 Gemini `HTTP 429`(할당량)** (2026-09-29 확정). `AI_QUERY_LOG` 에 `ORA-20429: Request failed with status HTTP 429 - bearer://generativelanguage.googleapis.com/…` 이 elapsed 503,815 ms · 509,314 ms 로 남았다 — DBMS_CLOUD_AI 가 `PL/SQL lock timer` 로 재시도하며 버틴 시간. ACL·크리덴셜은 정상. 오전 무응답도 같은 원인으로 본다. **수습은 GEMINI_CRED 의 Google AI Studio 키 할당량(무료 티어 RPM/RPD) — 결제 활성화 또는 다른 키, 또는 GROQ 키 복구(과제 7). 시크릿 영역이라 사용자 판단.** 그동안 LLM 을 부르는 통합 테스트(`TestSelectAiShorthand` · `TestNL2SQL::test_showsql` · `TestConversationAndLog` 2건)는 429 가 걸리면 ReadTimeout 으로 실패한다 | 4-23 · 4-24 |
 
 ## 7. 새 세션 첫 단계 권장
 

@@ -105,9 +105,21 @@ export interface SchemaTable { owner: string; table_name: string; columns: Schem
 export const getProfiles = () => api.get<{ success: boolean; profiles: Profile[] }>('/api/profiles').then((r) => r.data.profiles ?? [])
 export const setProfile = (profile_name: string) =>
   api.post<{ success: boolean; profile_name?: string; error?: string; attributes?: any }>('/api/set-profile', { profile_name }).then((r) => r.data)
-export const ask = (prompt: string, action: Action, profile_name: string) =>
-  api.post<{ success: boolean; action: Action; result: unknown; elapsed_ms: number; error?: string }>('/api/ask', { prompt, action, profile_name }).then((r) => r.data)
-/** `SELECT AI …` 는 서버가 같은 커넥션에서 SET_PROFILE 을 먼저 부르므로 profile_name 을 같이 보낸다 */
+export interface AskResponse {
+  success: boolean; result?: unknown; error?: string; action?: string
+  elapsed_ms?: number; log_id?: number | null; conversation_id?: string; model?: string; profile_name?: string
+}
+/** conversation_id 를 주면 서버가 GENERATE(params => conversation_id) 로 앞 질문을 이어받는다 (2026-09-29 실측, 풀 커넥션 무관) */
+export const ask = (prompt: string, action: Action, profile_name: string, conversation_id = '') =>
+  api.post<AskResponse>('/api/ask', { prompt, action, profile_name, conversation_id }).then((r) => r.data)
+export const createConversation = (title = '') =>
+  api.post<{ success: boolean; conversation_id?: string; error?: string }>('/api/conversations', { title }).then((r) => r.data)
+export const dropConversation = (id: string) => api.delete<{ success: boolean; error?: string }>(`/api/conversations/${encodeURIComponent(id)}`).then((r) => r.data)
+
+export const GREETING = '안녕하세요! Oracle Select AI 입니다. 프로필과 실행 모드를 선택하고 질문하세요.'
+export const RESET_NOTE = '정상 답변으로 대화가 초기화되었습니다 — 다음 질문은 새 conversation 으로 시작합니다'
+/** 36자 GUID 를 화면용으로 — 앞 8자 */
+export const shortConv = (id: string | null | undefined) => (id ? `${id.slice(0, 8)}…` : '')
 export const executeSql = (sql: string, profile_name: string) =>
   api.post('/api/execute-sql', { sql, profile_name }).then((r) => ({ ...r.data, rows: fromColumnsData(r.data) as Rows }))
 export const explainPlan = (sql: string) => api.post<{ success: boolean; plan?: string; sql_used?: string; error?: string }>('/api/explain-plan', { sql }).then((r) => r.data)

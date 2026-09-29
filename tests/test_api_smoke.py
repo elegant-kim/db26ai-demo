@@ -408,3 +408,42 @@ class TestSlides:
         r = client.get("/.env")
         assert "text/html" in r.headers["content-type"] and "ORACLE_" not in r.text
 
+
+class TestConversationAndLog:
+    """PoC 1-A (2026-09-29) — 멀티턴 대화 발급·삭제, 모든 Select AI 호출의 AI_QUERY_LOG 기록."""
+
+    def _last_log(self, client, log_id):
+        d = client.post("/api/execute-sql", json={"sql": f"SELECT id, source, action, status, conversation_id, model, row_count FROM ai_query_log WHERE id = {int(log_id)}"}).json()
+        assert d["success"] and d["data"], d
+        return d["data"][0]
+
+    def test_대화_발급과_삭제(self, client):
+        r = client.post("/api/conversations", json={"title": "pytest"}).json()
+        assert r["success"] and len(r["conversation_id"]) == 36, r
+        assert client.delete(f"/api/conversations/{r['conversation_id']}").json()["success"] is True
+
+    def test_ask_는_이력_id_와_대화_id_를_돌려주고_로그에_남는다(self, client):
+        cid = client.post("/api/conversations", json={"title": "pytest"}).json()["conversation_id"]
+        try:
+            r = client.post("/api/ask", json={"prompt": "한 단어로 인사", "action": "chat", "profile_name": "GEMINI_SH_PROFILE", "conversation_id": cid}).json()
+            assert r["success"], r
+            assert r["conversation_id"] == cid and r["log_id"] and r["model"], r
+            row = self._last_log(client, r["log_id"])
+            assert row["SOURCE"] == "GENERATE" and row["ACTION"] == "chat" and row["STATUS"] == "SUCCEEDED" and row["CONVERSATION_ID"] == cid
+        finally:
+            client.delete(f"/api/conversations/{cid}")
+
+    def test_잘못된_프로필도_FAILED_로_로그에_남는다(self, client):
+        r = client.post("/api/ask", json={"prompt": "x", "action": "chat", "profile_name": "NO_SUCH_PROFILE_XYZ"})
+        assert r.status_code == 500
+        d = r.json()
+        assert d["success"] is False and d.get("log_id"), d
+        assert self._last_log(client, d["log_id"])["STATUS"] == "FAILED"
+
+    def test_직접_실행한_SELECT_AI_도_RAWSQL_로_남는다(self, client):
+        before = client.post("/api/execute-sql", json={"sql": "SELECT NVL(MAX(id),0) m FROM ai_query_log"}).json()["data"][0]["M"]
+        r = client.post("/api/execute-sql", json={"sql": "SELECT AI chat 한 단어로 인사", "profile_name": "GEMINI_SH_PROFILE"}).json()
+        assert r["success"] and r["select_ai"], r
+        d = client.post("/api/execute-sql", json={"sql": f"SELECT source, action, status FROM ai_query_log WHERE id > {before} ORDER BY id DESC FETCH FIRST 1 ROWS ONLY"}).json()
+        assert d["data"] and d["data"][0]["SOURCE"] == "RAWSQL" and d["data"][0]["ACTION"] == "chat", d
+

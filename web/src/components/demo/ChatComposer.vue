@@ -10,9 +10,13 @@ import Button from '@/components/ui/Button.vue'
 const props = withDefaults(defineProps<{
   modelValue: string; placeholder?: string; busy?: boolean; disabled?: boolean; sendLabel?: string
   icon?: LucideIcon; sendIcon?: LucideIcon; mono?: boolean; sendVariant?: 'primary' | 'secondary'
-}>(), { placeholder: '질문을 입력하세요…', busy: false, disabled: false, sendLabel: '질문', mono: false, sendVariant: 'primary' })
+  /** 여러 줄 입력 — Enter 전송, Shift+Enter 줄바꿈 (2026-09-29, PoC 1-A). 높이는 내용에 따라 1~5줄 */
+  multiline?: boolean
+}>(), { placeholder: '질문을 입력하세요…', busy: false, disabled: false, sendLabel: '질문', mono: false, sendVariant: 'primary', multiline: false })
 const emit = defineEmits<{ 'update:modelValue': [string]; send: [] }>()
 function submit() { if (!props.busy && !props.disabled && props.modelValue.trim()) emit('send') }
+function grow(el: HTMLTextAreaElement) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 5 * 22 + 16)}px` }
+function onInput(e: Event) { const el = e.target as HTMLTextAreaElement; emit('update:modelValue', el.value); if (props.multiline) grow(el) }
 </script>
 
 <template>
@@ -20,11 +24,15 @@ function submit() { if (!props.busy && !props.disabled && props.modelValue.trim(
     <slot />
     <div class="flex items-center gap-2">
       <div class="relative flex-1 min-w-0">
-        <component v-if="icon" :is="icon" :size="15" :stroke-width="1.75" class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style="color: var(--text-muted);" />
-        <input :value="modelValue" :placeholder="placeholder" :disabled="disabled || busy" class="w-full min-w-0 rounded-md py-2 pr-3 text-sm"
+        <component v-if="icon" :is="icon" :size="15" :stroke-width="1.75" class="absolute left-3 pointer-events-none" :class="multiline ? 'top-[11px]' : 'top-1/2 -translate-y-1/2'" style="color: var(--text-muted);" />
+        <textarea v-if="multiline" :value="modelValue" :placeholder="placeholder" :disabled="disabled || busy" rows="1"
+          class="w-full min-w-0 rounded-md py-2 pr-3 text-sm resize-none block" :class="[icon ? 'pl-9' : 'pl-3', mono ? 'font-mono' : '']"
+          style="background: var(--bg-elevated); border: 1px solid var(--border-strong); color: var(--text-primary); line-height: 22px; max-height: 126px;"
+          @input="onInput" @keydown.enter.exact.prevent="submit" />
+        <input v-else :value="modelValue" :placeholder="placeholder" :disabled="disabled || busy" class="w-full min-w-0 rounded-md py-2 pr-3 text-sm"
           :class="[icon ? 'pl-9' : 'pl-3', mono ? 'font-mono' : '']"
           style="background: var(--bg-elevated); border: 1px solid var(--border-strong); color: var(--text-primary);"
-          @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="submit" />
+          @input="onInput" @keydown.enter.prevent="submit" />
       </div>
       <Button :variant="sendVariant" :busy="busy" :disabled="disabled || !modelValue.trim()" @click="submit"><component :is="sendIcon || SendHorizontal" :size="14" :stroke-width="2" /> {{ sendLabel }}</Button>
     </div>

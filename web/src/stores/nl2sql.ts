@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { errorMessage } from '@/lib/api'
 import { annotationSetFor } from '@/lib/annotations'
 import {
   ACTION_BUTTONS, LOADING_TEXT, ask, applyAnnotations, executeSql, exampleQuestionsFor, explainPlan, getProfiles, getSchemaInfo,
-  removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, type Action, type FollowAction, type Profile, type SchemaTable,
+  removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, createConversation, GREETING, type Action, type FollowAction, type Profile, type SchemaTable,
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
 import type { ChatMessage } from '@/lib/types/chat'
@@ -18,7 +18,7 @@ export interface Nl2sqlMessage extends ChatMessage {
   isSql?: boolean
   prevPrompt?: string | null
   // 어시스턴트
-  action?: Action | 'rawsql' | 'explainplan'
+  action?: Action | 'rawsql' | 'explainplan' | 'greeting'
   prompt?: string
   profileName?: string
   loadingText?: string
@@ -36,6 +36,13 @@ export interface Nl2sqlMessage extends ChatMessage {
   sqlResult?: Rows | null
   /** 직접 실행창에 친 `SELECT AI …` — 결과는 자연어 답변과 같은 블록(생성된 SQL·표·서술)으로 그린다 */
   aiDirect?: boolean
+  // 멀티턴·이력 메타 (2026-09-29, PoC 1-A) — 답변 아래 작은 글씨 한 줄
+  conversationId?: string
+  multiTurn?: boolean
+  model?: string
+  logId?: number | null
+  /** 「정상답변시 대화초기화」 가 이 답변 뒤에 대화를 리셋했다 — 안내 문구를 붙인다 */
+  resetNote?: boolean
 }
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
@@ -61,6 +68,37 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   const expanded = ref<Record<string, boolean>>({})
   const annoBusy = ref<'' | 'apply' | 'remove'>('')
   const lastError = ref<string | null>(null)
+
+  // ── 멀티턴 (PoC 1-A) — 서버는 무상태, 브라우저가 conversation_id 와 토글을 들고 매 요청 보낸다(Phase 0 결정 ②) ──
+  const multiTurn = ref(true)          // Multi Turn 토글 (기본 ON)
+  const chain = ref(true)              // 이어서 질문하기 — OFF 면 이번 질문만 대화 없이 독립 실행
+  const resetOnSuccess = ref(false)    // 정상답변시 대화초기화
+  const conversationId = ref('')
+  const convTurns = ref(0)
+  const CONV_KEY = 'db26ai.nl2sql.conv'
+  function saveConv() { try { localStorage.setItem(CONV_KEY, JSON.stringify({ multiTurn: multiTurn.value, chain: chain.value, resetOnSuccess: resetOnSuccess.value, conversationId: conversationId.value, convTurns: convTurns.value })) } catch { /* noop */ } }
+  function loadConv() {
+    try { const raw = localStorage.getItem(CONV_KEY); if (!raw) return; const v = JSON.parse(raw)
+      multiTurn.value = v.multiTurn ?? true; chain.value = v.chain ?? true; resetOnSuccess.value = v.resetOnSuccess ?? false; conversationId.value = v.conversationId ?? ''; convTurns.value = v.convTurns ?? 0 } catch { /* noop */ }
+  }
+  loadConv()
+  watch([multiTurn, chain, resetOnSuccess, conversationId, convTurns], saveConv)
+  /** 대화가 없으면 발급받는다 (DBMS_CLOUD_AI.CREATE_CONVERSATION). 실패하면 빈 문자열 — 질문은 대화 없이 나간다 */
+  async function ensureConversation(): Promise<string> {
+    if (conversationId.value) return conversationId.value
+    try {
+      const r = await createConversation(`db26ai-demo · ${profile.value}`)
+      if (r.success && r.conversation_id) { conversationId.value = r.conversation_id; convTurns.value = 0; return r.conversation_id }
+      system.toast(`대화를 만들지 못했습니다: ${r.error || ''} — 이번 질문은 대화 없이 보냅니다`, 'warn')
+    } catch (e) { system.toast(`대화를 만들지 못했습니다: ${errorMessage(e)}`, 'warn') }
+    return ''
+  }
+  /** 「새 대화」 — ID 만 버린다. DROP 은 하지 않는다(이력 뷰 USER_CLOUD_AI_CONVERSATION_PROMPTS 에 남기려고; retention_days 7 로 DB 가 정리) */
+  function newConversation(silent = false) {
+    conversationId.value = ''; convTurns.value = 0
+    if (!silent) system.toast('새 대화 — 다음 질문은 새 conversation 으로 시작합니다', 'success')
+  }
+  function pushGreeting() { push({ role: 'assistant', content: '', action: 'greeting', textResult: GREETING }) }
   let seq = 0
 
   const examples = computed(() => exampleQuestionsFor(profile.value))
@@ -160,6 +198,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
           const PREFER = [want, 'GEMINI_SH_PROFILE', 'GROQ_SH_PROFILE']
           const def = PREFER.map((n) => profiles.value.find((p) => p.profile_name === n)).find(Boolean) ?? profiles.value[0]
           await selectProfile(def.profile_name)
+          if (!messages.value.length) pushGreeting()
         } catch (e) { lastError.value = errorMessage(e) } finally { inflight = null }
       })()
       return inflight
@@ -217,15 +256,21 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     push({ role: 'user', content: prompt, prevPrompt: prev })
     input.value = ''
     const base = LOADING_TEXT[act]
-    const msg = push({ role: 'assistant', content: '', action: act, prompt, profileName: profile.value, loading: true, loadingText: `${base}… (0초)`, chartType: 'bar', cached: {} })
     sending.value = true
+    // 멀티턴 ON + 이어서 질문하기 ON 이면 대화 ID 를 붙인다. OFF 면 이번 질문만 독립(대화는 그대로 보관)
+    const cid = multiTurn.value && chain.value ? await ensureConversation() : ''
+    const msg = push({ role: 'assistant', content: '', action: act, prompt, profileName: profile.value, loading: true, loadingText: `${base}… (0초)`, chartType: 'bar', cached: {}, conversationId: cid, multiTurn: multiTurn.value })
     const t0 = Date.now()
     const timer = window.setInterval(() => { msg.loadingText = `${base}… (${Math.round((Date.now() - t0) / 1000)}초)` }, 1000)
     try {
-      const r = await ask(prompt, act, profile.value)
-      if (r.success) { msg.elapsedMs = r.elapsed_ms; processResult(msg, act, r.result); msg.cached![act] = r.result }
-      else msg.errorText = r.error || '알 수 없는 오류가 발생했습니다.'
+      const r = await ask(prompt, act, profile.value, cid)
+      msg.model = r.model; msg.logId = r.log_id ?? null
+      if (r.success) {
+        msg.elapsedMs = r.elapsed_ms; processResult(msg, act, r.result); msg.cached![act] = r.result
+        if (cid) { convTurns.value++; if (resetOnSuccess.value) { newConversation(true); msg.resetNote = true } }
+      } else msg.errorText = r.error || '알 수 없는 오류가 발생했습니다.'
     } catch (e: any) {
+      const d = e?.response?.data; if (d) { msg.model = d.model; msg.logId = d.log_id ?? null }
       msg.errorText = e?.code === 'ECONNABORTED' ? '요청 시간이 초과되었습니다 (120초). 질문을 단순화하거나 다시 시도해 주세요.' : errorMessage(e)
     } finally { window.clearInterval(timer); msg.loading = false; sending.value = false }
   }
@@ -315,12 +360,13 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     } catch (e) { system.toast(errorMessage(e), 'error') } finally { annoBusy.value = '' }
   }
 
-  function clear() { messages.value = [] }
+  function clear() { messages.value = []; pushGreeting() }
 
   return {
     profiles, profile, profilesLoaded, action, messages, input, sqlInput, sending, sqlRunning, schema, schemaLoading, expanded, annoBusy, lastError,
     examples, profileOptions, hasAnnotationSet, asked,
     env, envLoading, envTest, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
+    multiTurn, chain, resetOnSuccess, conversationId, convTurns, ensureConversation, newConversation,
     init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,
   }
 })
