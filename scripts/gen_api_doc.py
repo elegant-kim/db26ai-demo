@@ -15,7 +15,7 @@ OUT = ROOT / "docs" / "design" / "03_API_명세서.md"
 
 GROUPS = [
     ("공통", ["/health", "/llm/providers"]),
-    ("① NL2SQL (Select AI)", ["/ask", "/profiles", "/set-profile", "/apply-annotations", "/remove-annotations", "/schema-info", "/explain-plan", "/execute-sql"]),
+    ("① NL2SQL (Select AI)", ["/ask", "/profiles", "/set-profile", "/apply-annotations", "/remove-annotations", "/schema-info", "/explain-plan", "/execute-sql", "/conversations", "/nl2sql/"]),
     ("② AI Vector Search — 검색·문서", ["/vector/upload", "/vector/search", "/vector/documents", "/vector/index-info", "/vector/embedding-info", "/vector/visualize", "/vector/recent-queries", "/vector/explain-plan"]),
     ("② AI Vector Search — 테이블 관리", ["/vector/drop-tables", "/vector/create-tables", "/vector/table-definition", "/vector/table-data", "/vector/table-indexes"]),
     ("② 임베딩 · ONNX 모델", ["/vector/embedding-config", "/vector/onnx-models"]),

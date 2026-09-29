@@ -3,7 +3,7 @@
 > **정본은 라우트 정의와 docstring 이다** (`app/routes.py` + `app/routers/*.py`). 이 문서는
 > `scripts/gen_api_doc.py` 가 생성한다 — **손으로 고치지 말고 코드를 고친 뒤 다시 생성할 것.**
 > 엔드포인트를 추가·변경하면 같은 커밋에서 이 문서와 `CLAUDE.md` API 목록을 함께 갱신한다.
-> 전체 **63개** 엔드포인트 · 공통 prefix `/api`
+> 전체 **66개** 엔드포인트 · 공통 prefix `/api`
 
 ## 공통 규약
 
@@ -35,14 +35,19 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:184` |
-| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:78` |
-| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행. `SELECT AI …` 도 받는다 (profile_name 필요). | `app/routers/nl2sql.py:255` |
-| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:234` |
-| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:140` |
-| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:199` |
-| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:215` |
-| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:160` |
+| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:185` |
+| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:79` |
+| `POST` | `/api/conversations` | ConversationRequest | 멀티턴 대화 발급 — DBMS_CLOUD_AI.CREATE_CONVERSATION. 돌려준 conversation_id 를 /api/ask 에 실어 보내면 앞 질문을 이어받는다. | `app/routers/nl2sql.py:115` |
+| `DELETE` | `/api/conversations/{conversation_id}` | — | 대화 삭제 — DBMS_CLOUD_AI.DROP_CONVERSATION(force). 「새 대화」는 이걸 부르지 않는다(이력 뷰에 남기려고); 정리용. | `app/routers/nl2sql.py:128` |
+| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행. `SELECT AI …` 도 받는다 (profile_name 필요). | `app/routers/nl2sql.py:256` |
+| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:235` |
+| `GET` | `/api/nl2sql/history` | — | Select AI 호출 이력(AI_QUERY_LOG) 한 쪽 — 최신순, 필터: 질문 LIKE(대소문자 무시)·기간·프로필·액션·상태·피드백(any/none/positive/negative). 최근 피드백 한 건을 조인. | `app/routers/nl2sql.py:283` |
+| `GET` | `/api/nl2sql/history/summary` | — | 이력 요약 — 총 질의·성공률·평균/최대 elapsed·피드백 비율 + 프로필(모델)별·액션별 평균 elapsed. | `app/routers/nl2sql.py:300` |
+| `GET` | `/api/nl2sql/history/{log_id}` | — | 이력 한 건 상세 — 질문·생성 SQL·답변 앞부분·오류 전문 + 그 건의 피드백 목록. | `app/routers/nl2sql.py:312` |
+| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:141` |
+| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:200` |
+| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:216` |
+| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:161` |
 
 ## ② AI Vector Search — 검색·문서
 
@@ -135,9 +140,7 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/env-info` | EnvInfoRequest | Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜). | `app/routers/nl2sql.py:61` |
-| `POST` | `/api/conversations` | ConversationRequest | 멀티턴 대화 발급 — DBMS_CLOUD_AI.CREATE_CONVERSATION. 돌려준 conversation_id 를 /api/ask 에 실어 보내면 앞 질문을 이어받는다. | `app/routers/nl2sql.py:114` |
-| `DELETE` | `/api/conversations/{conversation_id}` | — | 대화 삭제 — DBMS_CLOUD_AI.DROP_CONVERSATION(force). 「새 대화」는 이걸 부르지 않는다(이력 뷰에 남기려고); 정리용. | `app/routers/nl2sql.py:127` |
+| `POST` | `/api/env-info` | EnvInfoRequest | Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜). | `app/routers/nl2sql.py:62` |
 | `GET` | `/api/vector/hybrid-index` | — | Hybrid Vector Index(26ai) 상태 — 있는가, 내부에 몇 청크가 임베딩돼 있는가, 옛 CONTEXT 인덱스가 남았는가. | `app/routers/vector.py:204` |
 | `GET` | `/api/vector/hybrid-index/internals` | — | Hybrid Vector Index 안 들여다보기 — 내부 테이블 목록·행 수, 상위 토큰 15($I), 조각 표본 5($VR). 없으면 exists=false. | `app/routers/vector.py:220` |
 | `POST` | `/api/vector/hybrid-index/create` | HybridIndexRequest | Hybrid Vector Index 생성(옛 Oracle Text 인덱스 대체). 청크 수 × ~200ms — 180청크 약 50초. | `app/routers/vector.py:233` |

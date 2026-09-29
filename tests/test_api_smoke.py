@@ -447,3 +447,41 @@ class TestConversationAndLog:
         d = client.post("/api/execute-sql", json={"sql": f"SELECT source, action, status FROM ai_query_log WHERE id > {before} ORDER BY id DESC FETCH FIRST 1 ROWS ONLY"}).json()
         assert d["data"] and d["data"][0]["SOURCE"] == "RAWSQL" and d["data"][0]["ACTION"] == "chat", d
 
+
+class TestQueryHistory:
+    """PoC 1-C (2026-09-29) — 이력 API. LLM 을 부르지 않는다(이미 쌓인 AI_QUERY_LOG 를 읽는다)."""
+
+    def test_목록_모양과_페이징(self, client):
+        d = client.get("/api/nl2sql/history", params={"size": 5}).json()
+        assert d["success"] and d["page"] == 1 and d["size"] == 5 and "sql" in d
+        assert isinstance(d["total"], int) and len(d["rows"]) <= 5
+        if d["rows"]:
+            r = d["rows"][0]
+            for k in ("ID", "STARTED_AT", "SOURCE", "PROFILE_NAME", "ACTION", "QUESTION", "STATUS", "ELAPSED_MS", "FEEDBACK_TYPE"):
+                assert k in r, k
+
+    def test_필터가_바인드로_먹는다(self, client):
+        d = client.get("/api/nl2sql/history", params={"q": "인사", "status": "SUCCEEDED", "action": "chat"}).json()
+        assert d["success"]
+        for r in d["rows"]:
+            assert r["STATUS"] == "SUCCEEDED" and r["ACTION"] == "chat" and "인사" in (r["QUESTION"] or "")
+        assert "'인사'" in d["sql"] and ":q" not in d["sql"]
+
+    def test_잘못된_필터는_400(self, client):
+        assert client.get("/api/nl2sql/history", params={"action": "dropdb"}).status_code == 400
+        assert client.get("/api/nl2sql/history", params={"feedback": "maybe"}).status_code == 400
+
+    def test_요약_카드(self, client):
+        d = client.get("/api/nl2sql/history/summary").json()
+        assert d["success"]
+        for k in ("total", "succeeded", "failed", "success_rate", "avg_ms", "max_ms", "feedback_rate", "by_profile", "by_action"):
+            assert k in d, k
+        assert d["total"] == d["succeeded"] + d["failed"]
+
+    def test_상세와_404(self, client):
+        d = client.get("/api/nl2sql/history", params={"size": 1}).json()
+        if d["rows"]:
+            x = client.get(f"/api/nl2sql/history/{d['rows'][0]['ID']}").json()
+            assert x["success"] and "QUESTION" in x and isinstance(x["feedback"], list)
+        assert client.get("/api/nl2sql/history/999999999").status_code == 404
+

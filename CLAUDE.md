@@ -81,7 +81,8 @@ scripts/deploy.sh
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
 | `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
 | `app/routers/awr.py` | ~200 | ⑥ AWR 3개 엔드포인트 + 세션 캐시 (5-4 에서 분리). **분석은 SSE 가 아니라 JSON 1회** |
-| `app/routers/nl2sql.py` | ~230 | ① NL2SQL 8개 엔드포인트 + 요청 모델 + `VALID_ACTIONS` (5-5 에서 분리) |
+| `app/routers/nl2sql.py` | ~330 | ① NL2SQL 13개 엔드포인트(ask · profiles · set-profile · annotations 2 · schema-info · explain-plan · execute-sql · env-info · conversations 2 · history 3) + 요청 모델 + `VALID_ACTIONS` |
+| `app/ai_log.py` | ~130 | AI_QUERY_LOG **읽기** — 이력 표(바인드 필터·페이징)·요약·상세 (2026-09-29 PoC 1-C). 쓰기는 `select_ai.py` |
 | `app/routers/vector.py` | ~640 | ② Vector 22개 엔드포인트 — 업로드(SSE)·검색·문서·테이블·임베딩 설정·ONNX (5-6 에서 분리) |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
@@ -111,7 +112,7 @@ scripts/deploy.sh
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
 | `web/src/pages/*.vue` | 7 페이지 전부 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`). `/` 는 `/nl2sql` 로 리다이렉트 |
 | `web/src/pages/vector/` | 서브탭 4 = 시연 순서 (2026-09-09 재편): **환경**(`VectorEnv`) → **적재**(`VectorLoad` — 단계별 실행 SQL·표본 펼침) → **검색·RAG**(`VectorSearch`, 모드 5) → **내부**(`VectorInternals` = 실행계획·테이블·`VectorEmbedding` 관리). 옛 `?sub=docs/store/embedding` 은 자동 매핑 |
-| `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화 — **멀티턴** Multi Turn·이어서 질문하기·정상답변시 초기화·새 대화, 답변 메타 줄, SQL/프롬프트 접기; 2026-09-29 PoC 1-A) → **스키마·Annotation**. 프로필 셀렉트는 페이지 헤더 공통. conversation_id 와 토글은 브라우저(localStorage)가 들고 매 요청 보낸다 — 서버 무상태 |
+| `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화 — **멀티턴** Multi Turn·이어서 질문하기·정상답변시 초기화·새 대화, 답변 메타 줄, SQL/프롬프트 접기; 2026-09-29 PoC 1-A) → **스키마·Annotation** → **이력**(`Nl2sqlHistory` — 요약 카드·프로필별 소요·필터·표·상세 모달, PoC 1-C). 프로필 셀렉트는 페이지 헤더 공통. conversation_id 와 토글은 브라우저(localStorage)가 들고 매 요청 보낸다 — 서버 무상태 |
 | `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5). 장표 항목(`장표: 제목 p3 · VS-03`)도 여기 |
 | `web/src/components/demo/SlideViewer.vue` · `SlideAnchor.vue` · `stores/slides.ts` · `lib/slides.ts` · `pages/manual/ManualSlides.vue` | **장표 연동**(2026-09-29 P5): 뷰어는 AppShell 에 하나(오른쪽 슬라이드오버, 이미지/PDF 양쪽, ←→ 키, `?slide=` 양방향 동기화) · 「장표 n」 버튼은 `PageHeader` 가 자동으로 넣고 이 화면(경로+`?sub=`)에 연결된 앵커가 없으면 숨는다 · 매뉴얼 › 장표 = 덱 목록·앵커 표·덱에 없는 꼬리표 |
 | `web/src/composables/useSse.ts` | SSE 수신(fetch + ReadableStream) — PDF 업로드 전용 |
@@ -152,6 +153,7 @@ scripts/deploy.sh
 ### ① NL2SQL (Select AI) (`app/routers/nl2sql.py`)
 - `POST /api/ask` — Select AI 쿼리 실행 (action: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). `conversation_id` 를 주면 **멀티턴**(`GENERATE(params => conversation_id)`), 응답에 `log_id`(AI_QUERY_LOG) · `conversation_id` · `model`
 - `POST /api/conversations` · `DELETE /api/conversations/{id}` — 멀티턴 대화 발급(`CREATE_CONVERSATION`, retention 7일)/삭제. 「새 대화」는 ID 만 버리고 DROP 은 안 한다
+- `GET /api/nl2sql/history` · `/history/summary` · `/history/{id}` — 호출 이력(AI_QUERY_LOG) 표(필터 q·date_from·date_to·profile·action·status·feedback, 페이징)·요약(성공률·평균/최대 elapsed·피드백 비율·프로필별)·상세(+피드백 목록). 읽기 전용, 정본 `app/ai_log.py`
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회
 - `POST /api/apply-annotations` / `POST /api/remove-annotations` — Display Annotation 일괄 적용/제거

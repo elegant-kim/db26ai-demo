@@ -477,7 +477,8 @@ async def execute_raw_sql(pool, sql: str, profile_name: str = "") -> dict:
             try:
                 async with pool.acquire() as conn:
                     await _insert_query_log(conn, source="RAWSQL", profile_name=profile_name, action=ai_action, question=ai_prompt,
-                                            status="FAILED", error_msg=str(e), elapsed_ms=int((time.time() - t0) * 1000))
+                                            status="FAILED", error_msg=str(e), elapsed_ms=int((time.time() - t0) * 1000),
+                                            model=await profile_model(pool, profile_name))
             except Exception as le:
                 logger.warning("[select_ai] SELECT AI 실패 이력 기록 실패: %s", le)
         return {

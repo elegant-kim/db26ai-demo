@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.ai_log import VALID_FEEDBACK, VALID_STATUS, get_query_log, list_query_log, query_log_summary
 from app.database import get_pool
 from app.select_ai import (
     SELECT_AI_ACTIONS,
@@ -274,3 +275,50 @@ async def execute_sql_endpoint(req: ExecuteSqlRequest):
             status_code=500,
             content={"success": False, "error": str(e), "elapsed_ms": elapsed_ms},
         )
+
+
+# ── 이력 (PoC 1-C) — 읽기 전용, 정본 app/ai_log.py ──
+
+@router.get("/nl2sql/history")
+async def nl2sql_history(q: str = "", date_from: str = "", date_to: str = "", profile: str = "", action: str = "",
+                         status: str = "", feedback: str = "", page: int = 1, size: int = 20):
+    """Select AI 호출 이력(AI_QUERY_LOG) 한 쪽 — 최신순, 필터: 질문 LIKE(대소문자 무시)·기간·프로필·액션·상태·피드백(any/none/positive/negative). 최근 피드백 한 건을 조인."""
+    if action and action not in VALID_ACTIONS:
+        return JSONResponse(status_code=400, content={"success": False, "error": f"유효하지 않은 action입니다: {action}"})
+    if status not in VALID_STATUS or feedback not in VALID_FEEDBACK:
+        return JSONResponse(status_code=400, content={"success": False, "error": "status 는 SUCCEEDED/FAILED, feedback 은 any/none/positive/negative 만 됩니다."})
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        return {"success": True, **await list_query_log(pool, q, date_from, date_to, profile, action, status, feedback, page, size)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/nl2sql/history/summary")
+async def nl2sql_history_summary(profile: str = ""):
+    """이력 요약 — 총 질의·성공률·평균/최대 elapsed·피드백 비율 + 프로필(모델)별·액션별 평균 elapsed."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        return {"success": True, **await query_log_summary(pool, profile)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/nl2sql/history/{log_id}")
+async def nl2sql_history_detail(log_id: int):
+    """이력 한 건 상세 — 질문·생성 SQL·답변 앞부분·오류 전문 + 그 건의 피드백 목록."""
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(status_code=503, content={"success": False, "error": "데이터베이스에 연결되지 않았습니다."})
+    try:
+        d = await get_query_log(pool, log_id)
+        if d is None:
+            return JSONResponse(status_code=404, content={"success": False, "error": f"이력이 없습니다: {log_id}"})
+        return {"success": True, **d}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
