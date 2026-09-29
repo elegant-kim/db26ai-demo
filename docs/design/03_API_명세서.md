@@ -3,7 +3,7 @@
 > **정본은 라우트 정의와 docstring 이다** (`app/routes.py` + `app/routers/*.py`). 이 문서는
 > `scripts/gen_api_doc.py` 가 생성한다 — **손으로 고치지 말고 코드를 고친 뒤 다시 생성할 것.**
 > 엔드포인트를 추가·변경하면 같은 커밋에서 이 문서와 `CLAUDE.md` API 목록을 함께 갱신한다.
-> 전체 **60개** 엔드포인트 · 공통 prefix `/api`
+> 전체 **61개** 엔드포인트 · 공통 prefix `/api`
 
 ## 공통 규약
 
@@ -28,8 +28,8 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/health` | — | DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다. | `app/routes.py:22` |
-| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:122` |
+| `GET` | `/api/health` | — | DB 연결·스키마·버전·프로필 수·문서/청크/임베딩 수·ONNX 모델·벡터 인덱스 상태를 한 번에 반환한다. | `app/routes.py:23` |
+| `GET` | `/api/llm/providers` | — | 사용 가능한 LLM 제공자 목록 반환 (기본 제공자 포함) | `app/routes.py:123` |
 
 ## ① NL2SQL (Select AI)
 
@@ -126,9 +126,10 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:153` |
-| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:163` |
-| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:177` |
+| `GET` | `/api/guide/docs` | — | 앱에서 열람 가능한 문서 목록을 반환한다 (가이드 + 현황 문서). | `app/routes.py:154` |
+| `GET` | `/api/guide/docs/{key}` | — | 단일 문서의 마크다운 원문을 반환한다 (화이트리스트 key 만). | `app/routes.py:164` |
+| `GET` | `/api/guide/features` | — | 기능 지도 — 6탭 전 기능 카탈로그 (정본: app/feature_registry.py). | `app/routes.py:178` |
+| `GET` | `/api/guide/slides` | — | 장표 카탈로그 — 덱 목록(이미지/PDF 모드 · 꼬리표→쪽) + 기능 레지스트리 `slides` 앵커를 (deck, page) 로 푼 것. 정본: docs/slides/ · app/slides.py. | `app/routes.py:189` |
 
 ## 기타
 

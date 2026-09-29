@@ -6,6 +6,7 @@ import StatusChips from './StatusChips.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import Toast from './Toast.vue'
 import CommandPalette from './CommandPalette.vue'
+import SlideViewer from '@/components/demo/SlideViewer.vue'
 import { HelpCircle, Search } from 'lucide-vue-next'
 import { useGuideStore } from '@/stores/guide'
 import { menuById } from '@/lib/menu'
@@ -86,6 +87,7 @@ function goManual() { router.push(menuById('manual').path) }
 
     <MobileDrawer :open="drawerOpen" @close="drawerOpen = false" />
     <CommandPalette />
+    <SlideViewer />
     <Toast />
   </div>
 </template>

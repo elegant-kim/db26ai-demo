@@ -35,3 +35,11 @@ Wallet_*/
 web/node_modules/
 web/dist/
 web/.vite/
+
+# ── 장표(PPT/PDF) — 고객명·내부 수치가 들어갈 수 있어 기본 비추적 (2026-09-29, docs/slides/README.md) ──
+# 추적: README 와 표본 덱만. 공개해도 되는 덱은 아래에 `!docs/slides/src/<deck>.pdf` 한 줄로 골라 넣는다. out/ 은 언제나 생성물.
+docs/slides/**
+!docs/slides/README.md
+!docs/slides/src/
+docs/slides/src/**
+!docs/slides/src/sample.pdf

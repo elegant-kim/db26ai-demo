@@ -59,3 +59,32 @@ class TestVecToStr:
     def test_공백이_없어야_한다(self):
         # 공백이 섞이면 TO_VECTOR 파싱이 실패할 수 있다
         assert " " not in _vec_to_str([0.1, 0.2, 0.3])
+
+
+class TestSlidesCatalog:
+    """장표 연동(P5, 2026-09-29) — 꼬리표 규칙과 앵커 풀기. 덱 파일 없이 순수 함수만."""
+
+    def test_꼬리표_형식(self):
+        from app.slides import is_tag
+        assert is_tag("VS-12") and is_tag("SA-003") and is_tag("OVW-01")
+        assert not is_tag("vs-12") and not is_tag("VS12") and not is_tag("V-1") and not is_tag("VSXX-12")
+
+    def test_레지스트리_slides_는_전부_꼬리표_형식이다(self):
+        from app.feature_registry import FEATURES
+        from app.slides import is_tag
+        for f in FEATURES:
+            assert isinstance(f["slides"], list)
+            for t in f["slides"]:
+                assert is_tag(t), f"{f['name']} 의 slides 에 꼬리표 형식이 아닌 값: {t!r}"
+
+    def test_앵커는_덱에_있는_꼬리표만_풀리고_나머지는_unresolved(self, monkeypatch):
+        from app import slides as mod
+        fake_features = [
+            {"tab": "vector", "tab_label": "AI Vector Search", "name": "A", "path": "/vector?sub=search", "slides": ["VS-01", "VS-99"]},
+            {"tab": "graph", "tab_label": "Property Graph", "name": "B", "path": "/graph", "slides": []},
+        ]
+        monkeypatch.setattr(mod, "FEATURES", fake_features)
+        decks = [{"deck": "vector", "title": "벡터", "tags": {"VS-01": 3}}]
+        anchors, unresolved = mod.resolve_anchors(decks)
+        assert [(a["tag"], a["deck"], a["page"], a["feature"]) for a in anchors] == [("VS-01", "vector", 3, "A")]
+        assert [u["tag"] for u in unresolved] == ["VS-99"]

@@ -31,6 +31,11 @@ DIST = BASE_DIR / "web" / "dist"
 if (DIST / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="spa-assets")
 
+# 장표(PPT/PDF) — docs/slides/{src,out} 을 그대로 서빙 (P5, 2026-09-29). web/ 빌드와 무관하니 장표를 바꿔도 재빌드가 없다.
+# 폴더는 gitignore 라 clone 직후엔 없을 수 있다 → check_dir=False (없으면 404 만 난다). 규칙: docs/slides/README.md
+SLIDES = BASE_DIR / "docs" / "slides"
+app.mount("/slides", StaticFiles(directory=str(SLIDES), check_dir=False), name="slides")
+
 app.include_router(api_router)
 app.include_router(graph_router.router)   # 탭을 이식할 때마다 하나씩 늘어난다 (설계서 05 §7)
 app.include_router(productivity_router.router)

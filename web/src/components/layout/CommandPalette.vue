@@ -2,6 +2,7 @@
 /**
  * ⌘K 빠른 이동 — investhub CommandPalette 이식(설계서 05 §6.7, D5). 데이터는 메뉴 7개 + `/api/guide/features` 의 기능 34개.
  * 권한(RBAC)은 이 앱에 없으므로 뺐고, 최근 항목은 localStorage 에 5개.
+ * 장표(P5, 2026-09-29): 덱의 쪽마다 `장표: 제목 p3 · VS-03` 항목 — 기능에 연결된 쪽은 그 기능 화면으로 가며 열고, 아니면 제자리에서 연다.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -9,9 +10,11 @@ import { Search, CornerDownLeft } from 'lucide-vue-next'
 import { MENUS, menuById } from '@/lib/menu'
 import { tabToMenuId } from '@/lib/guide'
 import { useGuideStore } from '@/stores/guide'
+import { useSlidesStore } from '@/stores/slides'
 
-interface Item { label: string; desc: string; path: string; keyword: string; group: '메뉴' | '기능'; tab?: string }
+interface Item { label: string; desc: string; path: string; keyword: string; group: '메뉴' | '기능' | '장표'; tab?: string; slide?: string }
 const guide = useGuideStore()
+const slides = useSlidesStore()
 const router = useRouter()
 const query = ref('')
 const selected = ref(0)
@@ -21,6 +24,23 @@ const menuItems: Item[] = MENUS.map((m) => ({ label: m.title, desc: m.subtitle, 
 const featureItems = computed<Item[]>(() => guide.features.map((f) => ({
   label: f.name, desc: f.desc, path: f.path, keyword: `${f.keyword} ${f.how} ${f.tab_label}`, group: '기능', tab: menuById(tabToMenuId(f.tab))?.label ?? f.tab_label,
 })))
+
+const slideItems = computed<Item[]>(() => slides.decks.flatMap((d) => {
+  const n = d.pages ?? 0
+  return Array.from({ length: n }, (_, i) => {
+    const page = i + 1
+    const tag = d.page_tags?.[i] ?? null
+    const ref_ = tag ?? `${d.deck}:${page}`
+    const linked = tag ? slides.anchors.filter((a) => a.tag === tag) : []
+    const first = linked[0]
+    const path = first ? `${first.path}${first.path.includes('?') ? '&' : '?'}slide=${ref_}` : ''
+    return {
+      label: `장표: ${d.title} p${page}`, desc: (linked.map((a) => a.feature).join(' · ') || d.page_text?.[i] || '').slice(0, 90),
+      path, slide: path ? undefined : ref_, group: '장표' as const, tab: tag ?? undefined,
+      keyword: `${tag ?? ''} ${d.deck} ${d.page_text?.[i] ?? ''} ${linked.map((a) => `${a.feature} ${a.tab_label}`).join(' ')} 장표 슬라이드 slide`,
+    }
+  })
+}))
 
 const RECENT_KEY = 'db26ai.cmdk.recent'
 const recents = ref<Item[]>([])
@@ -39,12 +59,18 @@ const q = computed(() => query.value.trim())
 const showRecents = computed(() => !q.value && recents.value.length > 0)
 const menus = computed(() => menuItems.filter((it) => matches(it, q.value)))
 const feats = computed(() => featureItems.value.filter((it) => matches(it, q.value)).slice(0, q.value ? 14 : 8))
-const all = computed<Item[]>(() => [...(showRecents.value ? recents.value : []), ...menus.value, ...feats.value])
+const decks = computed(() => slideItems.value.filter((it) => matches(it, q.value)).slice(0, q.value ? 10 : 4))
+const all = computed<Item[]>(() => [...(showRecents.value ? recents.value : []), ...menus.value, ...feats.value, ...decks.value])
 const offMenus = computed(() => (showRecents.value ? recents.value.length : 0))
 const offFeats = computed(() => offMenus.value + menus.value.length)
+const offDecks = computed(() => offFeats.value + feats.value.length)
 watch(all, () => { selected.value = 0 })
 
-function execute(item: Item) { pushRecent(item); guide.hidePalette(); query.value = ''; void router.push(item.path) }
+function execute(item: Item) {
+  pushRecent(item); guide.hidePalette(); query.value = ''
+  if (item.slide) { void slides.openRef(item.slide); return }   // 연결된 기능이 없는 쪽 — 제자리에서 연다
+  void router.push(item.path)
+}
 function onKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); guide.togglePalette(); return }
   if (!guide.paletteOpen) return
@@ -53,7 +79,7 @@ function onKeydown(e: KeyboardEvent) {
   else if (e.key === 'ArrowUp') { e.preventDefault(); selected.value = Math.max(0, selected.value - 1) }
   else if (e.key === 'Enter') { e.preventDefault(); const it = all.value[selected.value]; if (it) execute(it) }
 }
-watch(() => guide.paletteOpen, async (v) => { if (v) { void guide.load(); await nextTick(); inputRef.value?.focus() } else { query.value = ''; selected.value = 0 } })
+watch(() => guide.paletteOpen, async (v) => { if (v) { void guide.load(); void slides.load(); await nextTick(); inputRef.value?.focus() } else { query.value = ''; selected.value = 0 } })
 onMounted(() => { loadRecents(); window.addEventListener('keydown', onKeydown) })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
@@ -86,6 +112,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <button v-for="(it, i) in feats" :key="'f' + it.path + it.label" class="w-full flex items-start gap-2 px-3 py-2 text-left" :style="{ background: selected === offFeats + i ? 'var(--accent-primary-soft)' : 'transparent', color: 'var(--text-primary)' }" @mouseenter="selected = offFeats + i" @click="execute(it)">
               <div class="flex-1 min-w-0"><div class="text-sm font-medium">{{ it.label }} <span class="text-[11px] font-normal ml-1" style="color: var(--text-muted);">{{ it.tab }}</span></div><div class="text-xs truncate" style="color: var(--text-muted);">{{ it.desc }}</div></div>
               <CornerDownLeft v-if="selected === offFeats + i" :size="13" :stroke-width="1.75" class="mt-1 shrink-0" style="color: var(--text-muted);" />
+            </button>
+          </template>
+          <template v-if="decks.length">
+            <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">장표 {{ q ? '' : '(일부 — 꼬리표·본문으로 검색)' }}</div>
+            <button v-for="(it, i) in decks" :key="'s' + it.label" class="w-full flex items-start gap-2 px-3 py-2 text-left" :style="{ background: selected === offDecks + i ? 'var(--accent-primary-soft)' : 'transparent', color: 'var(--text-primary)' }" @mouseenter="selected = offDecks + i" @click="execute(it)">
+              <div class="flex-1 min-w-0"><div class="text-sm font-medium">{{ it.label }} <span v-if="it.tab" class="text-[11px] font-mono font-normal ml-1" style="color: var(--text-muted);">{{ it.tab }}</span></div><div class="text-xs truncate" style="color: var(--text-muted);">{{ it.desc }}</div></div>
+              <CornerDownLeft v-if="selected === offDecks + i" :size="13" :stroke-width="1.75" class="mt-1 shrink-0" style="color: var(--text-muted);" />
             </button>
           </template>
           <div v-if="all.length === 0" class="px-3 py-8 text-center text-sm" style="color: var(--text-muted);">{{ guide.loaded ? '결과 없음' : '카탈로그를 읽는 중…' }}</div>

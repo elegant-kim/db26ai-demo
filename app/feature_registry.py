@@ -9,8 +9,12 @@
 글자 그대로 맞춘다 — 화면과 다른 이름이 적혀 있으면 사람이 그 이름으로 화면을 못 찾는다.
 정본이 두 곳이 되지 않도록, 이 파일이 기능 카탈로그의 정본이다.
 
-path 형식: "탭id:사이드바항목" — 현재 레거시 UI 는 딥링크가 없어 위치 표기로만 쓴다.
-Phase 5 SPA 이식 때 실제 라우트(`/vector?sub=search`)로 승격한다.
+path 형식: 실제 라우트(`/vector?sub=search`) — 기능 지도의 [이동]·⌘K 가 그대로 push 한다.
+
+slides (선택, 7번째 자리): 이 기능을 설명하는 장표의 꼬리표 목록 — `["VS-12", "VS-13"]`.
+장표 연동(2026-09-29, P5)의 앵커 정본이 여기다. 페이지 헤더 「장표」 버튼·⌘K·매뉴얼이 같은 값을 본다.
+꼬리표는 docs/slides/README.md 규칙(`덱코드-번호`). 덱이 아직 없거나 꼬리표가 덱에 없으면 화면에서 조용히 빠진다
+(매뉴얼 › 장표 에 「덱에 없는 꼬리표」로만 보인다) — 문서보다 코드가 먼저여도 앱은 그대로 돈다.
 """
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ TAB_LABELS = {
     "extra": "기타 부가 기능",
 }
 
-# (tab, name, desc, how, path, keyword)
+# (tab, name, desc, how, path, keyword[, slides])
 _F = [
  # ── ① NL2SQL ──────────────────────────────────────────────
  ("nl2sql", "AI 프로필 선택", "Select AI 프로필(LLM 제공자·모델·참조 테이블 묶음) 전환",
@@ -164,9 +168,9 @@ _F = [
 ]
 
 FEATURES = [
-    {"tab": t, "tab_label": TAB_LABELS.get(t, t), "name": n, "desc": d,
-     "how": h, "path": p, "keyword": k}
-    for t, n, d, h, p, k in _F
+    {"tab": row[0], "tab_label": TAB_LABELS.get(row[0], row[0]), "name": row[1], "desc": row[2],
+     "how": row[3], "path": row[4], "keyword": row[5], "slides": list(row[6]) if len(row) > 6 else []}
+    for row in _F
 ]
 
 

@@ -12,6 +12,7 @@ from app.select_ai import (
     get_current_schema,
     list_profiles,
 )
+from app.slides import catalog as slides_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -182,3 +183,9 @@ async def guide_features():
         "groups": groups,
         "total": sum(len(g["items"]) for g in groups),
     }
+
+
+@router.get("/guide/slides")
+async def guide_slides():
+    """장표 카탈로그 — 덱 목록(이미지/PDF 모드 · 꼬리표→쪽) + 기능 레지스트리 `slides` 앵커를 (deck, page) 로 푼 것. 정본: docs/slides/ · app/slides.py."""
+    return {"success": True, **slides_catalog()}

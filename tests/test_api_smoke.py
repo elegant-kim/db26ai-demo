@@ -360,3 +360,51 @@ class TestVectorSubtabLinks:
                 if m:
                     subs.add(m.group(1))
         assert subs and subs <= {"env", "load", "search", "internals"}, subs
+
+
+class TestSlides:
+    """장표 연동(P5, 2026-09-29) — 카탈로그 API 와 /slides 정적 서빙. 표본 덱(docs/slides/src/sample.pdf)은 추적 파일이라 항상 있어야 한다."""
+
+    def test_카탈로그_모양과_표본_덱(self, client):
+        d = client.get("/api/guide/slides").json()
+        assert d["success"] is True
+        for k in ("available", "decks", "anchors", "unresolved"):
+            assert k in d
+        sample = next((x for x in d["decks"] if x["deck"] == "sample"), None)
+        assert sample, "표본 덱 sample 이 카탈로그에 없다 — docs/slides/src/sample.pdf 가 있어야 한다"
+        assert sample["mode"] in ("images", "pdf") and sample["pdf"] == "/slides/src/sample.pdf"
+        if sample["mode"] == "images":
+            assert sample["pages"] == 2 and sample["tags"] == {"SM-01": 1, "SM-02": 2}, sample["tags"]
+            assert sample["page_tags"] == ["SM-01", "SM-02"]
+
+    def test_정적_서빙_pdf_와_이미지(self, client):
+        r = client.get("/slides/src/sample.pdf")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("application/pdf")
+        d = client.get("/api/guide/slides").json()
+        sample = next(x for x in d["decks"] if x["deck"] == "sample")
+        if sample["mode"] == "images":
+            r = client.get(sample["image_base"] + "001.webp")
+            assert r.status_code == 200 and "image" in r.headers["content-type"]
+            assert client.get(sample["thumb"]).status_code == 200
+
+    def test_기능_항목마다_slides_필드가_있다(self, client):
+        for g in client.get("/api/guide/features").json()["groups"]:
+            for it in g["items"]:
+                assert isinstance(it.get("slides"), list), it["name"]
+
+    def test_앵커는_덱에_있는_꼬리표와_일치한다(self, client):
+        d = client.get("/api/guide/slides").json()
+        tags = {t for x in d["decks"] for t in x["tags"]}
+        for a in d["anchors"]:
+            assert a["tag"] in tags and a["page"] >= 1
+        for u in d["unresolved"]:
+            assert u["tag"] not in tags
+
+    def test_slides_경로_밖은_못_읽는다(self, client):
+        """`..` 를 URL 인코딩으로 숨겨도 StaticFiles 가 docs/slides 밖을 주면 안 된다. (클라이언트는 맨 `..` 을 미리 접어 `/.env` 로 보내는데,
+        그건 SPA 셸(HTML)이 받는다 — 시크릿이 아닌 것까지 확인한다.)"""
+        r = client.get("/slides/src/%2e%2e/%2e%2e/%2e%2e/.env")
+        assert r.status_code in (404, 400), r.status_code
+        r = client.get("/.env")
+        assert "text/html" in r.headers["content-type"] and "ORACLE_" not in r.text
+

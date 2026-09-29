@@ -2,6 +2,7 @@
 /** 페이지 h1 블록 — 아이콘 + 제목 + 괄호 부제 + 한 줄 설명 (06 문서 §4.1, investhub Invest.vue 패턴). */
 import { menuById, type MenuId } from '@/lib/menu'
 import { computed } from 'vue'
+import SlideAnchor from './SlideAnchor.vue'
 
 const props = defineProps<{ menu: MenuId; desc?: string }>()
 const m = computed(() => menuById(props.menu))
@@ -17,6 +18,7 @@ const m = computed(() => menuById(props.menu))
       </h1>
       <p v-if="desc" class="text-sm mt-1 m-0" style="color: var(--text-muted);">{{ desc }}</p>
     </div>
-    <div v-if="$slots.actions" class="shrink-0 flex items-center gap-2"><slot name="actions" /></div>
+    <!-- 우상단: 페이지 보조 버튼 + 「장표」(이 화면에 연결된 장표가 있을 때만 나타난다 — P5) -->
+    <div class="shrink-0 flex items-center gap-2"><slot name="actions" /><SlideAnchor /></div>
   </div>
 </template>

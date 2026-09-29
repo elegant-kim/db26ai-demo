@@ -75,7 +75,8 @@ scripts/deploy.sh
 | `app/config.py` | 40 | `.env` → Settings 클래스 (DB, 임베딩, LLM 설정) |
 | `app/database.py` | 56 | oracledb 비동기 커넥션 풀 (min=1, max=5, 120초 타임아웃) |
 | `app/select_ai.py` | 463 | Select AI 핵심: `DBMS_CLOUD_AI.GENERATE`, 프로필 관리, raw SQL 실행, 스키마 정보, Annotation, EXPLAIN PLAN |
-| `app/routes.py` | ~190 | 공통 5개 — health · llm/providers · guide 3. 6탭 API 는 전부 `app/routers/<tab>.py` (D8 완료) |
+| `app/routes.py` | ~200 | 공통 6개 — health · llm/providers · guide 4(docs·docs/{key}·features·**slides**). 6탭 API 는 전부 `app/routers/<tab>.py` (D8 완료) |
+| `app/slides.py` | ~110 | **장표(PPT/PDF) 카탈로그** (2026-09-29, P5) — `docs/slides/` 의 덱(이미지/PDF 모드)과 기능 레지스트리 `slides` 앵커를 (deck, page) 로 푼다. 규칙은 `docs/slides/README.md` |
 | `app/routers/graph.py` | 99 | ④ Property Graph 6개 엔드포인트 (5-1 에서 분리, 경로·응답 불변). 이식된 탭의 라우터는 여기 모인다 |
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
 | `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
@@ -111,7 +112,8 @@ scripts/deploy.sh
 | `web/src/pages/*.vue` | 7 페이지 전부 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`). `/` 는 `/nl2sql` 로 리다이렉트 |
 | `web/src/pages/vector/` | 서브탭 4 = 시연 순서 (2026-09-09 재편): **환경**(`VectorEnv`) → **적재**(`VectorLoad` — 단계별 실행 SQL·표본 펼침) → **검색·RAG**(`VectorSearch`, 모드 5) → **내부**(`VectorInternals` = 실행계획·테이블·`VectorEmbedding` 관리). 옛 `?sub=docs/store/embedding` 은 자동 매핑 |
 | `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화) → **스키마·Annotation**. 프로필 셀렉트는 페이지 헤더 공통 (2026-09-07 재설계) |
-| `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5) |
+| `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5). 장표 항목(`장표: 제목 p3 · VS-03`)도 여기 |
+| `web/src/components/demo/SlideViewer.vue` · `SlideAnchor.vue` · `stores/slides.ts` · `lib/slides.ts` · `pages/manual/ManualSlides.vue` | **장표 연동**(2026-09-29 P5): 뷰어는 AppShell 에 하나(오른쪽 슬라이드오버, 이미지/PDF 양쪽, ←→ 키, `?slide=` 양방향 동기화) · 「장표 n」 버튼은 `PageHeader` 가 자동으로 넣고 이 화면(경로+`?sub=`)에 연결된 앵커가 없으면 숨는다 · 매뉴얼 › 장표 = 덱 목록·앵커 표·덱에 없는 꼬리표 |
 | `web/src/composables/useSse.ts` | SSE 수신(fetch + ReadableStream) — PDF 업로드 전용 |
 | `web/src/lib/annotations.ts` | SH Display Annotation 세트 정본 (app.js 에서 이전, 5-5) |
 | `/styleguide` | 디자인 토대 검증 화면(메뉴에 없음) — 06 캡처와 대조하는 곳 |
@@ -122,6 +124,8 @@ scripts/deploy.sh
 | 경로 | 역할 |
 |---|---|
 | `scripts/deploy.sh` | **배포 한 방**: pytest → ruff → `npm run build` → kickstart → 스모크 |
+| `scripts/slides_import.py` · `slides_sample_deck.py` | **장표 변환**: `docs/slides/src/<deck>.pdf` → `out/<deck>/001.webp… + manifest.json`(제목·쪽·꼬리표→쪽). 표본 덱(2쪽, `SM-01/02`)은 헤드리스 Chrome 으로 만든다 |
+| `docs/slides/` | 장표 원본(`src/`)과 생성물(`out/`). **기본 gitignore**(공개 저장소 — 고객명·수치 보호), README 와 `src/sample.pdf` 만 추적. 준비 규칙·꼬리표 규칙은 `docs/slides/README.md` |
 | `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
 | `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
@@ -154,6 +158,11 @@ scripts/deploy.sh
 - `POST /api/explain-plan` — SQL 실행계획
 - `POST /api/execute-sql` — SELECT 문 직접 실행 (**SELECT로 시작하는 문장만 허용 — `WITH` CTE도 거부됨**). `SELECT AI …` 축약구문도 받는다 — `profile_name` 을 주면 **같은 커넥션에서 `SET_PROFILE` 후 실행**(없으면 ORA-00923)
 - `POST /api/env-info` — Select AI 환경 확인 3종 (`kind`: profile/acl/credential). 조회 SQL 정본은 `app/select_ai.py` 의 `ENV_QUERIES`
+
+### 매뉴얼 · 장표 (`app/routes.py`)
+- `GET /api/guide/docs` · `GET /api/guide/docs/{key}` — 화이트리스트 문서 목록/원문 (`docs/guides/*.md` + 현황 문서)
+- `GET /api/guide/features` — 기능 지도 (정본 `app/feature_registry.py`; 항목마다 `slides` 꼬리표 목록)
+- `GET /api/guide/slides` — 장표 카탈로그: 덱(`mode: images|pdf`, `tags` 꼬리표→쪽, `page_tags`) + `anchors`(레지스트리 꼬리표를 deck/page 로 푼 것) + `unresolved`. 파일은 `/slides/src/<deck>.pdf` · `/slides/out/<deck>/001.webp` 정적 마운트
 
 ### ② AI Vector Search (`app/routers/vector.py`)
 - `POST /api/vector/upload` — PDF 업로드 (SSE 스트리밍 진행률)
@@ -380,6 +389,7 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - `execute_raw_sql()` — SELECT 문만 허용 (보안). `WITH` CTE도 거부되니 주의
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
 - 프로필 이름에 'SH' 포함 시 SH 스키마용 예시 질문/Annotation 세트 적용 (`web/src/lib/annotations.ts` · `lib/nl2sql.ts`)
+- **딥링크 규약 3층**: `?sub=` 서브탭 · `&run=1` mount 직후 기본 동작 · `&slide=VS-12` 장표 뷰어(꼬리표 또는 `deck:page`). 시연 대본의 링크 하나가 화면+결과+장표를 연다
 - 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
 - AWR 결과 탭과 벡터 검색 세션 탭은 같은 `SessionTabs` 컴포넌트를 쓴다
 - 저장소는 **GitHub 공개(PUBLIC)** — 커밋 전 시크릿 검사 필수 (`docs/개발노하우.md` 참조)

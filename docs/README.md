@@ -46,6 +46,10 @@ docs/
 │   ├── 06_디자인_시스템.md      토큰·타이포·레이아웃·컴포넌트 스펙 · 편차 분류 (Phase 4-2)
 │   └── captures/               investhub 실제 화면 기준선 5장 + db26ai 현재 1장
 │
+├── 🎞 slides/             장표(PPT/PDF) — README(준비 규칙)·src/sample.pdf 만 추적, 나머지 gitignore (2026-09-29)
+│   ├── src/<deck>.pdf         PPT/Keynote 에서 내보낸 원본 (파일명 = 덱 ID, 장표마다 꼬리표 VS-12)
+│   └── out/<deck>/            scripts/slides_import.py 생성물 — 001.webp… · thumb.webp · manifest.json
+│
 ├── 📗 guides/             인앱 매뉴얼 원본 — 앱 「매뉴얼」 탭에서 열린다
 │   ├── 01_사용자_가이드.md      ✅ 6탭 사용법 · 성능 기준값 · 용어
 │   ├── 02_운영_가이드.md        ✅ 구동 구조 · 배포 절차 · ADB keepalive · 백업 · 시크릿

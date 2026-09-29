@@ -175,7 +175,8 @@ web/
 | `/graph` | Graph | `?sub=manage\|compare\|pattern\|viz` | |
 | `/productivity` | Productivity | `?sub=lockfree\|priority` | |
 | `/awr` | Awr | | 세션탭은 스토어 |
-| `/manual` | Manual | `?sub=features\|guide\|status&doc=user-guide` | 기능 레지스트리 `path` 가 여기로 승격 |
+| `/manual` | Manual | `?sub=features\|guide\|status\|slides&doc=user-guide` | 기능 레지스트리 `path` 가 여기로 승격. `slides` = 장표 덱 목록·앵커 표 (2026-09-29) |
+| (전 페이지) | — | `&slide=VS-12` 또는 `&slide=deck:3` | **장표 뷰어 딥링크** (2026-09-29 P5). `SlideViewer` 가 URL 과 양방향 동기화 — 쪽을 넘기면 쿼리가 따라가고, 닫으면 지워진다. 없는 꼬리표면 쿼리를 지우고 조용히 넘어간다 |
 | `/legacy` | (FastAPI 가 Jinja 서빙) | `#tab` | 이식 기간 한정 |
 
 기능 레지스트리(`app/feature_registry.py`)의 `path` 필드는 현재 `"vector:검색 모드"` 같은 위치 표기다.
@@ -395,6 +396,19 @@ Priority 시뮬은 ADB 에서 2~6단계가 설명이라는 사실을 화면에 �
 
 라우터 `vector.py`(25개). `vector_search.py` 는 그대로.
 **완료 판정:** 4모드 회귀 테스트 통과 · 자연어 질문에서 keyword 점수 > 0 · 세션탭 전환 시 대화 보존.
+
+### 6.8 · 장표(PPT/PDF) 연동 P5 (Fable) — ✅ 완료 2026-09-29
+
+발표 자료를 **앱 화면 옆에** 띄운다. 방식 검토(A 이미지 사전 변환 / B PDF iframe / C 외부 / D HTML / E 마크다운 / F BLOB)에서 **A 정본 + B 임시 경로**로 확정(4-20). 문서 준비 규칙은 `docs/slides/README.md`(파일명 = 덱 ID · 장표마다 꼬리표 `VS-12` · PDF 내보내기).
+
+| 층 | 구현 |
+|---|---|
+| 변환 | `scripts/slides_import.py` — pypdfium2 렌더 → WebP 1600px + `manifest.json`(제목·쪽·`tags` 꼬리표→쪽·`page_tags`·쪽별 텍스트 300자). 덱 코드는 "쪽의 마지막 꼬리표" 최빈 접두어(본문이 다른 덱 꼬리표를 언급해도 안 밀린다), `--code` 로 못 박기 |
+| 서빙 | `main.py` `/slides` → `docs/slides`(StaticFiles, `check_dir=False` — gitignore 라 clone 직후 없을 수 있다) · `GET /api/guide/slides` (`app/slides.py`) |
+| 앵커 정본 | `app/feature_registry.py` 튜플 7번째 자리 `["VS-12"]` → `FEATURES[].slides`. 덱에 없는 꼬리표는 `unresolved` 로만 |
+| 화면 | `SlideViewer`(AppShell 에 하나, 슬라이드오버 1040px, 이미지/PDF, ←→/ESC, 쪽 번호 줄, 「이 화면에 연결된 장표」) · `SlideAnchor`(PageHeader 자동, 이 화면의 앵커 = `pathBelongsTo(경로, ?sub=)`, 없으면 미렌더) · ⌘K 「장표」 그룹 · 매뉴얼 › 장표 |
+
+검증은 표본 덱(`src/sample.pdf`, `SM-01/02`)으로 끝까지: 버튼 → 뷰어 → →키로 2쪽 + URL `?slide=SM-02` → ESC 로 쿼리 제거 → 딥링크 진입 → ⌘K "장표" → 매뉴얼 탭의 덱 카드·앵커 표·「덱에 없는 꼬리표」. 실제 덱 앵커 배치는 P6(레지스트리에 꼬리표만 적으면 된다).
 
 ### 6.7 · 5-7 매뉴얼 + ⌘K (~~Opus~~ Fable — 사용자 결정) — ✅ 완료 2026-09-05
 

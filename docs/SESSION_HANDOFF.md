@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-05 (**Phase 6 완료 = 계획서 전체 완료.** 새 화면 단일 서빙, 레거시 없음) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-09-29 (Vector 탭 재편 P5 = 장표 연동 기반 완료. 남은 것 P6·P7, ④ Select AI RAG 논의) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -14,9 +14,9 @@
 
 ## 1. 한 줄 요약
 
-Oracle AI Database 26ai 기능 데모 앱. **FastAPI(:8247) + Oracle ADB 26ai + Vue 3(CDN, 빌드 없음)**.
-6개 탭(NL2SQL / Vector Search / JSON Duality / Property Graph / 개발생산성 / AWR 분석).
-macOS launchd 로 상시 구동. **서버는 자동 리로드가 없어 코드 변경 후 수동 재기동 필요.**
+Oracle AI Database 26ai 기능 데모 앱. **FastAPI(:8247) + Oracle ADB 26ai + Vue 3/TS/Vite SPA(`web/`, 빌드 산출물 `web/dist` 서빙)**.
+6개 탭(NL2SQL / Vector Search / JSON Duality / Property Graph / 개발생산성 / AWR 분석) + 매뉴얼.
+macOS launchd 로 상시 구동. **.py 저장 시 uvicorn 이 스스로 재기동**(reload=True) — `.env`·`web/dist` 변경만 수동 `kickstart`. (2026-09-29 정정: 이 줄이 5-4 이후의 코드와 달랐다)
 
 ## 2. 운영 빠른 참조
 
@@ -564,6 +564,24 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 
 **남은 것** — P5 장표 기반(변환 스크립트 · `/slides` 마운트 · 뷰어 · `?slide=` · 레지스트리 `slides` 필드) → P7 마무리(RAG 출처 배지 등). ④ Select AI RAG 논의.
 
+## 4-23. 장표(PPT/PDF) 연동 기반 P5 (2026-09-29, Fable 5.1)
+
+**목적** — 첫 PDF 가 떨어지는 날 바로 시연이 되게, 문서보다 앱을 먼저 만들었다. 문서는 지금 쓰는 도구로 그대로 만들고 앱이 맞춘다(4-20 확정: A 이미지 사전 변환 정본 + B PDF iframe 임시).
+
+**만든 것**
+- `docs/slides/README.md` — 준비 규칙(PDF 내보내기 · 파일명 = 덱 ID · 장표마다 꼬리표 `VS-12` · 변환 명령). `docs/slides/**` 는 **gitignore**, README 와 표본 덱 `src/sample.pdf` 만 추적.
+- `scripts/slides_sample_deck.py` — 표본 덱 2쪽(`SM-01/02`, 헤드리스 Chrome print-to-pdf, 텍스트 살아 있음). `scripts/slides_import.py` — pypdfium2 → WebP 1600px + `manifest.json`(제목·쪽·꼬리표→쪽·쪽별 텍스트). 변환 0.1초/쪽.
+  덱 코드 판정 함정: 본문이 `VS-12` 를 예로 든 문장 때문에 첫 판은 `VS` 를 덱 코드로 잡았다 → "쪽의 마지막 꼬리표"가 가장 많은 접두어로 고치고 `--code` 로 못 박을 수 있게.
+- `app/slides.py` + `GET /api/guide/slides` + `main.py` `/slides` 정적 마운트(`check_dir=False`). `feature_registry.py` 튜플 7번째 자리 `slides`(모든 항목에 `slides: []` 가 생긴다).
+- 화면: `SlideViewer`(AppShell 에 하나, `?slide=` 양방향 동기화, ←→/ESC) · `SlideAnchor`(PageHeader 자동 — 이 화면(경로+`?sub=`)의 앵커, 없으면 미렌더) · ⌘K 「장표」 그룹 · 매뉴얼 › **장표** 서브탭(덱 카드·앵커 표·「덱에 없는 꼬리표」).
+
+**검증** — 레지스트리에 임시 앵커(`SM-01/02`, 없는 `VS-99`)를 넣고 브라우저로 끝까지: 헤더 「장표 2」 → 뷰어(1600px 이미지) → → 키로 2쪽 + URL `?slide=SM-02` → ESC 로 쿼리 제거 → 딥링크 `/vector?sub=search&mode=hvi&slide=SM-02` → ⌘K "장표" 2항목 → Enter 로 화면 이동+열림 → 매뉴얼 장표 탭에 덱 1·앵커 3·미해결 `VS-99`. **임시 앵커는 커밋 전 원복**(실제 앵커는 P6 에서 실제 덱과 함께). 테스트 +8(단위 3 · 통합 5). 캡처 `slides_viewer_light` · `manual_slides_light`.
+경로 탈출 테스트에서 httpx 가 `..` 을 먼저 접어 `/.env` 로 보내는 것을 배웠다(`개발노하우.md` 3.4) — 인코딩해서 보내야 StaticFiles 검사가 걸린다.
+
+**같은 날 관찰** — `TestSelectAiShorthand` 2건이 httpx ReadTimeout 으로 실패. 서버 밖에서 DB 에 직접 `SELECT AI chat` 을 보내도 90초 call timeout(`DPY-4024`) — DB→Gemini 경로가 이날 응답하지 않았다. P5 는 select_ai 를 건드리지 않았고 다른 62건은 통과. 열린 과제 9.
+
+**남은 것** — **P6** 실제 덱이 오면 레지스트리 `slides` 에 꼬리표만 적고(코드 변경 없음) 시연 대본에 `&slide=` 링크 → **P7** RAG 출처 배지 · 가이드/설계서 최종 · 캡처. ④ Select AI RAG 논의(OCI Object Storage 전제).
+
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
 - **커밋 전 시크릿 게이트 필수.** 저장소가 GitHub 공개다. 한번 push 된 시크릿은
@@ -586,6 +604,7 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
+| 9 | **GEMINI 경유 `SELECT AI` 가 2026-09-29 에 응답 없음** — 서버 밖에서 python-oracledb 로 직접 `SET_PROFILE` → `SELECT AI chat 안녕하세요` 를 보내도 `DPY-4024`(90초 call timeout). 앱 코드와 무관(P5 는 select_ai 미접촉, 같은 날 다른 62건 통과). DB→Gemini 아웃바운드 경로(ACL·키·Gemini 측)를 다음 세션에 다시 확인. 그동안 `TestSelectAiShorthand` 2건 + `TestNL2SQL::test_showsql` 이 ReadTimeout 으로 실패한다(셋 다 GEMINI 경유 GENERATE) | 4-23 |
 
 ## 7. 새 세션 첫 단계 권장
 

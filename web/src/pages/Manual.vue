@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { Map as MapIcon, BookOpen, Activity, type LucideIcon } from 'lucide-vue-next'
+import { Map as MapIcon, BookOpen, Activity, Presentation, type LucideIcon } from 'lucide-vue-next'
 import PageHeader from '@/components/demo/PageHeader.vue'
 import SubTabs from '@/components/demo/SubTabs.vue'
 import { useSubTab } from '@/composables/useSubTab'
 import FeatureMap from './manual/FeatureMap.vue'
 import ManualDocs from './manual/ManualDocs.vue'
+import ManualSlides from './manual/ManualSlides.vue'
 
-type TabId = 'features' | 'guide' | 'status'
+type TabId = 'features' | 'guide' | 'status' | 'slides'
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: 'features', label: '기능 지도', icon: MapIcon },
   { id: 'guide', label: '사용 설명서', icon: BookOpen },
   { id: 'status', label: '현재 상태 · 계획', icon: Activity },
+  { id: 'slides', label: '장표', icon: Presentation },
 ]
-const { sub, set } = useSubTab<TabId>(['features', 'guide', 'status'], 'features')
+const { sub, set } = useSubTab<TabId>(['features', 'guide', 'status', 'slides'], 'features')
 </script>
 
 <template>
@@ -22,6 +24,7 @@ const { sub, set } = useSubTab<TabId>(['features', 'guide', 'status'], 'features
     <KeepAlive>
       <FeatureMap v-if="sub === 'features'" />
       <ManualDocs v-else-if="sub === 'guide'" kind="guides" key="guides" />
+      <ManualSlides v-else-if="sub === 'slides'" />
       <ManualDocs v-else kind="docs" key="docs" />
     </KeepAlive>
   </div>
