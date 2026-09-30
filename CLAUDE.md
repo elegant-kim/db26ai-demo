@@ -302,7 +302,7 @@ EMBEDDING_API_KEY=
 # LLM (AWR 분석, RAG 답변 생성용)
 LLM_PROVIDER=google                    # "groq" 또는 "google"
 GROQ_API_KEY= / GROQ_MODEL=llama-3.3-70b-versatile
-GOOGLE_API_KEY= / GOOGLE_MODEL=gemini-2.5-flash
+GOOGLE_API_KEY= / GOOGLE_MODEL=gemini-3.8-flash
 ```
 
 ## Key Oracle DB Dependencies

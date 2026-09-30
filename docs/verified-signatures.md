@@ -85,7 +85,7 @@ SELECT table_name, privilege FROM user_tab_privs WHERE table_name IN ('DBMS_CLOU
 
 **앱 설계 귀결**(`app/feedback.py`): 피드백 저장 시 같은 커넥션에서 `SET_PROFILE` → 문장이 매핑돼 있지 않으면 `SELECT AI showsql <질문>` 1회 실행(LLM) → `sql_text` 오버로드 FEEDBACK → `AI_FEEDBACK_LOG` INSERT, 실패 시 rollback. 채택 근거는 이 표.
 
-**모델 id (2026-09-30, 이 키·무료 등급)**: `gemini-2.5-pro` → 404 "no longer available to new users" · `gemini-pro-latest`/`gemini-3.1-pro-preview` → 429(무료 등급 할당량 0) · `gemini-2.5-flash`/`gemini-flash-latest` → 200. Pro 계열은 결제 연결 뒤에만 의미가 있다.
+**모델 id (2026-09-30, 이 키·무료 등급)**: `gemini-2.5-pro` → 404 "no longer available to new users" · `gemini-pro-latest`/`gemini-3.1-pro-preview` → 429(무료 등급 할당량 0) · `gemini-2.5-flash`/`gemini-flash-latest`/**`gemini-3.8-flash`**(채택, 프로필·기본값) → 200. Pro 계열은 결제 연결 뒤에만 의미가 있다. 목록에는 3-flash-preview · 3.1-flash-lite · 3.5/3.6/3.7/3.8-flash · 3.1-pro-preview 도 있다.
 
 ## 7. 열린 항목 (실측 못 한 것)
 
