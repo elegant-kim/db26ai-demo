@@ -638,6 +638,14 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 검증: 단위 3 + 통합 3(메타 · 미리보기/400 · **OCI 모의 프로필 생성 → env-info 에 provider=oci·region·oci_apiformat → 삭제**) 통과. 실제 OCI 호출은 테넌시에 GenAI 리전 구독이 없어 미실측.
 **남은 것**: ~~Phase 4~~ → 4-33.
 
+## 4-34. 사용자 피드백 반영 — 탭 순서 · 질문 탭 2단 레이아웃 · 직접 입력 · 헤더 모델 칩 (2026-10-01, Fable 5.1)
+
+- 서브탭 순서 **환경 → 스키마·Annotation → 질문 → 피드백·Few-shot → 이력**.
+- 질문 탭을 **2단**으로: 왼쪽 접이식 「실행 설정」 패널(실행 모드 세로 목록 · 예시/프리셋 관리 · 대화 설정 · 도구=정확도 시나리오/프로필 비교) + 오른쪽 대화·입력줄. 전역 사이드바는 설계서 05 대로 두지 않는다. 접힘은 `localStorage['db26ai.nl2sql.panel']`.
+- 시나리오·비교 버튼은 항상 눌리고 입력이 비면 토스트 안내. Few-shot 탭에 「파일 없이 직접 입력」 한 건 폼(`fewshot.addManual`).
+- 헤더 모델 칩이 `gemini-2.5-flash` 로 굳어 있던 원인 둘: `llm_client.py` `display_name` 에 모델명이 박혀 있었고(제거), `.env` 변경은 재기동해야 반영(kickstart). `/api/llm/providers` 가 이제 `.env` 의 `GOOGLE_MODEL` 을 그대로 준다.
+- `GEMINI_SH_NATIVE` 는 Agent 샘플 팀이 만든 provider=google 프로필 — NL2SQL 프로필 목록에도 보인다(같은 테이블이라 그대로 써도 된다).
+
 ## 4-33. Phase 4 Select AI Agent 탭 (2026-09-30, Fable 5.1) — 요청서 Phase 0~4 전부 완료
 
 `app/agent.py` + `routers/agent.py`(5 엔드포인트) + `sql/setup/73`(AI_QUERY_LOG.exec_id). 실측은 `verified-signatures.md` §8 — 핵심 둘: **OpenAI 호환 프로필로는 Agent 의 마지막 호출이 HTTP 400** → 샘플 팀 생성이 provider=google `GEMINI_SH_NATIVE`(같은 크리덴셜·테이블)를 자동으로 만든다 · RUN_TEAM 은 `conversation_id` 필수.

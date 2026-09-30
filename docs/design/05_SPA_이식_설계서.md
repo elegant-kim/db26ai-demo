@@ -169,7 +169,7 @@ web/
 | 경로 | 페이지 | 서브탭 쿼리 | 비고 |
 |---|---|---|---|
 | `/` | → `/nl2sql` 리다이렉트 | | |
-| `/nl2sql` | Nl2sql | `?sub=env\|ask\|schema` | 기본 진입 = env (2026-09-07). `?profile=` 은 페이지 헤더 셀렉트에 적용, `?sub=env&run=1` 은 실제 호출 테스트 |
+| `/nl2sql` | Nl2sql | `?sub=env\|schema\|ask\|fewshot\|history` | 기본 진입 = env. 순서 2026-10-01 재배치(환경→스키마→질문→피드백·Few-shot→이력). `?profile=` 은 페이지 헤더 셀렉트, `?sub=env&run=1` 실제 호출 테스트, `?sub=ask&q=…&action=…&run=1` 질문 자동 전송. 질문 탭은 2단(왼쪽 접이식 실행 설정 패널) |
 | `/vector` | Vector | `?sub=env\|load\|search\|internals` | 기본 진입 = env (2026-09-09). 옛 `docs→load`, `store/embedding→internals` 로 자동 매핑 |
 | `/duality` | Duality | `?sub=views\|compare\|crud\|etag` | |
 | `/graph` | Graph | `?sub=manage\|compare\|pattern\|viz` | |
