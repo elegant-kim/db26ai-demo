@@ -45,8 +45,8 @@ function goManual() { router.push(menuById('manual').path) }
           <path d="M32,2 L68,2 C84.6,2 98,15.4 98,32 C98,48.6 84.6,62 68,62 L32,62 C15.4,62 2,48.6 2,32 C2,15.4 15.4,2 32,2 Z M32,12 C21,12 12,21 12,32 C12,43 21,52 32,52 L68,52 C79,52 88,43 88,32 C88,21 79,12 68,12 L32,12 Z" fill="#C74634"/>
         </svg>
         <!-- 1400px 미만에서는 짧은 이름 — 메뉴 7개 + 상태칩이 한 줄에 들어가는 폭의 경계(실측) -->
-        <span class="hidden min-[1400px]:inline">Oracle AI Database 26ai 데모</span>
-        <span class="min-[1400px]:hidden">26ai 데모</span>
+        <span class="hidden min-[1500px]:inline">Oracle AI Database 26ai 데모</span>
+        <span class="min-[1500px]:hidden">26ai 데모</span>
       </div>
 
       <TopNav class="hidden md:flex flex-1 min-w-0 overflow-x-auto" />

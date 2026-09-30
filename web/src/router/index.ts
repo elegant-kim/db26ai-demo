@@ -10,6 +10,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/graph', component: () => import('@/pages/Graph.vue'), meta: { menu: 'graph' } },
   { path: '/productivity', component: () => import('@/pages/Productivity.vue'), meta: { menu: 'productivity' } },
   { path: '/awr', component: () => import('@/pages/Awr.vue'), meta: { menu: 'awr' } },
+  { path: '/agent', component: () => import('@/pages/Agent.vue'), meta: { menu: 'agent' } },
   { path: '/manual', component: () => import('@/pages/Manual.vue'), meta: { menu: 'manual' } },
   // 디자인 토대 검증 화면 (5-0). 메뉴에는 없다 — URL 로만 진입.
   { path: '/styleguide', component: () => import('@/pages/Styleguide.vue') },

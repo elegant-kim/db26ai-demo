@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Oracle AI Database 26ai 데모 애플리케이션. **6개 탭**으로 구성:
+Oracle AI Database 26ai 데모 애플리케이션. **7개 탭**으로 구성(2026-09-30 ⑦ 추가):
 
 | # | 탭 라벨 (화면 그대로) | 내용 | 모듈 |
 |---|---|---|---|
@@ -18,6 +18,7 @@ Oracle AI Database 26ai 데모 애플리케이션. **6개 탭**으로 구성:
 | 4 | **Property Graph** | SQL/PGQ 그래프, SQL vs PGQ 비교, 패턴 질의 | `graph.py` |
 | 5 | **개발생산성 향상** | Lock-Free Reservations, Priority Transactions 시뮬레이션 | `productivity.py` |
 | 6 | **기타 부가 기능** | AWR HTML 리포트 업로드 → LLM 성능 분석 | `awr_analyzer_v2.py` |
+| 7 | **Select AI Agent** | `DBMS_CLOUD_AI_AGENT` — 툴·에이전트·태스크·팀 정의, `RUN_TEAM` 대화(Thinking·단계 시간), Agent History | `agent.py` |
 
 대상: Oracle 26ai의 AI·컨버지드 기능을 처음 접하는 개발자/DBA.
 Oracle Autonomous Database + python-oracledb thin client 기반.
@@ -89,6 +90,7 @@ scripts/deploy.sh
 | `app/accuracy.py` | ~120 | 정확도 개선 시나리오 ①②③ — 프로필 속성 토글(SET_ATTRIBUTE)·피드백 등록·복원, SSE (PoC 2-B·2-C) |
 | `app/fewshot.py` | ~190 | Few-shot 일괄 등록 — 파일 파싱(헤더 느슨) · EXPLAIN PLAN 검증 · SSE 등록(행당 LLM 1회) · 프로필 피드백 전체 삭제 (PoC 2-A) |
 | `app/feedback.py` | ~150 | 답변 피드백 — `DBMS_CLOUD_AI.FEEDBACK` + `AI_FEEDBACK_LOG` 한 트랜잭션, 상태(embedding_model·`_FEEDBACK_VECINDEX`·건수) (PoC 1-B). 실측 근거는 `docs/verified-signatures.md` §6 |
+| `app/agent.py` · `app/routers/agent.py` | ~300 · ~110 | ⑦ Select AI Agent — 정의(USER_AI_AGENT_* 뷰) · 샘플 팀(네이티브 프로필 자동) · `RUN_TEAM`(conversation_id 필수, 히스토리 뷰로 단계·툴 호출, AI_QUERY_LOG source=RUN_TEAM + exec_id) · History (Phase 4, 2026-09-30) |
 | `app/routers/vector.py` | ~640 | ② Vector 22개 엔드포인트 — 업로드(SSE)·검색·문서·테이블·임베딩 설정·ONNX (5-6 에서 분리) |
 | `app/vector_search.py` | ~1,530 | 벡터 검색 전체: PDF 업로드(SSE), 청킹, 임베딩(ONNX/외부API), 검색 4종, RAG, ONNX 모델 관리, 풀 워밍 |
 | `app/duality.py` | ~540 | JSON Relational Duality View 생성/삭제/조회, 관계형↔JSON 비교(**양쪽 PK 정렬 — 같은 행이 마주 봐야 비교다**), 문서 CRUD, ETag 시뮬레이션(**4단계 = DB 의 ORA-42699 거부, 원복은 `_metadata` 없이**) |
@@ -118,6 +120,7 @@ scripts/deploy.sh
 | `web/src/components/demo/RecentQueriesPanel.vue` | 「실행 쿼리 확인」 슬라이드 패널 — 전 탭 공통, `endpoint` prop 만 다르다 |
 | `web/src/pages/*.vue` | 7 페이지 전부 이식 완료(각 `pages/<tab>/` + `stores/<tab>.ts` + `lib/<tab>.ts`). `/` 는 `/nl2sql` 로 리다이렉트 |
 | `web/src/pages/vector/` | 서브탭 4 = 시연 순서 (2026-09-09 재편): **환경**(`VectorEnv`) → **적재**(`VectorLoad` — 단계별 실행 SQL·표본 펼침) → **검색·RAG**(`VectorSearch`, 모드 5) → **내부**(`VectorInternals` = 실행계획·테이블·`VectorEmbedding` 관리). 옛 `?sub=docs/store/embedding` 은 자동 매핑 |
+| `web/src/pages/agent/` · `stores/agent.ts` · `lib/agent.ts` | ⑦ 서브탭 3: **정의**(`AgentDefine` — 객체 4종 카드 + 샘플 팀 만들기/삭제 + 실행한 PL/SQL) → **실행**(`AgentRun` — 팀 선택·Multi Turn·새 대화, 답 아래 Thinking/단계별 시간/메타/피드백) → **Agent History**(`AgentHistory` — 필터·표·상세 모달·피드백 편집) |
 | `web/src/pages/nl2sql/` | 서브탭 3 = 시연 순서: **환경**(`Nl2sqlEnv` — 프로필→크리덴셜→ACL 사슬 + 실제 호출 테스트) → **질문**(`Nl2sqlAsk` 대화 — **멀티턴** Multi Turn·이어서 질문하기·정상답변시 초기화·새 대화, 답변 메타 줄, SQL/프롬프트 접기; 2026-09-29 PoC 1-A) → **스키마·Annotation** → **이력**(`Nl2sqlHistory` — 요약 카드·프로필별 소요·필터·표·상세 모달, PoC 1-C) → **피드백 · Few-shot**(`Nl2sqlFewshot` — 파일 업로드·검증·SSE 일괄 등록·등록된 피드백 목록/삭제, PoC 2-A). 프로필 셀렉트는 페이지 헤더 공통. conversation_id 와 토글은 브라우저(localStorage)가 들고 매 요청 보낸다 — 서버 무상태 |
 | `web/src/components/layout/CommandPalette.vue` · `stores/guide.ts` · `lib/guide.ts` | ⌘K 빠른 이동 + 매뉴얼 탭 데이터(`/api/guide/*`). 기능 카탈로그 정본은 `app/feature_registry.py` (D5). 장표 항목(`장표: 제목 p3 · VS-03`)도 여기 |
 | `web/src/components/demo/SlideViewer.vue` · `SlideAnchor.vue` · `stores/slides.ts` · `lib/slides.ts` · `pages/manual/ManualSlides.vue` | **장표 연동**(2026-09-29 P5): 뷰어는 AppShell 에 하나(오른쪽 슬라이드오버, 이미지/PDF 양쪽, ←→ 키, `?slide=` 양방향 동기화) · 「장표 n」 버튼은 `PageHeader` 가 자동으로 넣고 이 화면(경로+`?sub=`)에 연결된 앵커가 없으면 숨는다 · 매뉴얼 › 장표 = 덱 목록·앵커 표·덱에 없는 꼬리표 |
@@ -221,6 +224,12 @@ scripts/deploy.sh
 - `POST /api/productivity/lockfree` — Lock-Free Reservations 시뮬레이션
 - `POST /api/productivity/priority-tx` — Priority Transactions 시뮬레이션
 - `GET /api/productivity/recent-queries` — V$SQL 최근 쿼리
+
+### ⑦ Select AI Agent (`app/routers/agent.py`)
+- `GET /api/agent/definitions` — 팀·에이전트·태스크·툴 + 속성 JSON
+- `POST /api/agent/demo-team` {base_profile} · `DELETE /api/agent/demo-team` — 샘플 팀(SQL 툴 → 에이전트 → 태스크 → 팀 sequential). OpenAI 호환 프로필이면 provider=google `GEMINI_SH_NATIVE` 를 자동 생성해 쓴다(Agent 의 마지막 호출이 호환 엔드포인트에서 HTTP 400)
+- `POST /api/agent/run` {team_name, prompt, conversation_id?} — `RUN_TEAM` → 답 · team_exec_id · tasks · tools(Thinking) · sql · log_id · conversation_id
+- `GET /api/agent/history` · `/history/{exec_id}` — `USER_AI_AGENT_TEAM_HISTORY` ⋈ `AI_QUERY_LOG.exec_id` ⋈ 피드백
 
 ### ⑥ 기타 부가 기능 (AWR) (`app/routers/awr.py`)
 - `POST /api/awr/analyze` — AWR HTML 업로드 + LLM 분석 (**JSON 1회 응답, 30~120초** — SSE 아님. 2026-09-05 정정)

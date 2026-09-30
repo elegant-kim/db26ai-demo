@@ -23,6 +23,7 @@ GROUPS = [
     ("④ Property Graph", ["/graph/"]),
     ("⑤ 개발생산성 향상", ["/productivity/"]),
     ("⑥ 기타 부가 기능 (AWR)", ["/awr/"]),
+    ("⑦ Select AI Agent", ["/agent/"]),
     ("매뉴얼", ["/guide/"]),
 ]
 

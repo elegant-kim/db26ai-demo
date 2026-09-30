@@ -107,7 +107,7 @@ async def drop_conversation(pool, conversation_id: str) -> None:
 
 
 _LOG_COLS = ("source", "profile_name", "action", "question", "generated_sql", "response_text", "status",
-             "error_msg", "elapsed_ms", "conversation_id", "row_count", "model", "sql_id")
+             "error_msg", "elapsed_ms", "conversation_id", "row_count", "model", "sql_id", "exec_id")
 
 
 async def _insert_query_log(conn, **f) -> int | None:

@@ -636,7 +636,13 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 `app/profiles.py`: PROVIDERS 9(패키지 PROVIDER_* 상수 실측) · OCI GenAI 리전 8(한국 없음 → 오사카 첫째) · `build_attributes`(OCI region 필수, Azure 리소스 필수, 빈 값 제외) · `plsql_for` · `credential_kind`(이름·username 으로만 추정 — 키 값은 어떤 뷰에도 없다) · `wizard_meta`(크리덴셜·현재 스키마 테이블(내부 테이블 제외)). 엔드포인트 3(meta · profiles/create(preview_only) · DELETE profiles/{name}).
 화면: `lib/nl2sql.ts` `providerInfo`(OCI 는 region 으로 호스트 유도, 추가 속성 노출) · `credentialKind` → 환경 탭 ① 카드에 provider 라벨·region·oci_* 행, ② 카드에 「유형」, ③ 카드에 유도 근거 문구. `ProfileWizard.vue`(폼 + PL/SQL 미리보기 + 실행 → `reloadProfiles(name)`).
 검증: 단위 3 + 통합 3(메타 · 미리보기/400 · **OCI 모의 프로필 생성 → env-info 에 provider=oci·region·oci_apiformat → 삭제**) 통과. 실제 OCI 호출은 테넌시에 GenAI 리전 구독이 없어 미실측.
-**남은 것**: Phase 4 Select AI Agent(정의 · 실행 · History).
+**남은 것**: ~~Phase 4~~ → 4-33.
+
+## 4-33. Phase 4 Select AI Agent 탭 (2026-09-30, Fable 5.1) — 요청서 Phase 0~4 전부 완료
+
+`app/agent.py` + `routers/agent.py`(5 엔드포인트) + `sql/setup/73`(AI_QUERY_LOG.exec_id). 실측은 `verified-signatures.md` §8 — 핵심 둘: **OpenAI 호환 프로필로는 Agent 의 마지막 호출이 HTTP 400** → 샘플 팀 생성이 provider=google `GEMINI_SH_NATIVE`(같은 크리덴셜·테이블)를 자동으로 만든다 · RUN_TEAM 은 `conversation_id` 필수.
+화면: 상단 메뉴 ⑦ 「AI Agent」(`menu.ts`·router, 로고 축약 폭 1500px) → `pages/agent/`(정의 · 실행 · Agent History) + `stores/agent.ts` + `lib/agent.ts`. 실행 탭은 답 아래 Thinking(툴 입력→출력)·단계별 시간(태스크/툴 ms, RUN_TEAM 왕복과 태스크 합 차이 = 스케줄러)·메타·FeedbackBox. 기능 레지스트리 탭 7(테스트 `len(groups) == 7`).
+검증: 통합 2(샘플 팀 생성+정의 · RUN_TEAM 1턴 → 히스토리 표·상세·404) 통과, 브라우저 실행·Thinking·단계 시간 확인.
 
 ## 4-31. 방향 정정(일반 시연용) + 3-C 프로필 비교 (2026-09-30, Fable 5.1)
 

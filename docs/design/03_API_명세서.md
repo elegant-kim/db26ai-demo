@@ -3,7 +3,7 @@
 > **정본은 라우트 정의와 docstring 이다** (`app/routes.py` + `app/routers/*.py`). 이 문서는
 > `scripts/gen_api_doc.py` 가 생성한다 — **손으로 고치지 말고 코드를 고친 뒤 다시 생성할 것.**
 > 엔드포인트를 추가·변경하면 같은 커밋에서 이 문서와 `CLAUDE.md` API 목록을 함께 갱신한다.
-> 전체 **84개** 엔드포인트 · 공통 prefix `/api`
+> 전체 **90개** 엔드포인트 · 공통 prefix `/api`
 
 ## 공통 규약
 
@@ -145,6 +145,17 @@
 | `POST` | `/api/awr/followup` | AWRFollowupRequest | AWR 분석 결과에 대한 후속 질문 | `app/routers/awr.py:122` |
 | `GET` | `/api/awr/source/{session_id}` | — | AWR HTML 원문 보기 | `app/routers/awr.py:160` |
 
+## ⑦ Select AI Agent
+
+| Method | 경로 | 요청 | 설명 | 구현 |
+|---|---|---|---|---|
+| `GET` | `/api/agent/definitions` | — | 팀·에이전트·태스크·툴 목록 + 속성 JSON (USER_AI_AGENT_* 뷰). 샘플 이름은 demo 로 같이 준다. | `app/routers/agent.py:38` |
+| `DELETE` | `/api/agent/demo-team` | — | 샘플 팀·태스크·에이전트·툴 삭제(프로필은 남긴다). | `app/routers/agent.py:62` |
+| `POST` | `/api/agent/demo-team` | DemoTeamRequest | 샘플 팀 생성 — provider=google 네이티브 프로필(없으면 base 프로필에서 복사 생성) → SQL 툴 → 에이전트 → 태스크 → 팀(sequential). 있으면 지우고 다시. | `app/routers/agent.py:50` |
+| `GET` | `/api/agent/history` | — | Agent History — USER_AI_AGENT_TEAM_HISTORY ⋈ AI_QUERY_LOG(exec_id) ⋈ 최근 피드백. 필터 질문 LIKE·기간·팀·상태. | `app/routers/agent.py:93` |
+| `GET` | `/api/agent/history/{exec_id}` | — | 실행 한 건 — 팀 행 + 태스크 단계 + 툴 호출 + 앱 로그(답·SQL) + 피드백. | `app/routers/agent.py:105` |
+| `POST` | `/api/agent/run` | RunRequest | DBMS_CLOUD_AI_AGENT.RUN_TEAM — 답 + team_exec_id + 단계(태스크)·툴 호출(Thinking) + AI_QUERY_LOG(source RUN_TEAM). conversation_id 로 멀티턴. | `app/routers/agent.py:75` |
+
 ## 매뉴얼
 
 | Method | 경로 | 요청 | 설명 | 구현 |
@@ -195,6 +206,12 @@
 
 ```python
     title: str = ''
+```
+
+### `DemoTeamRequest`
+
+```python
+    base_profile: str = 'GEMINI_SH_PROFILE'
 ```
 
 ### `DualityCompareRequest`
@@ -291,6 +308,14 @@
 
 ```python
     profile_name: str (필수)
+```
+
+### `RunRequest`
+
+```python
+    team_name: str (필수)
+    prompt: str (필수)
+    conversation_id: str = ''
 ```
 
 ### `ScenarioRequest`

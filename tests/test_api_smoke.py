@@ -222,7 +222,7 @@ class TestFeatureRegistry:
         d = client.get("/api/guide/features").json()
         assert d["success"] is True
         assert d["total"] >= 30
-        assert len(d["groups"]) == 6
+        assert len(d["groups"]) == 7   # 6탭 + ⑦ Select AI Agent (2026-09-30)
         for g in d["groups"]:
             assert g["items"], f"{g['tab_label']} 에 기능이 하나도 없다"
 
@@ -665,4 +665,25 @@ class TestProfileWizardApi:
         finally:
             assert client.delete("/api/profiles/WIZ_OCI_TEST").json()["success"]
         assert not any(p["profile_name"] == "WIZ_OCI_TEST" for p in client.get("/api/profiles").json()["profiles"])
+
+
+class TestAgent:
+    """Phase 4 (2026-09-30) — 정의 · 샘플 팀 · RUN_TEAM 1턴 · 히스토리. RUN_TEAM 은 LLM 을 2~3회 부른다(15~25초)."""
+
+    def test_정의와_샘플팀(self, client):
+        r = client.post("/api/agent/demo-team", json={"base_profile": "GEMINI_SH_PROFILE"}).json()
+        assert r["success"] and r["team"] == "DEMO_NL2SQL_TEAM" and len(r["steps"]) == 4, r
+        d = client.get("/api/agent/definitions").json()
+        assert d["success"] and any(t["name"] == "DEMO_NL2SQL_TEAM" for t in d["teams"]) and any(t["name"] == "DEMO_SQL_TOOL" and t["attributes"].get("tool_type") == "SQL" for t in d["tools"])
+
+    def test_실행_1턴과_히스토리(self, client):
+        r = client.post("/api/agent/run", json={"team_name": "DEMO_NL2SQL_TEAM", "prompt": "판매 채널은 몇 개인가?"}).json()
+        assert r["success"], r
+        assert r["answer"] and r["team_exec_id"] and r["log_id"] and r["conversation_id"] and r["tasks"], r
+        assert any(t["TOOL_NAME"] == "DEMO_SQL_TOOL" for t in r["tools"])
+        h = client.get("/api/agent/history", params={"team": "DEMO_NL2SQL_TEAM", "size": 5}).json()
+        assert h["success"] and h["rows"] and h["rows"][0]["TEAM_EXEC_ID"] == r["team_exec_id"] and h["rows"][0]["QUESTION"] == "판매 채널은 몇 개인가?"
+        x = client.get(f"/api/agent/history/{r['team_exec_id']}").json()
+        assert x["success"] and x["tasks"] and x["log"] and x["log"]["ID"] == r["log_id"]
+        assert client.get("/api/agent/history/00000000-0000-0000-0000-000000000000").status_code == 404
 

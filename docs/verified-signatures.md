@@ -87,6 +87,19 @@ SELECT table_name, privilege FROM user_tab_privs WHERE table_name IN ('DBMS_CLOU
 
 **모델 id (2026-09-30, 이 키·무료 등급)**: `gemini-2.5-pro` → 404 "no longer available to new users" · `gemini-pro-latest`/`gemini-3.1-pro-preview` → 429(무료 등급 할당량 0) · `gemini-2.5-flash`/`gemini-flash-latest`/**`gemini-3.8-flash`**(채택, 프로필·기본값) → 200. Pro 계열은 결제 연결 뒤에만 의미가 있다. 목록에는 3-flash-preview · 3.1-flash-lite · 3.5/3.6/3.7/3.8-flash · 3.1-pro-preview 도 있다.
 
+## 8. DBMS_CLOUD_AI_AGENT 실측 (2026-09-30)
+
+| 확인 | 결과 |
+|---|---|
+| 속성 키(패키지 상수) | 에이전트 `role` · `enable_human_tool`(+ `profile_name`) / 태스크 `instruction` · `tools` · `input` / 툴 `tool_type` · `tool_params` · `instruction` · `function` · `tool_inputs` / 팀 `agents` · `process` · `supervisor_agent` |
+| 생성 | `CREATE_TOOL('DEMO_SQL_TOOL', '{"tool_type":"SQL","tool_params":{"profile_name":…,"action":"runsql"},"instruction":…}')` · `CREATE_AGENT(…, '{"profile_name":…,"role":…,"enable_human_tool":"false"}')` · `CREATE_TASK(…, '{"instruction":…,"tools":["DEMO_SQL_TOOL"]}')` · `CREATE_TEAM(…, '{"agents":[{"name":…,"task":…}],"process":"sequential"}')` 전부 OK |
+| 태스크 `"input": "{query}"` | **ORA-20051 Invalid task - {query}** — 자리표시자 없이 두면 사용자 프롬프트가 첫 태스크 입력으로 들어간다 |
+| `RUN_TEAM` 없이 conversation | **ORA-20053 Conversation_id is not set in the session** → `params => '{"conversation_id": …}'`(CREATE_CONVERSATION 으로 발급) |
+| OpenAI 호환(Gemini) 프로필로 RUN_TEAM | 툴은 성공(CHANNEL_COUNT 5)했지만 마지막 LLM 호출이 **HTTP 400 "Requests ending with a model turn are not supported"** — 호환 엔드포인트가 Agent 의 메시지 순서를 거부 |
+| provider=google 네이티브 프로필(GEMINI_SH_NATIVE, 같은 키) | `GENERATE(chat)` 5.7초 OK · **RUN_TEAM 15.8초 정답**("판매 채널은 총 5개") · 2턴 "그중 이름이 가장 긴 채널은?" 20.1초 **Direct Sales** — 멀티턴 OK |
+| 히스토리 뷰 | `USER_AI_AGENT_TEAM_HISTORY`(TEAM_EXEC_ID·STATE·START/END_DATE·CONVERSATION_ID) · `_TASK_HISTORY`(TASK_ORDER·INPUT·RESULT) · `_TOOL_HISTORY`(INVOCATION_ID·INPUT `{"TOOL_NAME","QUERY","ACTION"}`·OUTPUT `{"status","result"}`) — 툴이 SHOWSQL 과 RUNSQL 두 번 불린다 |
+| `RUN_TEAM` 오버로드 2 | `team_exec_id OUT` 으로 실행 ID 를 바로 받는다(앱이 쓰는 형태). `DESCRIBE_TEAM` 은 A2A 카드형 JSON |
+
 ## 7. 열린 항목 (실측 못 한 것)
 
 - ~~FEEDBACK 임베딩 모델 · sql_id vs sql_text~~ → §6 에서 해소.

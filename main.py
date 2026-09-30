@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import close_pool, get_pool, init_pool
+from app.routers import agent as agent_router
 from app.routers import awr as awr_router
 from app.routers import duality as duality_router
 from app.routers import graph as graph_router
@@ -43,6 +44,7 @@ app.include_router(duality_router.router)
 app.include_router(awr_router.router)
 app.include_router(nl2sql_router.router)
 app.include_router(vector_router.router)
+app.include_router(agent_router.router)   # ⑦ Select AI Agent (Phase 4, 2026-09-30)
 
 
 @app.on_event("startup")

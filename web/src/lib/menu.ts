@@ -1,10 +1,10 @@
 // 상단 메뉴 정의 — 순서·라벨·아이콘·이식 상태의 정본 (investhub permissions.ts 의 권한 없는 판).
 // Phase 6-1(2026-09-05)로 레거시가 사라졌다 — 모든 메뉴는 라우터로 간다.
 import {
-  MessageSquareText, Search, Braces, Network, Zap, Activity, BookOpen, type LucideIcon,
+  MessageSquareText, Search, Braces, Network, Zap, Activity, BookOpen, Bot, type LucideIcon,
 } from 'lucide-vue-next'
 
-export type MenuId = 'nl2sql' | 'vector' | 'duality' | 'graph' | 'productivity' | 'awr' | 'manual'
+export type MenuId = 'nl2sql' | 'vector' | 'duality' | 'graph' | 'productivity' | 'awr' | 'agent' | 'manual'
 
 export interface MenuDef {
   id: MenuId
@@ -22,6 +22,7 @@ export const MENUS: MenuDef[] = [
   { id: 'graph', label: 'Property Graph', title: 'Property Graph', subtitle: 'SQL/PGQ — 기존 테이블 위의 그래프', icon: Network, path: '/graph' },
   { id: 'productivity', label: '생산성', title: '개발생산성 향상', subtitle: 'Lock-Free Reservations · Priority Transactions', icon: Zap, path: '/productivity' },
   { id: 'awr', label: 'AWR 분석', title: '기타 부가 기능', subtitle: 'AWR 리포트 AI 분석', icon: Activity, path: '/awr' },
+  { id: 'agent', label: 'AI Agent', title: 'Select AI Agent', subtitle: 'DBMS_CLOUD_AI_AGENT — 툴 · 에이전트 · 팀 · RUN_TEAM', icon: Bot, path: '/agent' },
   { id: 'manual', label: '매뉴얼', title: '매뉴얼', subtitle: '기능 지도 · 사용 설명서 · 현재 상태', icon: BookOpen, path: '/manual' },
 ]
 

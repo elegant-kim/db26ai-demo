@@ -25,6 +25,7 @@ TAB_LABELS = {
     "graph": "Property Graph",
     "productivity": "개발생산성 향상",
     "extra": "기타 부가 기능",
+    "agent": "Select AI Agent",
 }
 
 # (tab, name, desc, how, path, keyword[, slides])
@@ -184,6 +185,17 @@ _F = [
  ("extra", "AWR 원본 보기", "업로드한 AWR HTML 원문을 그대로 열람",
   "AI 분석의 근거를 원문에서 확인할 때.",
   "/awr", "source 원본 html"),
+
+ # ── ⑦ Select AI Agent (Phase 4, 2026-09-30) ──────────────────
+ ("agent", "정의 — 팀 · 에이전트 · 태스크 · 툴", "DBMS_CLOUD_AI_AGENT 로 만든 객체 4종의 목록과 속성 JSON. 「샘플 팀 만들기」가 SQL 툴 → 에이전트 → 태스크 → 팀(sequential)을 PL/SQL 4개로 만든다(provider=google 네이티브 프로필 자동 생성)",
+  "\"에이전트가 DB 안에 객체로 있다\" 를 보여줄 때. USER_AI_AGENT_TEAMS/AGENTS/TASKS/TOOLS(+_ATTRIBUTES) 뷰가 정본. OpenAI 호환 프로필로는 Agent 의 마지막 호출이 HTTP 400 — 네이티브 프로필이 필요하다(실측).",
+  "/agent?sub=define", "agent team task tool 에이전트 팀 정의 DBMS_CLOUD_AI_AGENT create_team"),
+ ("agent", "실행 — RUN_TEAM 대화", "팀을 골라 자연어로 묻는다. 답 아래 「Thinking」(툴 호출 입력→출력) · 「단계별 시간」(태스크·툴 단위 ms, 이 대화 누적) · 메타(conv_id·elapsed·team·multi turn) · 👍/👎",
+  "\"에이전트가 도구를 골라 쓰고 답을 만든다\" 를 보여줄 때. 멀티턴(\"그중 …\")은 conversation_id 로 이어진다. 1턴 15~20초.",
+  "/agent?sub=run", "run_team 실행 에이전트 대화 thinking 단계 시간"),
+ ("agent", "Agent History", "USER_AI_AGENT_TEAM_HISTORY 기반 표 — 시작시각 · Team · 질문 · 상태 · 소요 · 피드백 · conversation_id, 질문 LIKE·기간·팀·상태 필터. 행 클릭 → 단계·툴 호출·답·피드백 편집",
+  "실행 이력을 되짚거나 피드백을 뒤늦게 붙일 때. 피드백은 팀의 NL2SQL 프로필에 FEEDBACK 으로 들어간다.",
+  "/agent?sub=history", "history 이력 agent 실행 기록 team_exec_id"),
 
  # ── 공통 ──────────────────────────────────────────────────
  ("nl2sql", "시스템 상태", "DB 연결·임베딩 모델·LLM 모델 — 헤더 상태칩(전 화면 공통), 호버하면 상세",
