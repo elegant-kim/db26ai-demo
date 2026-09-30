@@ -83,9 +83,9 @@ export const ANNOTATION_SETS: Record<string, AnnotationSet> = {
             UNIT_PRICE: '단위 판매가 (USD)',
         },
     },
-    // 고객사형 샘플(PoC 3-B, 2026-09-30) — sql/seed/crown_like/. 03_annotations.sql 은 여기서 생성한다.
+    // 유통 시연용 샘플(PoC 3-B, 2026-09-30) — sql/seed/retail_demo/. 03_annotations.sql 은 여기서 생성한다.
     // 테이블 이름은 POC_ 접두어 — ADMIN 에 SH 의 PRODUCTS·SALES 가 이미 있어 이름이 겹친다(첫 적재 때 SH 설명을 덮어쓴 사고, 09-30)
-    CROWN: {
+    RETAIL: {
         POC_STORES: {
             _table: '매장 마스터 - 제과 유통 매장(대형마트·편의점·슈퍼·온라인)',
             STORE_ID: '매장 고유 식별자 (PK)',
@@ -129,7 +129,7 @@ export const ANNOTATION_SETS: Record<string, AnnotationSet> = {
 };
 export function annotationSetFor(profile: string): { owner: string; tables: AnnotationSet } | null {
   const p = (profile || '').toUpperCase()
-  if (p.includes('CROWN')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.CROWN }
+  if (p.includes('RETAIL')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.RETAIL }
   if (p.includes('SH')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.SH }
   return null
 }

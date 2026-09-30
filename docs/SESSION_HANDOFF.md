@@ -629,11 +629,16 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 
 `app/accuracy.py` `run_scenario`: 원래 `annotations`·`comments` 값을 읽고 → ① false/false showsql+실행 → ② true/true showsql+showprompt+실행 → ③ ②의 `log_id` 로 `submit_feedback(source=SCENARIO, corrected_sql=②SQL)` 후 showsql+showprompt+실행 → `finally` 속성 복원 + (keep 아니면) 피드백 삭제. `same_2_3` 로 "③이 ②를 그대로 돌려줬다" 판정. `POST /api/nl2sql/accuracy-scenario` SSE. 화면: 「질문」 탭 버튼 → 스레드에 `action='scenario'` 메시지 → `AccuracyScenario.vue`(3열 카드 + 배너 + `DiffBlock`(`lib/diff.ts` 줄 LCS, 바뀐 곳 주변만)). **함정**: `push()` 가 돌려준 반응형 프록시가 아니라 원본 객체를 고치면 화면이 안 그려진다(스토어 주석).
 검증: 통합 1(3단계 done · ③ 프롬프트에 examples · 속성 복원) 38초 통과. 브라우저 버튼 실행.
-**남은 것**: ~~3-B~~ → 4-30. 3-C 모델 비교 · 3-A OCI → Phase 4 Agent.
+**남은 것**: ~~3-B~~ → 4-30 · ~~3-C~~ → 4-31. 3-A OCI → Phase 4 Agent.
 
-## 4-30. PoC 3-B 고객사형 샘플 데이터셋 (2026-09-30, Fable 5.1)
+## 4-31. 방향 정정(일반 시연용) + 3-C 프로필 비교 (2026-09-30, Fable 5.1)
 
-`sql/seed/crown_like/`(01 테이블+COMMENT · 02 합성 데이터 · 03 Annotation(ts CROWN 세트에서 생성) · 04 `CROWN_LIKE_PROFILE` · 05 프리셋 10 · 09 원복 · README) + `scripts/seed_crown_like.py`(순서 실행, 건수 출력). 이 DB 적재 완료: 매장 120 · 제품 60 · 진열 3,000(미입력 28.2%) · 매출 60,000. Select AI 실측: "면수별 전시상태별 매출 금액은?" 5.2초에 POC_SALES⋈POC_DISPLAYS GROUP BY 정답 SQL. 앱: 프로필 바꾸면 프리셋 13(CROWN 10 + 공통 3)·CROWN Annotation 세트(`annotationSetFor` 가 CROWN 을 SH 보다 먼저 검사)·`presetPatternFor` `%CROWN%`.
+**사용자 정정**: 이 앱은 특정 사이트 PoC 가 아니라 **일반 시연용** — 요청서의 고객사 특정 표현은 무시하고 기능 위주로. 3-B 데이터셋은 내용이 이미 일반 유통 합성 데이터라 **이름만 중립화**: `CROWN_LIKE_PROFILE → RETAIL_DEMO_PROFILE`, `sql/seed/crown_like → retail_demo`, `scripts/seed_retail_demo.py`, Annotation 세트 `RETAIL`, 프리셋 패턴 `%RETAIL%`(DB 행도 갱신), 이력의 프로필명 갱신. 빈 잔재 `ADMIN.STORES` 삭제(사용자 승인).
+**3-C**: `app/compare_profiles.py`(`accuracy._solve` 재사용, source=COMPARE) + `POST /api/nl2sql/compare-profiles` SSE. 화면: 「질문」 탭 「프로필 비교」 버튼 → 체크박스 팝오버(2~3개, 기본 현재+다음) → 스레드 메시지(action=compare) → `ProfileCompare.vue`(열마다 모델·SQL·결과·생성 소요·「가장 빠름」, object_list 다르면 경고). 이력 탭 프로필별 소요 카드는 1-C 에서 이미. 검증: 통합 2(GEMINI 성공 + GROQ ORA-20404 도 한 열로) 통과, 브라우저 확인.
+
+## 4-30. PoC 3-B 유통 시연용 샘플 데이터셋 (2026-09-30, Fable 5.1)
+
+`sql/seed/retail_demo/`(01 테이블+COMMENT · 02 합성 데이터 · 03 Annotation(ts RETAIL 세트에서 생성) · 04 `RETAIL_DEMO_PROFILE` · 05 프리셋 10 · 09 원복 · README) + `scripts/seed_retail_demo.py`(순서 실행, 건수 출력). 이 DB 적재 완료: 매장 120 · 제품 60 · 진열 3,000(미입력 28.2%) · 매출 60,000. Select AI 실측: "면수별 전시상태별 매출 금액은?" 5.2초에 POC_SALES⋈POC_DISPLAYS GROUP BY 정답 SQL. 앱: 프로필 바꾸면 프리셋 13(RETAIL 10 + 공통 3)·RETAIL Annotation 세트(`annotationSetFor` 가 RETAIL 을 SH 보다 먼저 검사)·`presetPatternFor` `%RETAIL%`.
 **사고 3건(개발노하우 3.3·3.4 에 기록)**: ① 처음 `STORES/PRODUCTS/DISPLAYS/SALES` 로 만들었다가 SH 의 `PRODUCTS`·`SALES` 와 겹쳐 Annotation 스크립트가 SH 테이블 설명을 덮어씀 → 즉시 SH 세트 값으로 복구(`제품 마스터 테이블`·`판매 트랜잭션 팩트 테이블`), 이름을 `POC_` 접두어로 ② `CONNECT BY`+`DBMS_RANDOM` 병렬 데드락 ORA-12860 → 세션 병렬 끔 ③ identity 1부터 가정 → ORA-02291 → ROW_NUMBER 매핑.
 **남은 정리**: 첫 시도가 만든 빈 테이블 `ADMIN.STORES` 가 남아 있다 — DROP 은 확인 사항이라 사용자에게 물었다.
 

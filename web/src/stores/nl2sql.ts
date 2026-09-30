@@ -15,6 +15,9 @@ import { useSystemStore } from './system'
 export type ChartType = 'bar' | 'line' | 'pie'
 /** 정확도 개선 시나리오(2-B) 한 번의 상태 — 어시스턴트 메시지에 매달린다 */
 export interface ScenarioStep { n: number; status: 'running' | 'done'; note?: string; sql?: string | null; prompt?: string | null; rows?: Rows | null; row_count?: number | null; elapsed_ms?: number; error?: string; run_error?: string | null; feedback_id?: number | null }
+/** 프로필 비교(3-C) 한 번의 상태 */
+export interface CompareMeta { profile: string; model: string | null; provider: string | null; object_list: unknown }
+export interface CompareState { question: string; profiles: CompareMeta[]; steps: Record<string, ScenarioStep & { profile: string; generate_ms?: number }>; done: { elapsed_ms: number; all_same_sql: boolean; fastest: string | null } | null; error: string | null }
 export interface ScenarioState { question: string; meta: { n: number; title: string; desc: string }[]; steps: Record<number, ScenarioStep>; done: { restored: Record<string, string>; feedback_id: number | null; feedback_kept: boolean; elapsed_ms: number; same_2_3: boolean } | null; error: string | null }
 export interface Nl2sqlMessage extends ChatMessage {
   id: number
@@ -23,7 +26,7 @@ export interface Nl2sqlMessage extends ChatMessage {
   isSql?: boolean
   prevPrompt?: string | null
   // 어시스턴트
-  action?: Action | 'rawsql' | 'explainplan' | 'greeting' | 'scenario'
+  action?: Action | 'rawsql' | 'explainplan' | 'greeting' | 'scenario' | 'compare'
   prompt?: string
   profileName?: string
   loadingText?: string
@@ -52,6 +55,8 @@ export interface Nl2sqlMessage extends ChatMessage {
   feedback?: FeedbackInfo | null
   /** 정확도 개선 시나리오 (2-B) */
   scenario?: ScenarioState
+  /** 프로필 비교 (3-C) */
+  compare?: CompareState
 }
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
@@ -418,6 +423,30 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     } catch (e) { sc.error = errorMessage(e) } finally { scenarioRunning.value = false }
   }
 
+  const compareRunning = ref(false)
+  const compareTargets = ref<string[]>([])   // 「프로필 비교」 체크박스 — 기본은 현재 프로필 + 다음 하나
+  /** 프로필(모델) 비교 — 같은 질문을 2~3 프로필로 순차 (SSE) */
+  async function runCompare(question: string, targets: string[]) {
+    const q = question.trim()
+    const list = [...new Set(targets.filter(Boolean))].slice(0, 3)
+    if (!q || compareRunning.value || list.length < 2) { if (list.length < 2) system.toast('비교할 프로필을 2개 이상 고르세요', 'warn'); return }
+    compareRunning.value = true
+    push({ role: 'user', content: q, prevPrompt: `프로필 비교: ${list.join(' · ')}` })
+    input.value = ''
+    const msg = push({ role: 'assistant', content: '', action: 'compare', prompt: q, profileName: profile.value, compare: { question: q, profiles: list.map((p) => ({ profile: p, model: null, provider: null, object_list: null })), steps: {}, done: null, error: null } })
+    const cp = msg.compare!
+    const t0 = Date.now()
+    try {
+      await postSse('/api/nl2sql/compare-profiles', { question: q, profiles: list }, (type, data) => {
+        if (type === 'start') cp.profiles = data.profiles ?? cp.profiles
+        else if (type === 'step') cp.steps[data.profile] = { ...(cp.steps[data.profile] ?? {}), ...data }
+        else if (type === 'done') cp.done = data
+        else if (type === 'error') cp.error = data?.message || '비교 오류'
+      })
+      msg.elapsedMs = Date.now() - t0
+    } catch (e) { cp.error = errorMessage(e) } finally { compareRunning.value = false }
+  }
+
   function clear() { messages.value = []; pushGreeting() }
 
   return {
@@ -425,7 +454,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     examples, profileOptions, hasAnnotationSet, asked,
     env, envLoading, envTest, feedbackStatus, loadFeedbackStatus, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
     multiTurn, chain, resetOnSuccess, conversationId, convTurns, ensureConversation, newConversation,
-    presets, presetBusy, loadPresets, savePreset, removePreset, scenarioRunning, runScenario,
+    presets, presetBusy, loadPresets, savePreset, removePreset, scenarioRunning, runScenario, compareRunning, compareTargets, runCompare,
     init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,
   }
 })

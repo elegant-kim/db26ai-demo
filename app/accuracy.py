@@ -38,11 +38,11 @@ async def _set_attr(pool, profile: str, name: str, value: str) -> None:
                               {"p": profile, "a": name, "v": value})
 
 
-async def _solve(pool, profile: str, question: str, with_prompt: bool) -> dict:
+async def _solve(pool, profile: str, question: str, with_prompt: bool, source: str = "SCENARIO") -> dict:
     """showsql → (showprompt) → 생성 SQL 실행(SELECT 만). 한 단계의 결과."""
     out: dict = {"sql": None, "prompt": None, "rows": None, "row_count": None, "elapsed_ms": 0, "run_error": None, "log_id": None}
     t0 = time.time()
-    r = await run_select_ai(pool, question, "showsql", profile, source="SCENARIO")
+    r = await run_select_ai(pool, question, "showsql", profile, source=source)
     out["log_id"] = r.get("log_id")
     if r.get("error"):
         out["error"] = r["error"]
@@ -51,7 +51,7 @@ async def _solve(pool, profile: str, question: str, with_prompt: bool) -> dict:
     out["sql"] = str(r["result"] or "").strip()
     out["generate_ms"] = r["elapsed_ms"]
     if with_prompt:
-        p = await run_select_ai(pool, question, "showprompt", profile, source="SCENARIO")
+        p = await run_select_ai(pool, question, "showprompt", profile, source=source)
         out["prompt"] = None if p.get("error") else str(p["result"] or "")
     if out["sql"]:
         res = await execute_raw_sql(pool, out["sql"])

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.accuracy import run_scenario
 from app.ai_log import VALID_FEEDBACK, VALID_STATUS, get_query_log, list_query_log, query_log_summary
+from app.compare_profiles import MAX_PROFILES, compare_profiles
 from app.database import get_pool
 from app.feedback import FEEDBACK_TYPES, delete_feedback, feedback_status, list_feedback, submit_feedback
 from app.fewshot import TEMPLATE_CSV, parse_file, purge_profile_feedback, register_rows, validate_rows
@@ -68,6 +69,11 @@ class ScenarioRequest(BaseModel):
     profile_name: str
     corrected_sql: str = ""        # 비우면 ②의 SQL 을 피드백으로
     keep_feedback: bool = False    # 끝나고 피드백을 남길지
+
+
+class CompareRequest(BaseModel):
+    question: str
+    profiles: list[str]
 
 
 class PurgeRequest(BaseModel):
@@ -605,6 +611,47 @@ async def accuracy_scenario(req: ScenarioRequest):
         async def run():
             try:
                 await run_scenario(pool, req.profile_name, req.question.strip(), req.corrected_sql, req.keep_feedback, on_progress)
+            except Exception as e:
+                await queue.put(("error", {"message": str(e)}))
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                event_type, data = item
+                yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── 프로필(모델) 비교 (PoC 3-C) — 정본 app/compare_profiles.py ──
+
+@router.post("/nl2sql/compare-profiles")
+async def compare_profiles_endpoint(req: CompareRequest):
+    """같은 질문을 2~3개 프로필로 순차 실행(showsql + 생성 SQL 실행) — SSE(event: start | step | done | error). 이력에 source=COMPARE."""
+    profiles = [p for p in dict.fromkeys(p.strip() for p in req.profiles if p and p.strip())]
+    if not req.question.strip() or len(profiles) < 2:
+        return JSONResponse(status_code=400, content={"success": False, "error": f"question 과 프로필 2~{MAX_PROFILES}개가 필요합니다."})
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(event_type, data):
+            await queue.put((event_type, data))
+
+        async def run():
+            try:
+                await compare_profiles(pool, req.question.strip(), profiles, on_progress)
             except Exception as e:
                 await queue.put(("error", {"message": str(e)}))
             finally:

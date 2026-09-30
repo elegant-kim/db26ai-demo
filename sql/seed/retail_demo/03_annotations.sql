@@ -1,5 +1,5 @@
--- 03_annotations.sql — 고객사형 샘플 테이블·컬럼의 한국어 Display Annotation (PoC 3-B, 2026-09-30)
--- 정본은 web/src/lib/annotations.ts 의 CROWN 세트다. 이 파일은 거기서 생성한 것 — 손으로 고치지 말고 ts 를 고친 뒤 다시 만든다.
+-- 03_annotations.sql — 유통 시연용 샘플 테이블·컬럼의 한국어 Display Annotation (PoC 3-B, 2026-09-30)
+-- 정본은 web/src/lib/annotations.ts 의 RETAIL 세트다. 이 파일은 거기서 생성한 것 — 손으로 고치지 말고 ts 를 고친 뒤 다시 만든다.
 -- ADD 는 덮어쓰지 않고 중복을 만들므로(개발노하우 3.3) 반드시 DROP 후 ADD. 앱의 「스키마·Annotation」 탭 적용/제거와 같은 내용.
 
 ALTER TABLE ADMIN.POC_STORES ANNOTATIONS (DROP Display);

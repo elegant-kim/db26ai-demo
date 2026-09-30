@@ -13,6 +13,7 @@ import ResultTable from '@/components/demo/ResultTable.vue'
 import Segmented from '@/components/demo/Segmented.vue'
 import FeedbackBox from '@/components/demo/FeedbackBox.vue'
 import AccuracyScenario from './AccuracyScenario.vue'
+import ProfileCompare from './ProfileCompare.vue'
 import { renderMarkdown } from '@/lib/markdown'
 import { fmtMs, isNumeric } from '@/lib/format'
 import { RESET_NOTE, shortConv } from '@/lib/nl2sql'
@@ -49,6 +50,7 @@ const chart = computed(() => {
     <div class="flex-1 min-w-0 flex flex-col gap-2.5">
       <LoadingBlock v-if="msg.loading" compact :label="msg.loadingText || '처리 중…'" />
       <AccuracyScenario v-else-if="msg.action === 'scenario' && msg.scenario" :sc="msg.scenario" />
+      <ProfileCompare v-else-if="msg.action === 'compare' && msg.compare" :cp="msg.compare" />
       <template v-else>
         <div v-if="msg.errorText" class="px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-negative-soft); border-left: 3px solid var(--accent-negative); color: var(--text-primary);"><strong>오류:</strong> <span class="font-mono text-xs break-all">{{ msg.errorText }}</span></div>
 

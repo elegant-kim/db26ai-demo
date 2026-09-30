@@ -140,7 +140,7 @@ export const createPreset = (p: PresetInput) => api.post<{ success: boolean; id?
 export const updatePreset = (id: number, p: PresetInput) => api.put<{ success: boolean; error?: string }>(`/api/nl2sql/presets/${id}`, p).then((r) => r.data)
 export const deletePreset = (id: number) => api.delete<{ success: boolean; error?: string }>(`/api/nl2sql/presets/${id}`).then((r) => r.data)
 /** 프로필 이름 → 시드가 쓰는 LIKE 패턴 (SH → '%SH%'). 새 프리셋의 기본 범위 */
-export const presetPatternFor = (profile: string): string | null => { const p = (profile || '').toUpperCase(); return p.includes('CROWN') ? '%CROWN%' : p.includes('SSB') ? '%SSB%' : p.includes('SH') ? '%SH%' : null }
+export const presetPatternFor = (profile: string): string | null => { const p = (profile || '').toUpperCase(); return p.includes('RETAIL') ? '%RETAIL%' : p.includes('SSB') ? '%SSB%' : p.includes('SH') ? '%SH%' : null }
 
 // ── 답변 피드백 (PoC 1-B) — 정본 app/feedback.py ──
 export type FeedbackType = 'positive' | 'negative'

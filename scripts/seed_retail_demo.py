@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""고객사형 샘플 데이터셋 적재 — sql/seed/crown_like/01~05 를 순서대로 (PoC 3-B).
+"""유통 시연용 샘플 데이터셋 적재 — sql/seed/retail_demo/01~05 를 순서대로 (PoC 3-B).
 
-    ./venv/bin/python scripts/seed_crown_like.py            # 01→05
-    ./venv/bin/python scripts/seed_crown_like.py teardown   # 09
+    ./venv/bin/python scripts/seed_retail_demo.py            # 01→05
+    ./venv/bin/python scripts/seed_retail_demo.py teardown   # 09
 
 SQLcl 없이 python-oracledb 로 돌린다. 파일의 `;`/`/` 구분을 단순 규칙으로 자른다(PL/SQL 블록은 `/` 줄까지 한 덩어리).
 """
@@ -14,7 +14,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DIR = ROOT / "sql" / "seed" / "crown_like"
+DIR = ROOT / "sql" / "seed" / "retail_demo"
 sys.path.insert(0, str(ROOT))
 
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { MessageSquareText, Terminal, Play, Eraser, MessageSquarePlus, Copy, BookmarkPlus, Pencil, Trash2, FlaskConical } from 'lucide-vue-next'
+import { MessageSquareText, Terminal, Play, Eraser, MessageSquarePlus, Copy, BookmarkPlus, Pencil, Trash2, FlaskConical, GitCompare } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -58,6 +58,13 @@ async function editPreset() {
 }
 async function dropPreset() { const p = pickedPreset.value; if (!p) return; if (await s.removePreset(p.ID)) { picked.value = null; presetTitle.value = ''; example.value = '' } confirmDelete.value = false }
 const asMsg = (m: unknown) => m as Nl2sqlMessage
+// 3-C 프로필 비교 — 체크박스 팝오버. 기본 선택: 현재 프로필 + 목록의 다음 하나
+const comparePick = ref(false)
+function toggleTarget(p: string) { const t = s.compareTargets; const i = t.indexOf(p); if (i >= 0) t.splice(i, 1); else if (t.length < 3) t.push(p); else system.toast('최대 3개', 'warn') }
+function openCompare() {
+  if (!s.compareTargets.length) { const names = s.profiles.map((p) => p.profile_name); const other = names.find((n) => n !== s.profile); s.compareTargets = other ? [s.profile, other] : [s.profile] }
+  comparePick.value = !comparePick.value
+}
 </script>
 
 <template>
@@ -92,6 +99,15 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
             <span class="text-[11px]" style="color: var(--text-muted);">{{ pickedPreset ? `선택: #${pickedPreset.ID} ${pickedPreset.TITLE}` : `프리셋 ${s.presets.length}건 · 범위 ${s.presets.length ? '프로필 이름 패턴' : '내장 예시(폴백)'}` }}</span>
             <!-- 2-B: 입력줄의 질문을 ① Annotation 없이 → ② 적용 → ③ 피드백 반영 으로 나란히 -->
             <Button size="sm" variant="secondary" class="ml-auto" :busy="s.scenarioRunning" :disabled="!s.input.trim() || s.sending" title="입력줄의 질문을 세 조건으로 풀어 나란히 비교 — 프로필 속성 annotations/comments 를 잠시 끄고 켜며 끝나면 복원. 1분 안팎" @click="s.runScenario(s.input)"><FlaskConical :size="13" :stroke-width="1.75" /> 정확도 개선 시나리오</Button>
+            <!-- 3-C: 같은 질문을 2~3 프로필로 -->
+            <div class="relative">
+              <Button size="sm" variant="secondary" :busy="s.compareRunning" :disabled="!s.input.trim() || s.sending || s.profiles.length < 2" title="입력줄의 질문을 고른 프로필들로 순차 실행해 SQL·결과·소요를 나란히" @click="openCompare"><GitCompare :size="13" :stroke-width="1.75" /> 프로필 비교{{ s.compareTargets.length ? ` (${s.compareTargets.length})` : '' }}</Button>
+              <div v-if="comparePick" class="absolute right-0 z-20 mt-1 rounded-md p-2 flex flex-col gap-1 min-w-[260px]" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); box-shadow: var(--shadow-elevated);">
+                <div class="text-[11px] px-1" style="color: var(--text-muted);">비교할 프로필 (2~3개)</div>
+                <label v-for="p in s.profiles" :key="p.profile_name" class="flex items-center gap-2 text-xs px-1 py-0.5 rounded cursor-pointer" style="color: var(--text-primary);"><input type="checkbox" :checked="s.compareTargets.includes(p.profile_name)" @change="toggleTarget(p.profile_name)" /> {{ p.profile_name }}</label>
+                <div class="flex justify-end gap-1 mt-1"><Button size="sm" variant="ghost" @click="comparePick = false">닫기</Button><Button size="sm" :disabled="s.compareTargets.length < 2 || !s.input.trim()" @click="comparePick = false; s.runCompare(s.input, s.compareTargets)"><Play :size="12" :stroke-width="2" /> 실행</Button></div>
+              </div>
+            </div>
           </div>
           <!-- 멀티턴 (PoC 1-A): 대화 ID 는 DB 의 conversation 객체, 브라우저가 들고 매 질문에 실어 보낸다 -->
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">

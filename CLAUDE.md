@@ -84,6 +84,7 @@ scripts/deploy.sh
 | `app/routers/nl2sql.py` | ~650 | ① NL2SQL 27개 엔드포인트(ask · profiles · set-profile · annotations 2 · schema-info · explain-plan · execute-sql · env-info · conversations 2 · history 3 · presets 4 · feedback 5 · fewshot 4 · accuracy-scenario) + 요청 모델 + `VALID_ACTIONS` |
 | `app/ai_log.py` | ~130 | AI_QUERY_LOG **읽기** — 이력 표(바인드 필터·페이징)·요약·상세 (2026-09-29 PoC 1-C). 쓰기는 `select_ai.py` |
 | `app/presets.py` | ~90 | AI_PROMPT_PRESET CRUD — 예시 질문 프리셋 (PoC 1-D) |
+| `app/compare_profiles.py` | ~40 | 프로필(모델) 비교 실행 — `accuracy._solve` 재사용 (PoC 3-C) |
 | `app/accuracy.py` | ~120 | 정확도 개선 시나리오 ①②③ — 프로필 속성 토글(SET_ATTRIBUTE)·피드백 등록·복원, SSE (PoC 2-B·2-C) |
 | `app/fewshot.py` | ~190 | Few-shot 일괄 등록 — 파일 파싱(헤더 느슨) · EXPLAIN PLAN 검증 · SSE 등록(행당 LLM 1회) · 프로필 피드백 전체 삭제 (PoC 2-A) |
 | `app/feedback.py` | ~150 | 답변 피드백 — `DBMS_CLOUD_AI.FEEDBACK` + `AI_FEEDBACK_LOG` 한 트랜잭션, 상태(embedding_model·`_FEEDBACK_VECINDEX`·건수) (PoC 1-B). 실측 근거는 `docs/verified-signatures.md` §6 |
@@ -134,7 +135,7 @@ scripts/deploy.sh
 | `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
 | `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
-| `sql/seed/crown_like/01~05, 09` · `scripts/seed_crown_like.py` | **고객사형 샘플 데이터셋**(PoC 3-B): 테이블 4 + COMMENT → 합성 데이터(재현 가능) → Annotation(정본 `web/src/lib/annotations.ts` CROWN 세트에서 생성) → 프로필 `CROWN_LIKE_PROFILE` → 프리셋 10. 09 원복. 로더는 병렬을 끄고 순서대로 돈다 |
+| `sql/seed/retail_demo/01~05, 09` · `scripts/seed_retail_demo.py` | **유통 시연용 샘플 데이터셋**(PoC 3-B): 테이블 4 + COMMENT → 합성 데이터(재현 가능) → Annotation(정본 `web/src/lib/annotations.ts` RETAIL 세트에서 생성) → 프로필 `RETAIL_DEMO_PROFILE` → 프리셋 10. 09 원복. 로더는 병렬을 끄고 순서대로 돈다 |
 | `sql/setup/70_poc_ai_tables.sql` · `71_…_rollback.sql` · `72_poc_prompt_preset_seed.sql` | 고객사 PoC 확장(2026-09-29): 이력·피드백·프리셋 표 3개 + 롤백 + 예시 질문 시드 27건(멱등). 이 DB 에 적용 완료 |
 | `sql/setup/51_selectai_adb_setup.sql`<br>`52_..._demo.sql` · `53_..._teardown.sql` | **앱 없이 SQLcl 만으로** Select AI 를 세팅·시연·원복하는 ADB 전용 3종 세트 (2026-09-07). Annotation 목록의 정본은 `web/src/lib/annotations.ts` 이고 51번 §5 는 거기서 생성한 것이다. 옛 `selectAI_설정.sql`·`selectAI_demo.sql` 은 **다른 환경용**이라 보존만 한다 |
 | `docs/` | 사람이 읽는 문서 — 아래 "문서 체계" 참조 |
@@ -163,6 +164,7 @@ scripts/deploy.sh
 - `GET /api/nl2sql/feedback/status` · `GET /api/nl2sql/feedback` · `POST /api/nl2sql/feedback` · `DELETE /api/nl2sql/feedback/{id}` — 답변 피드백(PoC 1-B, 2026-09-30). POST 는 `DBMS_CLOUD_AI.FEEDBACK(sql_text 오버로드)` + `AI_FEEDBACK_LOG` 를 한 트랜잭션으로; 같은 이력에 다시 저장 = delete 후 add. **피드백은 실행된 `SELECT AI` 문장에만 붙으므로** 매핑이 없으면 그 자리에서 `SELECT AI showsql <질문>` 을 1회 실행(LLM). 프로필에 `embedding_model` 이 없으면 ORA-20048. 정본 `app/feedback.py`
 - `GET /api/nl2sql/fewshot/template` · `POST /api/nl2sql/fewshot/parse`(multipart CSV/JSON/XLSX) · `POST /api/nl2sql/fewshot/validate`(EXPLAIN PLAN) · `POST /api/nl2sql/fewshot/register`(**SSE** event: row|done|error — 행마다 `SELECT AI showsql` 1회 + FEEDBACK positive) · `POST /api/nl2sql/feedback/purge` — Few-shot 일괄 등록(PoC 2-A, 2026-09-30). 정본 `app/fewshot.py`
 - `POST /api/nl2sql/accuracy-scenario` — **SSE**(start|step|done|error) 정확도 개선 시나리오(PoC 2-B·2-C): ① `SET_ATTRIBUTE(annotations/comments=false)` → showsql+실행 ② true → showsql+showprompt+실행 ③ ②의 SQL(또는 corrected_sql)을 positive 피드백으로 등록 후 showsql+showprompt+실행 → 속성 복원, 피드백은 `keep_feedback` 아니면 삭제. 화면은 ②/③ 프롬프트 diff. 정본 `app/accuracy.py`
+- `POST /api/nl2sql/compare-profiles` — **SSE**(start|step|done|error) 같은 질문을 프로필 2~3개로 순차(showsql + 실행), 이력 source=COMPARE (PoC 3-C). 정본 `app/compare_profiles.py`
 - `GET /api/nl2sql/history` · `/history/summary` · `/history/{id}` — 호출 이력(AI_QUERY_LOG) 표(필터 q·date_from·date_to·profile·action·status·feedback, 페이징)·요약(성공률·평균/최대 elapsed·피드백 비율·프로필별)·상세(+피드백 목록). 읽기 전용, 정본 `app/ai_log.py`
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회
@@ -325,7 +327,7 @@ GOOGLE_API_KEY= / GOOGLE_MODEL=gemini-3.8-flash
 - `DBMS_DATA_MINING.IMPORT_ONNX_MODEL()` / `DBMS_VECTOR.LOAD_ONNX_MODEL()` — ONNX 모델 로드
 - `CREATE PROPERTY GRAPH` / `GRAPH_TABLE(... MATCH ... COLUMNS ...)` — SQL/PGQ (SQL:2023)
 - `CREATE OR REPLACE JSON RELATIONAL DUALITY VIEW` — Duality View
-- Sample schema: **SH** (Sales History) — ADMIN 스키마에 적재됨. **고객사형 샘플 `POC_STORES/POC_PRODUCTS/POC_DISPLAYS/POC_SALES`**(제과 유통, 합성 6만 행, `sql/seed/crown_like/`, 프로필 `CROWN_LIKE_PROFILE`, 2026-09-30 PoC 3-B). ⚠ ADMIN 에 SH 의 `PRODUCTS`·`SALES` 가 있어 새 테이블은 반드시 접두어를 쓴다
+- Sample schema: **SH** (Sales History) — ADMIN 스키마에 적재됨. **유통 시연용 샘플 `POC_STORES/POC_PRODUCTS/POC_DISPLAYS/POC_SALES`**(제과 유통, 합성 6만 행, `sql/seed/retail_demo/`, 프로필 `RETAIL_DEMO_PROFILE`, 2026-09-30 PoC 3-B). ⚠ ADMIN 에 SH 의 `PRODUCTS`·`SALES` 가 있어 새 테이블은 반드시 접두어를 쓴다
 
 ## Critical Implementation Notes
 
@@ -406,7 +408,7 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - `explainsql` action은 한국어 지시 자동 추가: `"(Please explain in Korean / 한국어로 설명해 주세요)"`
 - `execute_raw_sql()` — SELECT 문만 허용 (보안). `WITH` CTE도 거부되니 주의
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
-- 프로필 이름에 'CROWN' 이 들어가면 고객사형 세트(`POC_*`), 'SH' 면 SH 세트의 Annotation 을 적용 (`web/src/lib/annotations.ts`, CROWN 검사가 먼저). **예시 질문은 2026-09-29 부터 DB 의 `AI_PROMPT_PRESET`** 이 정본(프로필 이름 LIKE 패턴 `%SH%`·`%SSB%`·NULL) — 화면에서 추가·수정·삭제. `lib/nl2sql.ts` 의 `EXAMPLE_QUESTIONS` 는 API 실패 시 폴백 + 시드(72번) 원천
+- 프로필 이름에 'RETAIL' 이 들어가면 유통 시연용 세트(`POC_*`), 'SH' 면 SH 세트의 Annotation 을 적용 (`web/src/lib/annotations.ts`, RETAIL 검사가 먼저). **예시 질문은 2026-09-29 부터 DB 의 `AI_PROMPT_PRESET`** 이 정본(프로필 이름 LIKE 패턴 `%SH%`·`%SSB%`·NULL) — 화면에서 추가·수정·삭제. `lib/nl2sql.ts` 의 `EXAMPLE_QUESTIONS` 는 API 실패 시 폴백 + 시드(72번) 원천
 - **딥링크 규약 3층**: `?sub=` 서브탭 · `&run=1` mount 직후 기본 동작 · `&slide=VS-12` 장표 뷰어(꼬리표 또는 `deck:page`). 시연 대본의 링크 하나가 화면+결과+장표를 연다
 - 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
 - AWR 결과 탭과 벡터 검색 세션 탭은 같은 `SessionTabs` 컴포넌트를 쓴다
