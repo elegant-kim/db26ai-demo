@@ -81,9 +81,10 @@ scripts/deploy.sh
 | `app/routers/productivity.py` | 56 | ⑤ 개발생산성 3개 엔드포인트 (5-2 에서 분리) |
 | `app/routers/duality.py` | ~135 | ③ Duality 9개 엔드포인트 (5-3 에서 분리) |
 | `app/routers/awr.py` | ~200 | ⑥ AWR 3개 엔드포인트 + 세션 캐시 (5-4 에서 분리). **분석은 SSE 가 아니라 JSON 1회** |
-| `app/routers/nl2sql.py` | ~600 | ① NL2SQL 26개 엔드포인트(ask · profiles · set-profile · annotations 2 · schema-info · explain-plan · execute-sql · env-info · conversations 2 · history 3 · presets 4 · feedback 5 · fewshot 4) + 요청 모델 + `VALID_ACTIONS` |
+| `app/routers/nl2sql.py` | ~650 | ① NL2SQL 27개 엔드포인트(ask · profiles · set-profile · annotations 2 · schema-info · explain-plan · execute-sql · env-info · conversations 2 · history 3 · presets 4 · feedback 5 · fewshot 4 · accuracy-scenario) + 요청 모델 + `VALID_ACTIONS` |
 | `app/ai_log.py` | ~130 | AI_QUERY_LOG **읽기** — 이력 표(바인드 필터·페이징)·요약·상세 (2026-09-29 PoC 1-C). 쓰기는 `select_ai.py` |
 | `app/presets.py` | ~90 | AI_PROMPT_PRESET CRUD — 예시 질문 프리셋 (PoC 1-D) |
+| `app/accuracy.py` | ~120 | 정확도 개선 시나리오 ①②③ — 프로필 속성 토글(SET_ATTRIBUTE)·피드백 등록·복원, SSE (PoC 2-B·2-C) |
 | `app/fewshot.py` | ~190 | Few-shot 일괄 등록 — 파일 파싱(헤더 느슨) · EXPLAIN PLAN 검증 · SSE 등록(행당 LLM 1회) · 프로필 피드백 전체 삭제 (PoC 2-A) |
 | `app/feedback.py` | ~150 | 답변 피드백 — `DBMS_CLOUD_AI.FEEDBACK` + `AI_FEEDBACK_LOG` 한 트랜잭션, 상태(embedding_model·`_FEEDBACK_VECINDEX`·건수) (PoC 1-B). 실측 근거는 `docs/verified-signatures.md` §6 |
 | `app/routers/vector.py` | ~640 | ② Vector 22개 엔드포인트 — 업로드(SSE)·검색·문서·테이블·임베딩 설정·ONNX (5-6 에서 분리) |
@@ -108,7 +109,7 @@ scripts/deploy.sh
 | `web/src/lib/normalize.ts` | D11 어댑터 — 응답 배열 키 불일치를 흡수. 키 이름을 아는 유일한 곳 |
 | `web/src/lib/sqlHighlight.ts` | Oracle SQL 토크나이저 (레거시 `highlightOracleSQL` 이식) |
 | `web/src/components/ui/` | investhub 이식 13종 (Card·Button·Badge·Stat·LoadingBlock·차트 …) |
-| `web/src/components/demo/` | db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader·StepList·VersusBox·**PipelineProgress·KvGrid·SessionTabs·ChatThread/ChatComposer**(5-4) |
+| `web/src/components/demo/` | db26ai 고유 ★ SqlBlock·ResultTable·CompareView·EmptyState·SubTabs·Segmented·PageHeader·StepList·VersusBox·**PipelineProgress·KvGrid·SessionTabs·ChatThread/ChatComposer**(5-4)·FeedbackBox(1-B)·DiffBlock(2-C, `lib/diff.ts` 줄 LCS)·SlideViewer/SlideAnchor(P5) |
 | `web/src/components/layout/` | AppShell·TopNav·StatusChips(헤더 상태칩 = 옛 사이드바 시스템 상태)·ThemeToggle·Toast |
 | `web/src/stores/system.ts` · `composables/useHealth.ts` | `/api/health` 30초 폴링 · 토스트 |
 | `web/src/pages/<tab>/` · `stores/<tab>.ts` · `lib/<tab>.ts` | 이식된 탭마다 이 셋 (graph 5-1 · productivity 5-2). 조립 규칙은 `docs/SESSION_HANDOFF.md` §4-5 — 새 탭은 graph 를 복제해 시작한다 |
@@ -160,6 +161,7 @@ scripts/deploy.sh
 - `GET/POST /api/nl2sql/presets` · `PUT/DELETE /api/nl2sql/presets/{id}` — 저장 질문 프리셋(AI_PROMPT_PRESET). `profile_name` NULL = 전체, `%SH%` 같은 LIKE 패턴. 정본 `app/presets.py`, 시드 `sql/setup/72`
 - `GET /api/nl2sql/feedback/status` · `GET /api/nl2sql/feedback` · `POST /api/nl2sql/feedback` · `DELETE /api/nl2sql/feedback/{id}` — 답변 피드백(PoC 1-B, 2026-09-30). POST 는 `DBMS_CLOUD_AI.FEEDBACK(sql_text 오버로드)` + `AI_FEEDBACK_LOG` 를 한 트랜잭션으로; 같은 이력에 다시 저장 = delete 후 add. **피드백은 실행된 `SELECT AI` 문장에만 붙으므로** 매핑이 없으면 그 자리에서 `SELECT AI showsql <질문>` 을 1회 실행(LLM). 프로필에 `embedding_model` 이 없으면 ORA-20048. 정본 `app/feedback.py`
 - `GET /api/nl2sql/fewshot/template` · `POST /api/nl2sql/fewshot/parse`(multipart CSV/JSON/XLSX) · `POST /api/nl2sql/fewshot/validate`(EXPLAIN PLAN) · `POST /api/nl2sql/fewshot/register`(**SSE** event: row|done|error — 행마다 `SELECT AI showsql` 1회 + FEEDBACK positive) · `POST /api/nl2sql/feedback/purge` — Few-shot 일괄 등록(PoC 2-A, 2026-09-30). 정본 `app/fewshot.py`
+- `POST /api/nl2sql/accuracy-scenario` — **SSE**(start|step|done|error) 정확도 개선 시나리오(PoC 2-B·2-C): ① `SET_ATTRIBUTE(annotations/comments=false)` → showsql+실행 ② true → showsql+showprompt+실행 ③ ②의 SQL(또는 corrected_sql)을 positive 피드백으로 등록 후 showsql+showprompt+실행 → 속성 복원, 피드백은 `keep_feedback` 아니면 삭제. 화면은 ②/③ 프롬프트 diff. 정본 `app/accuracy.py`
 - `GET /api/nl2sql/history` · `/history/summary` · `/history/{id}` — 호출 이력(AI_QUERY_LOG) 표(필터 q·date_from·date_to·profile·action·status·feedback, 페이징)·요약(성공률·평균/최대 elapsed·피드백 비율·프로필별)·상세(+피드백 목록). 읽기 전용, 정본 `app/ai_log.py`
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회
@@ -390,7 +392,7 @@ SPA(`web/`)는 Vite 해시 파일명이라 캐시버스팅 버전이 없다. `np
 배포 직후 옛 chunk 404 는 `main.ts` 의 stale-chunk 자동 새로고침이 흡수한다.
 
 ### SSE 스트리밍
-**PDF 업로드**와 **Few-shot 일괄 등록**(`/api/nl2sql/fewshot/register`, 2026-09-30)이 `StreamingResponse` + `text/event-stream` 이다(프론트는 `fetch` + `ReadableStream`, `composables/useSse.ts`).
+**PDF 업로드** · **Few-shot 일괄 등록**(`/api/nl2sql/fewshot/register`) · **정확도 시나리오**(`/api/nl2sql/accuracy-scenario`)(2026-09-30)가 `StreamingResponse` + `text/event-stream` 이다(프론트는 `fetch` + `ReadableStream`, `composables/useSse.ts`).
 AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시는 타이머 연출이다(2026-09-05 정정. 그 전까지 이 문단이 코드와 달랐다).
 
 ### API 응답 구조가 엔드포인트마다 다르다 (알려진 부채 D11)

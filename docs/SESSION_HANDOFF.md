@@ -623,7 +623,13 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 `app/fewshot.py`: `parse_file`(CSV BOM/JSON 배열·rows/XLSX 첫 시트, 헤더 느슨 — question/질문/prompt, sql/query/정답SQL, note/설명/comment) · `validate_rows`(`EXPLAIN PLAN SET STATEMENT_ID` 로 문법·객체 검증, SELECT/WITH 만, plan_table 정리) · `register_rows`(행마다 `_ensure_mapped` → FEEDBACK positive(response=SQL, content=설명) → `AI_FEEDBACK_LOG` source FEWSHOT(log_id NULL) + `AI_QUERY_LOG` source FEWSHOT; SSE row/done) · `purge_profile_feedback`(`$VECTAB` 의 질문마다 FEEDBACK delete + 앱 행).
 엔드포인트 5(template·parse·validate·register SSE·feedback/purge). 화면 `Nl2sqlFewshot.vue` + `stores/fewshot.ts` + `lib/fewshot.ts`: 드롭존·미리보기(SQL 펼침)·검증/등록/재시도/중단·진행 막대·등록된 피드백 표(개별 삭제·전체 삭제 ConfirmModal). NL2SQL 서브탭 5번째. `openpyxl` 추가(requirements).
 검증: 단위 3(파서) + 통합 3(템플릿·파싱+검증 ORA-00942/DML 거부·SSE 등록 1건 → 목록 FEWSHOT → 삭제) 통과. 브라우저: CSV 2행 → 검증 통과 1/실패 1 → 등록 → 목록 → 삭제.
-**남은 Phase 2**: 2-B 정확도 3단계 비교 · 2-C showprompt diff. 그 뒤 3-A/3-B/3-C, Phase 4.
+**남은 Phase 2**: ~~2-B·2-C~~ → 4-29.
+
+## 4-29. PoC 2-B·2-C 정확도 개선 시나리오 + showprompt diff (2026-09-30, Fable 5.1)
+
+`app/accuracy.py` `run_scenario`: 원래 `annotations`·`comments` 값을 읽고 → ① false/false showsql+실행 → ② true/true showsql+showprompt+실행 → ③ ②의 `log_id` 로 `submit_feedback(source=SCENARIO, corrected_sql=②SQL)` 후 showsql+showprompt+실행 → `finally` 속성 복원 + (keep 아니면) 피드백 삭제. `same_2_3` 로 "③이 ②를 그대로 돌려줬다" 판정. `POST /api/nl2sql/accuracy-scenario` SSE. 화면: 「질문」 탭 버튼 → 스레드에 `action='scenario'` 메시지 → `AccuracyScenario.vue`(3열 카드 + 배너 + `DiffBlock`(`lib/diff.ts` 줄 LCS, 바뀐 곳 주변만)). **함정**: `push()` 가 돌려준 반응형 프록시가 아니라 원본 객체를 고치면 화면이 안 그려진다(스토어 주석).
+검증: 통합 1(3단계 done · ③ 프롬프트에 examples · 속성 복원) 38초 통과. 브라우저 버튼 실행.
+**남은 것**: Phase 3(3-A OCI · 3-B 데이터셋 · 3-C 모델 비교) → Phase 4 Agent.
 
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)

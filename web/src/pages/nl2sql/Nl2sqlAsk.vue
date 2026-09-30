@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { MessageSquareText, Terminal, Play, Eraser, MessageSquarePlus, Copy, BookmarkPlus, Pencil, Trash2 } from 'lucide-vue-next'
+import { MessageSquareText, Terminal, Play, Eraser, MessageSquarePlus, Copy, BookmarkPlus, Pencil, Trash2, FlaskConical } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -90,6 +90,8 @@ const asMsg = (m: unknown) => m as Nl2sqlMessage
             <Button size="sm" variant="secondary" :busy="s.presetBusy" :disabled="!pickedPreset" title="고른 프리셋을 입력줄·제목·액션으로 덮어쓴다" @click="editPreset"><Pencil :size="13" :stroke-width="1.75" /> 수정</Button>
             <Button size="sm" variant="ghost" :disabled="!pickedPreset || s.presetBusy" title="고른 프리셋 삭제" @click="confirmDelete = true"><Trash2 :size="13" :stroke-width="1.75" /> 삭제</Button>
             <span class="text-[11px]" style="color: var(--text-muted);">{{ pickedPreset ? `선택: #${pickedPreset.ID} ${pickedPreset.TITLE}` : `프리셋 ${s.presets.length}건 · 범위 ${s.presets.length ? '프로필 이름 패턴' : '내장 예시(폴백)'}` }}</span>
+            <!-- 2-B: 입력줄의 질문을 ① Annotation 없이 → ② 적용 → ③ 피드백 반영 으로 나란히 -->
+            <Button size="sm" variant="secondary" class="ml-auto" :busy="s.scenarioRunning" :disabled="!s.input.trim() || s.sending" title="입력줄의 질문을 세 조건으로 풀어 나란히 비교 — 프로필 속성 annotations/comments 를 잠시 끄고 켜며 끝나면 복원. 1분 안팎" @click="s.runScenario(s.input)"><FlaskConical :size="13" :stroke-width="1.75" /> 정확도 개선 시나리오</Button>
           </div>
           <!-- 멀티턴 (PoC 1-A): 대화 ID 는 DB 의 conversation 객체, 브라우저가 들고 매 질문에 실어 보낸다 -->
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">

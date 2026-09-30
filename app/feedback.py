@@ -20,7 +20,7 @@ from app.select_ai import _lob_to_str
 logger = logging.getLogger(__name__)
 
 FEEDBACK_TYPES = ("positive", "negative")
-SOURCES = ("INLINE", "HISTORY", "FEWSHOT")
+SOURCES = ("INLINE", "HISTORY", "FEWSHOT", "SCENARIO")
 
 
 def statement_for(question: str) -> str:

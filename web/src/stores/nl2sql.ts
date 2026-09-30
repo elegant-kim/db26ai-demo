@@ -9,9 +9,13 @@ import {
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
 import type { ChatMessage } from '@/lib/types/chat'
+import { postSse } from '@/composables/useSse'
 import { useSystemStore } from './system'
 
 export type ChartType = 'bar' | 'line' | 'pie'
+/** 정확도 개선 시나리오(2-B) 한 번의 상태 — 어시스턴트 메시지에 매달린다 */
+export interface ScenarioStep { n: number; status: 'running' | 'done'; note?: string; sql?: string | null; prompt?: string | null; rows?: Rows | null; row_count?: number | null; elapsed_ms?: number; error?: string; run_error?: string | null; feedback_id?: number | null }
+export interface ScenarioState { question: string; meta: { n: number; title: string; desc: string }[]; steps: Record<number, ScenarioStep>; done: { restored: Record<string, string>; feedback_id: number | null; feedback_kept: boolean; elapsed_ms: number; same_2_3: boolean } | null; error: string | null }
 export interface Nl2sqlMessage extends ChatMessage {
   id: number
   timestamp: string
@@ -19,7 +23,7 @@ export interface Nl2sqlMessage extends ChatMessage {
   isSql?: boolean
   prevPrompt?: string | null
   // 어시스턴트
-  action?: Action | 'rawsql' | 'explainplan' | 'greeting'
+  action?: Action | 'rawsql' | 'explainplan' | 'greeting' | 'scenario'
   prompt?: string
   profileName?: string
   loadingText?: string
@@ -46,6 +50,8 @@ export interface Nl2sqlMessage extends ChatMessage {
   resetNote?: boolean
   /** 이 답변에 등록한 피드백 (1-B) */
   feedback?: FeedbackInfo | null
+  /** 정확도 개선 시나리오 (2-B) */
+  scenario?: ScenarioState
 }
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
@@ -390,6 +396,28 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     } catch (e) { system.toast(errorMessage(e), 'error') } finally { annoBusy.value = '' }
   }
 
+  const scenarioRunning = ref(false)
+  /** 정확도 개선 시나리오 — 질문 하나를 ①②③ 으로 (SSE). 결과는 스레드의 어시스턴트 메시지 한 개에 쌓인다 */
+  async function runScenario(question: string, keepFeedback = false) {
+    const q = question.trim()
+    if (!q || scenarioRunning.value || !profile.value) return
+    scenarioRunning.value = true
+    push({ role: 'user', content: q, prevPrompt: '정확도 개선 시나리오 ①②③' })
+    input.value = ''
+    const msg = push({ role: 'assistant', content: '', action: 'scenario', prompt: q, profileName: profile.value, scenario: { question: q, meta: [], steps: {}, done: null, error: null } })
+    const sc = msg.scenario!   // push 가 돌려준 반응형 프록시를 고쳐야 화면이 따라온다 — 원본 객체를 고치면 안 그려진다
+    const t0 = Date.now()
+    try {
+      await postSse('/api/nl2sql/accuracy-scenario', { question: q, profile_name: profile.value, keep_feedback: keepFeedback }, (type, data) => {
+        if (type === 'start') sc.meta = data.steps ?? []
+        else if (type === 'step') sc.steps[data.n] = { ...(sc.steps[data.n] ?? {}), ...data }
+        else if (type === 'done') sc.done = data
+        else if (type === 'error') sc.error = data?.message || '시나리오 오류'
+      })
+      msg.elapsedMs = Date.now() - t0
+    } catch (e) { sc.error = errorMessage(e) } finally { scenarioRunning.value = false }
+  }
+
   function clear() { messages.value = []; pushGreeting() }
 
   return {
@@ -397,7 +425,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     examples, profileOptions, hasAnnotationSet, asked,
     env, envLoading, envTest, feedbackStatus, loadFeedbackStatus, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
     multiTurn, chain, resetOnSuccess, conversationId, convTurns, ensureConversation, newConversation,
-    presets, presetBusy, loadPresets, savePreset, removePreset,
+    presets, presetBusy, loadPresets, savePreset, removePreset, scenarioRunning, runScenario,
     init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,
   }
 })

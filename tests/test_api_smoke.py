@@ -585,3 +585,32 @@ class TestFewshot:
         assert mine and mine[0]["SOURCE"] == "FEWSHOT" and mine[0]["HAS_CORRECTED"] == 1
         assert client.delete(f"/api/nl2sql/feedback/{row['feedback_id']}").json()["success"]
 
+
+class TestAccuracyScenario:
+    """PoC 2-B·2-C (2026-09-30) — 3단계 SSE. LLM 을 5~6회 부른다(1분 안팎). 끝나면 프로필 속성이 원래대로여야 한다."""
+
+    def test_3단계_후_속성_복원(self, client):
+        import json as _j
+        before = client.post("/api/env-info", json={"kind": "profile", "profile_name": "GEMINI_SH_PROFILE"}).json()["result"]["data"]
+        attrs0 = {r["ATTRIBUTE_NAME"]: str(r["ATTRIBUTE_VALUE"]) for r in before if r["ATTRIBUTE_NAME"] in ("annotations", "comments")}
+        events = []
+        with client.stream("POST", "/api/nl2sql/accuracy-scenario", json={"question": "판매 채널은 몇 개인가?", "profile_name": "GEMINI_SH_PROFILE"}) as r:
+            assert r.headers["content-type"].startswith("text/event-stream")
+            cur_type = ""
+            for line in r.iter_lines():
+                if line.startswith("event: "):
+                    cur_type = line[7:].strip()
+                elif line.startswith("data: "):
+                    events.append((cur_type, _j.loads(line[6:])))
+        types = [t for t, _ in events]
+        assert types[0] == "start" and types[-1] == "done", types
+        done = [d for t, d in events if t == "done"][0]
+        steps = {d["n"]: d for t, d in events if t == "step" and d.get("status") == "done"}
+        assert set(steps) == {1, 2, 3}, steps.keys()
+        assert steps[2].get("sql") and steps[2].get("prompt"), steps[2]
+        assert steps[3].get("prompt") and "examples" in steps[3]["prompt"].lower(), "③ 프롬프트에 피드백 예시가 주입돼야 한다"
+        assert done["feedback_kept"] is False and done["feedback_id"]
+        after = client.post("/api/env-info", json={"kind": "profile", "profile_name": "GEMINI_SH_PROFILE"}).json()["result"]["data"]
+        attrs1 = {r["ATTRIBUTE_NAME"]: str(r["ATTRIBUTE_VALUE"]) for r in after if r["ATTRIBUTE_NAME"] in ("annotations", "comments")}
+        assert attrs1 == attrs0, (attrs0, attrs1)
+

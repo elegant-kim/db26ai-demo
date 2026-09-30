@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+from app.accuracy import run_scenario
 from app.ai_log import VALID_FEEDBACK, VALID_STATUS, get_query_log, list_query_log, query_log_summary
 from app.database import get_pool
 from app.feedback import FEEDBACK_TYPES, delete_feedback, feedback_status, list_feedback, submit_feedback
@@ -60,6 +61,13 @@ class FeedbackRequest(BaseModel):
 class FewshotRows(BaseModel):
     rows: list[dict]
     profile_name: str = ""
+
+
+class ScenarioRequest(BaseModel):
+    question: str
+    profile_name: str
+    corrected_sql: str = ""        # 비우면 ②의 SQL 을 피드백으로
+    keep_feedback: bool = False    # 끝나고 피드백을 남길지
 
 
 class PurgeRequest(BaseModel):
@@ -574,4 +582,45 @@ async def feedback_purge(req: PurgeRequest):
         return {"success": True, **await purge_profile_feedback(pool, req.profile_name)}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+# ── 정확도 개선 시나리오 (PoC 2-B·2-C) — 정본 app/accuracy.py ──
+
+@router.post("/nl2sql/accuracy-scenario")
+async def accuracy_scenario(req: ScenarioRequest):
+    """같은 질문을 ① annotations/comments 끔 → ② 켬 → ③ ②의 SQL 을 피드백으로 등록 후 다시 — SSE(event: start | step | done | error).
+    프로필 속성은 SET_ATTRIBUTE 로 잠시 바꾸고 끝나면 복원한다. ②·③ 의 showprompt 를 같이 보내 화면이 diff 로 보여준다(2-C)."""
+    if not req.question.strip() or not req.profile_name:
+        return JSONResponse(status_code=400, content={"success": False, "error": "question 과 profile_name 이 필요합니다."})
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(event_type, data):
+            await queue.put((event_type, data))
+
+        async def run():
+            try:
+                await run_scenario(pool, req.profile_name, req.question.strip(), req.corrected_sql, req.keep_feedback, on_progress)
+            except Exception as e:
+                await queue.put(("error", {"message": str(e)}))
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                event_type, data = item
+                yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
