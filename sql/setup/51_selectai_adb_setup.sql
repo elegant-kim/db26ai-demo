@@ -234,7 +234,7 @@ BEGIN
         attributes   => '{
             "provider": "openai",
             "credential_name": "GEMINI_CRED",
-            "model": "gemini-2.5-pro",
+            "model": "gemini-3.8-flash",
             "provider_endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/v1",
             "object_list": [
               {"owner": "ADMIN","name":"CHANNELS"},
