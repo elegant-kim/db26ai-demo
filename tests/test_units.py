@@ -110,3 +110,38 @@ class TestSelectAiLogSummary:
         from app.select_ai import _summarize_result
         assert _summarize_result("chat", None) == (None, None, None)
 
+
+class TestFewshotParse:
+    """PoC 2-A — CSV/JSON/XLSX 파서. 헤더 이름은 느슨하게(question/질문, sql/SQL, note/설명)."""
+
+    def test_csv_한글_헤더와_BOM(self):
+        from app.fewshot import parse_file
+        content = "\ufeff질문,SQL,설명\n채널 수는?,SELECT COUNT(*) FROM channels,채널 표\n,SELECT 1 FROM dual,\n".encode("utf-8")
+        rows, headers = parse_file("a.csv", content)
+        assert headers == ["질문", "SQL", "설명"]
+        assert rows[0]["question"] == "채널 수는?" and rows[0]["sql"] == "SELECT COUNT(*) FROM channels" and rows[0]["note"] == "채널 표" and rows[0]["error"] is None
+        assert rows[1]["error"] and "질문" in rows[1]["error"]
+
+    def test_json_배열과_rows_객체(self):
+        from app.fewshot import parse_file
+        rows, _ = parse_file("a.json", b'[{"question": "q1", "sql": "SELECT 1 FROM dual;"}]')
+        assert rows[0]["sql"] == "SELECT 1 FROM dual"      # 끝 세미콜론 제거
+        rows, _ = parse_file("b.json", b'{"rows": [{"prompt": "q2", "query": "SELECT 2 FROM dual", "comment": "n"}]}')
+        assert rows[0]["question"] == "q2" and rows[0]["note"] == "n"
+
+    def test_xlsx(self):
+        import io
+
+        import openpyxl
+
+        from app.fewshot import parse_file
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["question", "sql", "note"])
+        ws.append(["q", "SELECT 3 FROM dual", None])
+        ws.append([None, None, None])
+        buf = io.BytesIO()
+        wb.save(buf)
+        rows, headers = parse_file("a.xlsx", buf.getvalue())
+        assert headers == ["question", "sql", "note"] and len(rows) == 1 and rows[0]["sql"] == "SELECT 3 FROM dual"
+

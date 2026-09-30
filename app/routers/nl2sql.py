@@ -1,16 +1,18 @@
 """NL2SQL(Select AI) 라우터 — /api/ask · profiles · set-profile · annotations · schema-info · explain-plan · execute-sql
 (계획서 5-5 에서 routes.py 에서 분리, 2026-09-05). 경로·응답 불변. Select AI 본체는 app/select_ai.py.
 """
+import asyncio
 import json
 import time
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, File, Request, UploadFile
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.ai_log import VALID_FEEDBACK, VALID_STATUS, get_query_log, list_query_log, query_log_summary
 from app.database import get_pool
 from app.feedback import FEEDBACK_TYPES, delete_feedback, feedback_status, list_feedback, submit_feedback
+from app.fewshot import TEMPLATE_CSV, parse_file, purge_profile_feedback, register_rows, validate_rows
 from app.presets import create_preset, delete_preset, list_presets, update_preset
 from app.presets import validate as validate_preset
 from app.select_ai import (
@@ -53,6 +55,15 @@ class FeedbackRequest(BaseModel):
     feedback_content: str = ""          # 사유(선택)
     corrected_sql: str = ""             # 👎 일 때 올바른 SQL(선택) → FEEDBACK(response)
     source: str = "INLINE"              # INLINE | HISTORY | FEWSHOT
+
+
+class FewshotRows(BaseModel):
+    rows: list[dict]
+    profile_name: str = ""
+
+
+class PurgeRequest(BaseModel):
+    profile_name: str
 
 
 class PresetRequest(BaseModel):
@@ -469,6 +480,98 @@ async def feedback_delete_endpoint(feedback_id: int):
         return {"success": True, **await delete_feedback(pool, feedback_id)}
     except LookupError as e:
         return JSONResponse(status_code=404, content={"success": False, "error": str(e)})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+# ── Few-shot 일괄 등록 (PoC 2-A) — 정본 app/fewshot.py ──
+
+FEWSHOT_MAX_BYTES = 5 * 1024 * 1024
+FEWSHOT_MAX_ROWS = 500
+
+
+@router.get("/nl2sql/fewshot/template")
+async def fewshot_template():
+    """템플릿 CSV 다운로드 — 헤더 question,sql,note (한글 헤더 질문/SQL/설명 도 받는다)."""
+    return Response(content=TEMPLATE_CSV, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="fewshot_template.csv"'})
+
+
+@router.post("/nl2sql/fewshot/parse")
+async def fewshot_parse(file: UploadFile = File(...)):
+    """CSV/JSON/XLSX 파싱 → 미리보기 행(question·sql·note, 비어 있으면 error). 등록은 하지 않는다."""
+    content = await file.read()
+    if len(content) > FEWSHOT_MAX_BYTES:
+        return JSONResponse(status_code=400, content={"success": False, "error": "파일이 5MB 를 넘습니다."})
+    try:
+        rows, headers = parse_file(file.filename or "", content)
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"success": False, "error": f"파일을 읽지 못했습니다: {e}"})
+    if len(rows) > FEWSHOT_MAX_ROWS:
+        return JSONResponse(status_code=400, content={"success": False, "error": f"행이 {FEWSHOT_MAX_ROWS}개를 넘습니다 ({len(rows)})."})
+    return {"success": True, "filename": file.filename, "headers": headers, "rows": rows, "total": len(rows)}
+
+
+@router.post("/nl2sql/fewshot/validate")
+async def fewshot_validate(req: FewshotRows):
+    """각 SQL 을 EXPLAIN PLAN 으로 문법·객체 검증(실행 안 함) → valid/error."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        rows = await validate_rows(pool, req.rows[:FEWSHOT_MAX_ROWS])
+        return {"success": True, "rows": rows, "valid": sum(1 for r in rows if r.get("valid")), "invalid": sum(1 for r in rows if not r.get("valid"))}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/nl2sql/fewshot/register")
+async def fewshot_register(req: FewshotRows):
+    """일괄 등록 — SSE(event: row | done | error). 행마다 SELECT AI showsql 1회(LLM) + FEEDBACK positive + AI_FEEDBACK_LOG(FEWSHOT)."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    if not req.profile_name:
+        return JSONResponse(status_code=400, content={"success": False, "error": "profile_name 이 필요합니다."})
+    rows = req.rows[:FEWSHOT_MAX_ROWS]
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(event_type, data):
+            await queue.put((event_type, data))
+
+        async def run():
+            try:
+                await register_rows(pool, req.profile_name, rows, on_progress)
+            except Exception as e:
+                await queue.put(("error", {"message": str(e)}))
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                event_type, data = item
+                yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/nl2sql/feedback/purge")
+async def feedback_purge(req: PurgeRequest):
+    """프로필의 피드백 전체 삭제 — 벡터 인덱스의 질문마다 FEEDBACK(delete) + AI_FEEDBACK_LOG. 되돌릴 수 없다(화면은 확인 모달)."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, **await purge_profile_feedback(pool, req.profile_name)}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

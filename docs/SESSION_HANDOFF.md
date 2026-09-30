@@ -616,7 +616,14 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 **만든 것**: `app/feedback.py`(status · submit(한 트랜잭션, 기존 있으면 delete 후 add, 실패 rollback) · delete · list) + `GET/POST/DELETE /api/nl2sql/feedback[…]` · `FeedbackBox.vue`(👍/👎 · 사유 · 👎 올바른 SQL 접기 · 저장 → 배지 · 수정/삭제 · 오류엔 환경 탭 링크) — 답변 말풍선(`Nl2sqlAnswer`)과 이력 모달(`Nl2sqlHistory`, source HISTORY) 공용 · 환경 탭 「피드백 N건」 배지 + 프로필 카드 `embedding_model`·`feedback_index`.
 **검증 상태**: 같은 날 오후 할당량이 돌아온 창에서 `TestFeedback` 3건 전부 통과(등록 → 👎로 교체(replaced) → 이력 상세에 1건 → 인덱스 행 ≥1 → 삭제 → 0건). **1-B 완료.** 화면 렌더(상자·배지·모달)도 확인.
 **모델 실측(09-30)**: 사용자가 Pro 로 바꿔 보자고 해서 시도 — `gemini-2.5-pro` 는 이 키에 **404 "no longer available to new users"**(→ `gemini-3.1-pro-preview` 권고), `gemini-pro-latest`·`gemini-3.1-pro-preview` 는 **무료 등급에서 429(할당량 0)**. `gemini-2.5-flash`·`gemini-flash-latest` 만 응답한다. 이후 사용자 제안으로 **`gemini-3.8-flash`**(모델 목록에 있고 200)로 프로필을 바꿨다 — chat 5.0초 · showsql 13.3초 · `TestFeedback` 3건 통과. 51번 §4·CLAUDE.md·.env.example·config.py 기본값도 `gemini-3.8-flash`. `.env` 의 `GOOGLE_MODEL` 은 사용자가 직접 맞춘다.
-**남은 Phase 1**: 없음(1-B 는 키 복구 후 재검증만). 다음은 LLM 없이 되는 3-B(고객사형 데이터셋·프로필·프리셋) 를 먼저, 2-A/2-B/2-C 는 키 복구 후.
+**남은 Phase 1**: 없음. (09-30 오후 결제 연결 후 1-B 테스트 통과, 모델 gemini-3.8-flash.)
+
+## 4-28. PoC 2-A Few-shot 일괄 등록 (2026-09-30, Fable 5.1)
+
+`app/fewshot.py`: `parse_file`(CSV BOM/JSON 배열·rows/XLSX 첫 시트, 헤더 느슨 — question/질문/prompt, sql/query/정답SQL, note/설명/comment) · `validate_rows`(`EXPLAIN PLAN SET STATEMENT_ID` 로 문법·객체 검증, SELECT/WITH 만, plan_table 정리) · `register_rows`(행마다 `_ensure_mapped` → FEEDBACK positive(response=SQL, content=설명) → `AI_FEEDBACK_LOG` source FEWSHOT(log_id NULL) + `AI_QUERY_LOG` source FEWSHOT; SSE row/done) · `purge_profile_feedback`(`$VECTAB` 의 질문마다 FEEDBACK delete + 앱 행).
+엔드포인트 5(template·parse·validate·register SSE·feedback/purge). 화면 `Nl2sqlFewshot.vue` + `stores/fewshot.ts` + `lib/fewshot.ts`: 드롭존·미리보기(SQL 펼침)·검증/등록/재시도/중단·진행 막대·등록된 피드백 표(개별 삭제·전체 삭제 ConfirmModal). NL2SQL 서브탭 5번째. `openpyxl` 추가(requirements).
+검증: 단위 3(파서) + 통합 3(템플릿·파싱+검증 ORA-00942/DML 거부·SSE 등록 1건 → 목록 FEWSHOT → 삭제) 통과. 브라우저: CSV 2행 → 검증 통과 1/실패 1 → 등록 → 목록 → 삭제.
+**남은 Phase 2**: 2-B 정확도 3단계 비교 · 2-C showprompt diff. 그 뒤 3-A/3-B/3-C, Phase 4.
 
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)

@@ -6,3 +6,4 @@ pdfplumber>=0.11.0
 python-multipart>=0.0.9
 httpx>=0.27.0
 apscheduler>=3.11.0
+openpyxl>=3.1              # PoC 2-A Few-shot XLSX 업로드 (2026-09-30)

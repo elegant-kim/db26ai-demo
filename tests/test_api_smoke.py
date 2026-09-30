@@ -551,3 +551,37 @@ class TestFeedback:
             assert client.delete(f"/api/nl2sql/feedback/{fid}").json()["success"]
         assert client.get(f"/api/nl2sql/history/{log_id}").json()["feedback"] == []
 
+
+class TestFewshot:
+    """PoC 2-A (2026-09-30) — 템플릿·파싱·검증(EXPLAIN PLAN)·등록 1건(LLM 1회)·삭제."""
+
+    def test_템플릿_csv(self, client):
+        r = client.get("/api/nl2sql/fewshot/template")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv") and r.text.startswith("question,sql,note")
+
+    def test_파싱과_검증(self, client):
+        csv = "question,sql,note\n채널 수는?,SELECT COUNT(*) FROM channels,ok\n틀린 SQL,SELECT * FROM no_such_table_xyz,bad\nDML,DELETE FROM channels,dml\n"
+        d = client.post("/api/nl2sql/fewshot/parse", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
+        assert d["success"] and d["total"] == 3, d
+        v = client.post("/api/nl2sql/fewshot/validate", json={"rows": d["rows"]}).json()
+        assert v["success"] and v["valid"] == 1 and v["invalid"] == 2, v
+        assert v["rows"][0]["valid"] is True and "ORA-00942" in (v["rows"][1]["error"] or "") and "SELECT" in (v["rows"][2]["error"] or "")
+
+    def test_등록_1건_SSE_후_삭제(self, client):
+        rows = [{"row": 1, "question": "pytest fewshot 채널 수는?", "sql": "SELECT COUNT(*) FROM channels", "note": "pytest"}]
+        with client.stream("POST", "/api/nl2sql/fewshot/register", json={"rows": rows, "profile_name": "GEMINI_SH_PROFILE"}) as r:
+            assert r.headers["content-type"].startswith("text/event-stream")
+            events = []
+            for line in r.iter_lines():
+                if line.startswith("data: "):
+                    import json as _j
+                    events.append(_j.loads(line[6:]))
+        row = next(e for e in events if "ok" in e)
+        done = next(e for e in events if "total" in e)
+        assert row["ok"] is True and row["feedback_id"], row
+        assert done["ok"] == 1 and done["failed"] == 0
+        fb = client.get("/api/nl2sql/feedback", params={"profile": "GEMINI_SH_PROFILE"}).json()["feedback"]
+        mine = [f for f in fb if f["ID"] == row["feedback_id"]]
+        assert mine and mine[0]["SOURCE"] == "FEWSHOT" and mine[0]["HAS_CORRECTED"] == 1
+        assert client.delete(f"/api/nl2sql/feedback/{row['feedback_id']}").json()["success"]
+
