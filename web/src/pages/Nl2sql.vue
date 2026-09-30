@@ -20,8 +20,8 @@ import Nl2sqlFewshot from './nl2sql/Nl2sqlFewshot.vue'
 type TabId = 'env' | 'ask' | 'schema' | 'history' | 'fewshot'
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: 'env', label: '환경', icon: Settings2 },
+  { id: 'schema', label: '스키마 · Annotation', icon: Table2 },   // 2026-10-01 사용자 요청: 질문보다 앞 — 무엇을 보는지 먼저
   { id: 'ask', label: '질문', icon: MessageSquareText },
-  { id: 'schema', label: '스키마 · Annotation', icon: Table2 },
   { id: 'history', label: '이력', icon: History },
   { id: 'fewshot', label: '피드백 · Few-shot', icon: ThumbsUp },
 ]

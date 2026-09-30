@@ -66,6 +66,16 @@ export const useFewshotStore = defineStore('fewshot', () => {
     finally { registering.value = false; if (timer) { window.clearInterval(timer); timer = null }; abort = null }
   }
   function cancel() { abort?.abort() }
+  /** 파일 없이 한 건 직접 입력 — 미리보기 표에 행으로 붙는다(검증·등록은 같은 흐름) */
+  function addManual(question: string, sql: string, note = '') {
+    const q = question.trim(), sq = sql.trim().replace(/;\s*$/, '')
+    if (!q || !sq) { system.toast('질문과 정답 SQL 을 둘 다 적어 주세요', 'warn'); return false }
+    const row = (rows.value.reduce((m, r) => Math.max(m, r.row), 0) || 0) + 1
+    rows.value.push({ row, question: q, sql: sq, note: note.trim(), error: null, valid: null })
+    if (!filename.value) filename.value = '(직접 입력)'
+    validated.value = false; summary.value = null
+    return true
+  }
   function clear() { filename.value = ''; headers.value = []; rows.value = []; results.value = {}; summary.value = null; validated.value = false; error.value = null }
 
   // ── 등록된 피드백 목록 ──
@@ -89,5 +99,5 @@ export const useFewshotStore = defineStore('fewshot', () => {
   }
 
   return { filename, headers, rows, parsing, validating, validated, registering, results, summary, elapsedSec, error, validRows, failedRows, doneCount,
-    load, validate, register, cancel, clear, feedback, feedbackLoading, feedbackFor, loadFeedback, remove, purge }
+    load, validate, register, cancel, clear, addManual, feedback, feedbackLoading, feedbackFor, loadFeedback, remove, purge }
 })

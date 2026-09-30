@@ -24,6 +24,8 @@ const route = useRoute()
 const fileInput = ref<HTMLInputElement | null>(null)
 const openSql = ref<Record<number, boolean>>({})
 const confirmPurge = ref(false)
+const mq = ref(''); const msql = ref(''); const mnote = ref('')
+function addManual() { if (f.addManual(mq.value, msql.value, mnote.value)) { mq.value = ''; msql.value = ''; mnote.value = '' } }
 const purging = ref(false)
 onMounted(() => { void s.init(route.query.profile).then(() => f.loadFeedback(s.profile)) })
 watch(() => s.profile, (p) => { if (p && f.feedbackFor !== p) void f.loadFeedback(p) })
@@ -59,6 +61,16 @@ async function doPurge() { purging.value = true; await f.purge(s.profile); purgi
         </div>
         <div v-if="f.filename" class="mt-2 text-xs" style="color: var(--text-muted);">{{ f.filename }} · {{ f.rows.length }}행 · 헤더 {{ f.headers.join(', ') }}</div>
       </div>
+      <!-- 직접 입력 (2026-10-01 사용자 요청): 파일 없이 한 건씩 — 표에 붙여 같은 검증·등록 흐름을 탄다 -->
+      <details class="rounded-md px-3 py-2 mb-3" style="border: 1px solid var(--border-default); background: var(--bg-surface);">
+        <summary class="text-xs cursor-pointer select-none" style="color: var(--text-secondary);">파일 없이 직접 입력 — 질문 + 정답 SQL 한 건씩 (아래 표에 붙습니다)</summary>
+        <div class="mt-2 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr_180px_auto] gap-2 items-start">
+          <input v-model="mq" placeholder="질문 (자연어)" class="rounded-md px-2.5 py-1.5 text-xs" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); color: var(--text-primary);" />
+          <textarea v-model="msql" rows="2" placeholder="정답 SQL — SELECT …" class="rounded-md px-2.5 py-1.5 text-xs font-mono" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); color: var(--text-primary);" />
+          <input v-model="mnote" placeholder="설명 (선택)" class="rounded-md px-2.5 py-1.5 text-xs" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); color: var(--text-primary);" />
+          <Button size="sm" variant="secondary" @click="addManual">표에 추가</Button>
+        </div>
+      </details>
 
       <template v-if="f.rows.length">
         <div class="flex flex-wrap items-center gap-2 mb-3">
@@ -90,7 +102,7 @@ async function doPurge() { purging.value = true; await f.purge(s.profile); purgi
           </table>
         </div>
       </template>
-      <EmptyState v-else :icon="Upload" compact title="파일을 올리면 미리보기가 뜹니다" desc="템플릿 CSV 를 내려받아 채우면 됩니다. 등록 전에 「검증」이 각 SQL 을 EXPLAIN PLAN 으로 확인합니다." />
+      <EmptyState v-else :icon="Upload" compact title="파일을 올리거나 위 「직접 입력」으로 한 건씩 넣으면 미리보기가 뜹니다" desc="템플릿 CSV 를 내려받아 채우면 됩니다. 등록 전에 「검증」이 각 SQL 을 EXPLAIN PLAN 으로 확인합니다. 답변 하나에 대한 👍/👎 는 「질문」 탭의 답변 아래와 「이력」 상세에서 바로 남깁니다." />
     </Card>
 
     <!-- ② 등록된 피드백 -->

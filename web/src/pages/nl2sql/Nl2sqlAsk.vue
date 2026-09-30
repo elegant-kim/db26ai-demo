@@ -98,13 +98,14 @@ function openCompare() {
             <Button size="sm" variant="ghost" :disabled="!pickedPreset || s.presetBusy" title="고른 프리셋 삭제" @click="confirmDelete = true"><Trash2 :size="13" :stroke-width="1.75" /> 삭제</Button>
             <span class="text-[11px]" style="color: var(--text-muted);">{{ pickedPreset ? `선택: #${pickedPreset.ID} ${pickedPreset.TITLE}` : `프리셋 ${s.presets.length}건 · 범위 ${s.presets.length ? '프로필 이름 패턴' : '내장 예시(폴백)'}` }}</span>
             <!-- 2-B: 입력줄의 질문을 ① Annotation 없이 → ② 적용 → ③ 피드백 반영 으로 나란히 -->
-            <Button size="sm" variant="secondary" class="ml-auto" :busy="s.scenarioRunning" :disabled="!s.input.trim() || s.sending" title="입력줄의 질문을 세 조건으로 풀어 나란히 비교 — 프로필 속성 annotations/comments 를 잠시 끄고 켜며 끝나면 복원. 1분 안팎" @click="s.runScenario(s.input)"><FlaskConical :size="13" :stroke-width="1.75" /> 정확도 개선 시나리오</Button>
+            <Button size="sm" variant="secondary" class="ml-auto" :busy="s.scenarioRunning" :disabled="s.sending" title="입력줄의 질문을 세 조건으로 풀어 나란히 비교 — 프로필 속성 annotations/comments 를 잠시 끄고 켜며 끝나면 복원. 1분 안팎" @click="s.input.trim() ? s.runScenario(s.input) : system.toast('아래 입력줄에 질문을 먼저 적어 주세요 — 그 질문으로 ①②③ 을 돌립니다', 'warn')"><FlaskConical :size="13" :stroke-width="1.75" /> 정확도 개선 시나리오</Button>
             <!-- 3-C: 같은 질문을 2~3 프로필로 -->
             <div class="relative">
-              <Button size="sm" variant="secondary" :busy="s.compareRunning" :disabled="!s.input.trim() || s.sending || s.profiles.length < 2" title="입력줄의 질문을 고른 프로필들로 순차 실행해 SQL·결과·소요를 나란히" @click="openCompare"><GitCompare :size="13" :stroke-width="1.75" /> 프로필 비교{{ s.compareTargets.length ? ` (${s.compareTargets.length})` : '' }}</Button>
+              <Button size="sm" variant="secondary" :busy="s.compareRunning" :disabled="s.sending" title="입력줄의 질문을 고른 프로필들로 순차 실행해 SQL·결과·소요를 나란히" @click="s.profiles.length < 2 ? system.toast('비교하려면 프로필이 2개 이상 있어야 합니다', 'warn') : openCompare()"><GitCompare :size="13" :stroke-width="1.75" /> 프로필 비교{{ s.compareTargets.length ? ` (${s.compareTargets.length})` : '' }}</Button>
               <div v-if="comparePick" class="absolute right-0 z-20 mt-1 rounded-md p-2 flex flex-col gap-1 min-w-[260px]" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); box-shadow: var(--shadow-elevated);">
                 <div class="text-[11px] px-1" style="color: var(--text-muted);">비교할 프로필 (2~3개)</div>
                 <label v-for="p in s.profiles" :key="p.profile_name" class="flex items-center gap-2 text-xs px-1 py-0.5 rounded cursor-pointer" style="color: var(--text-primary);"><input type="checkbox" :checked="s.compareTargets.includes(p.profile_name)" @change="toggleTarget(p.profile_name)" /> {{ p.profile_name }}</label>
+                <div v-if="!s.input.trim()" class="text-[11px] px-1" style="color: var(--accent-warm);">아래 입력줄에 질문을 먼저 적어 주세요</div>
                 <div class="flex justify-end gap-1 mt-1"><Button size="sm" variant="ghost" @click="comparePick = false">닫기</Button><Button size="sm" :disabled="s.compareTargets.length < 2 || !s.input.trim()" @click="comparePick = false; s.runCompare(s.input, s.compareTargets)"><Play :size="12" :stroke-width="2" /> 실행</Button></div>
               </div>
             </div>
