@@ -142,3 +142,12 @@ export const deletePreset = (id: number) => api.delete<{ success: boolean; error
 /** 프로필 이름 → 시드가 쓰는 LIKE 패턴 (SH → '%SH%'). 새 프리셋의 기본 범위 */
 export const presetPatternFor = (profile: string): string | null => { const p = (profile || '').toUpperCase(); return p.includes('SSB') ? '%SSB%' : p.includes('SH') ? '%SH%' : null }
 
+// ── 답변 피드백 (PoC 1-B) — 정본 app/feedback.py ──
+export type FeedbackType = 'positive' | 'negative'
+export interface FeedbackInfo { id: number; type: FeedbackType; content: string; correctedSql: string }
+export interface FeedbackStatus { success: boolean; profile_name: string; embedding_model: string | null; index_name: string | null; index_status: string | null; index_rows: number | null; app_rows: number; ready: boolean; error?: string }
+export const getFeedbackStatus = (profile: string) => api.get<FeedbackStatus>('/api/nl2sql/feedback/status', { params: { profile } }).then((r) => r.data)
+export const submitFeedback = (b: { log_id: number; feedback_type: FeedbackType; feedback_content: string; corrected_sql: string; source: 'INLINE' | 'HISTORY' }) =>
+  api.post<{ success: boolean; feedback_id?: number; replaced?: boolean; elapsed_ms?: number; statement?: string; error?: string }>('/api/nl2sql/feedback', b).then((r) => r.data)
+export const deleteFeedback = (id: number) => api.delete<{ success: boolean; error?: string }>(`/api/nl2sql/feedback/${id}`).then((r) => r.data)
+

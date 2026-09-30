@@ -184,6 +184,9 @@ END;
 --   comments     : COMMENT ON 주석 포함
 --   constraints  : PK/FK 를 포함 → 조인 키를 추측하지 않게 된다
 --   conversation : 직전 문답을 프롬프트에 누적 → 멀티턴("그 중 상위 3개는?")이 된다
+--   embedding_model : DBMS_CLOUD_AI.FEEDBACK(답변 피드백 → <프로필>_FEEDBACK_VECINDEX) 이 쓰는 임베딩 모델.
+--                  OpenAI 호환 프로바이더는 이게 없으면 ORA-20048 (2026-09-30 실측). Gemini 는 gemini-embedding-001,
+--                  Groq 는 임베딩 API 가 없어 피드백을 못 쓴다 — 아래 GROQ 프로필엔 넣지 않는다
 
 -- 4-1. 기존 프로필 제거 — 반드시 하나씩. 한 블록에 묶으면 첫 실패가 나머지를 막는다.
 BEGIN
@@ -246,7 +249,8 @@ BEGIN
             "annotations": true,
             "comments": true,
             "constraints": true,
-            "conversation": true
+            "conversation": true,
+            "embedding_model": "gemini-embedding-001"
         }');
 END;
 /

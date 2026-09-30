@@ -71,7 +71,20 @@ SELECT table_name, privilege FROM user_tab_privs WHERE table_name IN ('DBMS_CLOU
 
 `USER_CLOUD_AI_CONVERSATION_PROMPTS` 에 세 턴이 전부 남았다(SID 가 턴마다 달라도 무관). 결론: **세션 고정 없이 params 방식으로 충분** — 앱은 `run_select_ai()` 가 이 방식을 쓴다.
 
-## 6. 열린 항목 (실측 못 한 것)
+## 6. FEEDBACK 실측 (2026-09-30, GEMINI_SH_PROFILE) — 1-B 의 전제 셋 다 확인
 
-- `FEEDBACK` 의 벡터 인덱스(`<PROFILE>_FEEDBACK_VECINDEX`)가 어떤 임베딩 모델로 만들어지는지 — 프로필에 `embedding_model` 이 없고 provider 가 `openai`(Gemini 호환 엔드포인트)라 기본 모델명이 맞지 않으면 첫 FEEDBACK 이 실패할 수 있다. 같은 시점에 확인.
-- `sql_id` 오버로드 vs `sql_text` 오버로드 중 어느 쪽이 이 DB 에서 안정적인지 — 위와 같이 실측 후 채택.
+| 확인 | 결과 |
+|---|---|
+| 프로필에 `embedding_model` 없이 FEEDBACK | **`ORA-20048: Embedding Model must be specified for vector embeddings with OPENAI Compatible Provider`** |
+| `SET_ATTRIBUTE(profile, 'embedding_model', 'gemini-embedding-001')` 후 | 첫 FEEDBACK 이 `GEMINI_SH_PROFILE_FEEDBACK_VECINDEX`(`USER_CLOUD_VECTOR_INDEXES` ENABLED) + `…$VECTAB(CONTENT CLOB, ATTRIBUTES JSON, EMBEDDING VECTOR)` + IVF 테이블 2개를 만든다(2.8초). `text-embedding-004` 도 됨 |
+| GENERATE 로만 물은 질문에 `sql_text` FEEDBACK | **`ORA-20000: No matching SQL statement found for the SQL_ID or SQL text`** — GENERATE 는 SQL 번역이 아니라 `V$MAPPED_SQL` 에 안 남는다 |
+| `SET_PROFILE` → `SELECT AI showsql <질문>` 실행 후 | `V$MAPPED_SQL` 에 `sql_id bhvnagg0rfz3s` 한 행. **`sql_id` 오버로드 OK(4.2초) · `sql_text` 오버로드 OK(1.9초) · 다른 풀 커넥션에서 `sql_text` OK(1.4초)** |
+| 저장 단위 | `$VECTAB` 은 **질문 텍스트당 1행**(CONTENT = 질문, ATTRIBUTES.response = SQL) — 같은 질문에 3번 add 해도 1행. 수정 = delete 후 add 가 맞다 |
+| 프롬프트 주입 | showprompt 끝에 `Use the examples below in two ways: … Here are examples of previous successful queries for similar questions … [{"user_prompt": …, "sql_query": …}]` 뒤에 `Question: …`. 유사 질문("2000년 매출 상위 3개 제품")에도 주입됐다 |
+| 삭제 | `FEEDBACK(profile, sql_text => 문장, operation => 'delete')` → `$VECTAB` 0행 |
+
+**앱 설계 귀결**(`app/feedback.py`): 피드백 저장 시 같은 커넥션에서 `SET_PROFILE` → 문장이 매핑돼 있지 않으면 `SELECT AI showsql <질문>` 1회 실행(LLM) → `sql_text` 오버로드 FEEDBACK → `AI_FEEDBACK_LOG` INSERT, 실패 시 rollback. 채택 근거는 이 표.
+
+## 7. 열린 항목 (실측 못 한 것)
+
+- ~~FEEDBACK 임베딩 모델 · sql_id vs sql_text~~ → §6 에서 해소.

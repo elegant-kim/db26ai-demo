@@ -44,6 +44,9 @@ const profileKv = computed(() => {
     comments: bool(a.comments),
     constraints: bool(a.constraints),
     conversation: bool(a.conversation),
+    // 1-B: 피드백 벡터 인덱스의 임베딩 모델과 인덱스 존재 — 없으면 FEEDBACK 이 ORA-20048
+    embedding_model: a.embedding_model || '— (없음 → 피드백 불가)',
+    feedback_index: s.feedbackStatus?.index_name ? `${s.feedbackStatus.index_name} (${s.feedbackStatus.index_rows ?? 0}건)` : '아직 없음 — 첫 피드백 때 생성',
   }
 })
 const credKv = computed(() => {
@@ -83,6 +86,7 @@ const aclHostRows = computed<Rows>(() => ({
           <Badge :tone="s.aclOk ? 'positive' : 'negative'">ACL {{ s.aclOk ? '✓' : '✗' }} {{ s.endpointHost || '—' }}</Badge>
           <Badge tone="info">참조 테이블 {{ s.objectList.length }}</Badge>
           <Badge tone="info">Annotation {{ s.annotationCount }}</Badge>
+          <Badge :tone="s.feedbackStatus?.ready ? 'info' : 'warm'" :title="s.feedbackStatus?.ready ? `프로필 벡터 인덱스 ${s.feedbackStatus.index_name || '(첫 피드백 때 생성)'} · 인덱스 안 ${s.feedbackStatus.index_rows ?? 0}건` : '프로필에 embedding_model 이 없어 FEEDBACK 이 ORA-20048 로 실패합니다'">피드백 {{ s.feedbackStatus ? s.feedbackStatus.app_rows : '—' }}건{{ s.feedbackStatus && !s.feedbackStatus.ready ? ' · 준비 안 됨' : '' }}</Badge>
           <span class="ml-auto"><Button size="sm" variant="ghost" :busy="s.envLoading" @click="s.loadEnv(true)"><RefreshCw :size="14" :stroke-width="1.75" /> 새로고침</Button></span>
         </div>
       </Card>

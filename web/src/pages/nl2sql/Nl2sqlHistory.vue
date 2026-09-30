@@ -17,6 +17,8 @@ import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import EmptyState from '@/components/demo/EmptyState.vue'
 import SqlBlock from '@/components/demo/SqlBlock.vue'
 import KvGrid from '@/components/demo/KvGrid.vue'
+import FeedbackBox from '@/components/demo/FeedbackBox.vue'
+import type { FeedbackInfo } from '@/lib/nl2sql'
 import { fmtDateTime, fmtMs } from '@/lib/format'
 import { ACTIONS, shortConv } from '@/lib/nl2sql'
 import { FEEDBACK_OPTIONS, STATUS_OPTIONS } from '@/lib/aiLog'
@@ -37,6 +39,11 @@ const profileOptions = computed(() => [{ value: '', label: '프로필 전체' },
 const actionOptions = [{ value: '', label: '액션 전체' }, ...ACTIONS.map((a) => ({ value: a.value, label: a.value }))]
 const summaryHint = computed(() => (h.summary?.first_at ? `${fmtDateTime(h.summary.first_at)} 부터` : ''))
 async function copy(v: string) { try { await navigator.clipboard.writeText(v); system.toast('복사했습니다', 'success') } catch { system.toast(v, 'info') } }
+const existingFb = computed<FeedbackInfo | null>(() => {
+  const f = h.detail?.feedback?.[0]; if (!f) return null
+  return { id: f.ID, type: f.FEEDBACK_TYPE as FeedbackInfo['type'], content: f.FEEDBACK_CONTENT ?? '', correctedSql: f.CORRECTED_SQL ?? '' }
+})
+async function afterFeedback() { if (h.detail) { const id = h.detail.ID; await Promise.all([h.open(id), h.load(h.page), h.loadSummary()]) } }
 const detailKv = computed(() => {
   const d = h.detail; if (!d) return {}
   return { 시작: fmtDateTime(d.STARTED_AT), 출처: d.SOURCE, 프로필: d.PROFILE_NAME ?? '—', 모델: d.MODEL ?? '—', 액션: d.ACTION ?? '—', 상태: d.STATUS,
@@ -124,12 +131,10 @@ const detailKv = computed(() => {
               <SqlBlock v-if="h.detail.GENERATED_SQL" :code="h.detail.GENERATED_SQL" label="생성된 SQL" badge="Select AI" line-numbers max-height="300px" />
               <div v-if="h.detail.ERROR_MSG" class="px-3 py-2.5 rounded-md text-sm" style="background: var(--accent-negative-soft); border-left: 3px solid var(--accent-negative); color: var(--text-primary);"><strong>오류:</strong> <span class="font-mono text-xs break-all whitespace-pre-wrap">{{ h.detail.ERROR_MSG }}</span></div>
               <SqlBlock v-if="h.detail.RESPONSE_TEXT" :code="h.detail.RESPONSE_TEXT" lang="text" label="답변 앞부분 (4000자까지)" max-height="240px" />
-              <div class="rounded-md px-3 py-2.5 text-sm" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
-                <div class="flex items-center gap-2 mb-1"><span class="font-medium" style="color: var(--text-primary);">피드백</span><Badge>{{ h.detail.feedback.length }}</Badge></div>
-                <div v-if="h.detail.feedback.length" class="flex flex-col gap-1.5">
-                  <div v-for="f in h.detail.feedback" :key="f.ID" class="flex items-start gap-2 text-xs"><component :is="f.FEEDBACK_TYPE === 'positive' ? ThumbsUp : ThumbsDown" :size="13" :stroke-width="1.75" :style="{ color: f.FEEDBACK_TYPE === 'positive' ? 'var(--accent-positive)' : 'var(--accent-negative)' }" class="mt-0.5 shrink-0" /><div class="min-w-0"><span style="color: var(--text-primary);">{{ f.FEEDBACK_CONTENT || '(사유 없음)' }}</span><span class="ml-2" style="color: var(--text-muted);">{{ fmtDateTime(f.CREATED_AT) }} · {{ f.SOURCE }}</span></div></div>
-                </div>
-                <p v-else class="text-xs m-0" style="color: var(--text-muted);">아직 피드백이 없습니다. 답변 아래 👍/👎 (1-B) 로 남기면 여기서도 보입니다.</p>
+              <div class="flex flex-col gap-1.5">
+                <div class="flex items-center gap-2 text-sm"><span class="font-medium" style="color: var(--text-primary);">피드백</span><span v-if="existingFb" class="text-[11px]" style="color: var(--text-muted);">{{ fmtDateTime(h.detail.feedback[0].CREATED_AT) }} · {{ h.detail.feedback[0].SOURCE }}</span></div>
+                <FeedbackBox v-if="h.detail.STATUS === 'SUCCEEDED' && h.detail.QUESTION" :key="h.detail.ID" :log-id="h.detail.ID" :existing="existingFb" source="HISTORY" @saved="afterFeedback" @deleted="afterFeedback" />
+                <p v-else class="text-xs m-0" style="color: var(--text-muted);">실패한 호출에는 피드백을 붙이지 않습니다.</p>
               </div>
             </template>
           </div>

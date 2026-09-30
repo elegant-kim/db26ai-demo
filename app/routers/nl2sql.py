@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.ai_log import VALID_FEEDBACK, VALID_STATUS, get_query_log, list_query_log, query_log_summary
 from app.database import get_pool
+from app.feedback import FEEDBACK_TYPES, delete_feedback, feedback_status, list_feedback, submit_feedback
 from app.presets import create_preset, delete_preset, list_presets, update_preset
 from app.presets import validate as validate_preset
 from app.select_ai import (
@@ -44,6 +45,14 @@ class AskRequest(BaseModel):
 
 class ConversationRequest(BaseModel):
     title: str = ""
+
+
+class FeedbackRequest(BaseModel):
+    log_id: int
+    feedback_type: str                  # positive | negative
+    feedback_content: str = ""          # 사유(선택)
+    corrected_sql: str = ""             # 👎 일 때 올바른 SQL(선택) → FEEDBACK(response)
+    source: str = "INLINE"              # INLINE | HISTORY | FEWSHOT
 
 
 class PresetRequest(BaseModel):
@@ -395,6 +404,71 @@ async def presets_delete(preset_id: int):
         if not ok:
             return JSONResponse(status_code=404, content={"success": False, "error": f"프리셋이 없습니다: {preset_id}"})
         return {"success": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+# ── 답변 피드백 (PoC 1-B) — 정본 app/feedback.py ──
+
+@router.get("/nl2sql/feedback/status")
+async def feedback_status_endpoint(profile: str = ""):
+    """피드백 준비 상태 — 프로필 embedding_model 유무 · `<PROFILE>_FEEDBACK_VECINDEX` 존재 · 인덱스 안 행 수 · 앱 기록 수. 환경 탭 배지."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, **await feedback_status(pool, profile)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.get("/nl2sql/feedback")
+async def feedback_list_endpoint(profile: str = "", limit: int = 200):
+    """등록된 피드백 목록(앱 기록 기준)."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, "feedback": await list_feedback(pool, profile, limit)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/nl2sql/feedback")
+async def feedback_submit_endpoint(req: FeedbackRequest):
+    """👍/👎 저장 — DBMS_CLOUD_AI.FEEDBACK(sql_text 오버로드) + AI_FEEDBACK_LOG 를 한 트랜잭션으로. 같은 이력에 다시 저장하면 delete 후 add.
+    피드백이 붙을 `SELECT AI showsql <질문>` 문장이 아직 실행된 적 없으면 이 자리에서 한 번 실행한다(LLM 1회, 수 초)."""
+    if req.feedback_type not in FEEDBACK_TYPES:
+        return JSONResponse(status_code=400, content={"success": False, "error": "feedback_type 은 positive/negative 만 됩니다."})
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, **await submit_feedback(pool, req.log_id, req.feedback_type, req.feedback_content, req.corrected_sql, req.source)}
+    except LookupError as e:
+        return JSONResponse(status_code=404, content={"success": False, "error": str(e)})
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
+    except Exception as e:
+        msg = str(e)
+        hint = ""
+        if "ORA-20048" in msg:
+            hint = " — 프로필에 embedding_model 이 없습니다: DBMS_CLOUD_AI.SET_ATTRIBUTE(profile, 'embedding_model', 'gemini-embedding-001')"
+        elif "ORA-20000" in msg:
+            hint = " — 피드백은 실행된 SELECT AI 문장에만 붙습니다(V$MAPPED_SQL)"
+        return JSONResponse(status_code=500, content={"success": False, "error": msg + hint})
+
+
+@router.delete("/nl2sql/feedback/{feedback_id}")
+async def feedback_delete_endpoint(feedback_id: int):
+    """피드백 삭제 — Oracle FEEDBACK(delete) + 앱 행."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, **await delete_feedback(pool, feedback_id)}
+    except LookupError as e:
+        return JSONResponse(status_code=404, content={"success": False, "error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

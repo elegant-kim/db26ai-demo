@@ -610,6 +610,13 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 `EXAMPLE_QUESTIONS` 상수는 폴백으로만 남긴다. 이력 시각은 UTC `Z` 를 붙여 현지로(개발노하우 3.3). 테스트 +3.
 **Phase 1 남은 것: 1-B 피드백뿐** — LLM(Gemini) 할당량이 풀려야 FEEDBACK 벡터 인덱스(임베딩)까지 실측할 수 있다.
 
+## 4-27. PoC 1-B 답변 피드백 (2026-09-30, Fable 5.1) — 구현 완료, 끝까지의 자동 검증은 키 할당량에 막힘
+
+**실측으로 푼 것**(`verified-signatures.md` §6): `embedding_model` 없으면 ORA-20048 → `SET_ATTRIBUTE(GEMINI_SH_PROFILE, embedding_model, gemini-embedding-001)`(이 DB 적용, 51번 §4 에도 추가; GROQ 는 임베딩 API 가 없어 제외) → 첫 FEEDBACK 이 `GEMINI_SH_PROFILE_FEEDBACK_VECINDEX` + `$VECTAB` 생성. 피드백은 **`V$MAPPED_SQL` 의 `SELECT AI` 문장**에만 붙는다(GENERATE 는 ORA-20000) → 앱은 저장 시 같은 커넥션에서 `SET_PROFILE` → 매핑 없으면 `SELECT AI showsql <질문>` 1회 → `sql_text` 오버로드. `sql_id`/`sql_text`/다른 커넥션 전부 OK. showprompt 끝에 `examples of previous successful queries … [{user_prompt, sql_query}]` 로 주입 확인(2-C 앵커). 프로브 피드백은 지웠다.
+**만든 것**: `app/feedback.py`(status · submit(한 트랜잭션, 기존 있으면 delete 후 add, 실패 rollback) · delete · list) + `GET/POST/DELETE /api/nl2sql/feedback[…]` · `FeedbackBox.vue`(👍/👎 · 사유 · 👎 올바른 SQL 접기 · 저장 → 배지 · 수정/삭제 · 오류엔 환경 탭 링크) — 답변 말풍선(`Nl2sqlAnswer`)과 이력 모달(`Nl2sqlHistory`, source HISTORY) 공용 · 환경 탭 「피드백 N건」 배지 + 프로필 카드 `embedding_model`·`feedback_index`.
+**검증 상태**: DB 레벨 add/delete 는 오전에 통과. 앱 경로(`submit_feedback`)는 `SELECT AI showsql` 단계에서 **Gemini 429(무료 티어 20건/일)** 로 639초 뒤 실패 — 서비스 로직의 나머지는 타지 못했다. 통합 테스트 `TestFeedback::test_등록_교체_삭제_한_사이클` 은 키가 풀리면 통과해야 한다(그때 첫 작업). 화면 렌더(상자·배지·모달)는 확인.
+**남은 Phase 1**: 없음(1-B 는 키 복구 후 재검증만). 다음은 LLM 없이 되는 3-B(고객사형 데이터셋·프로필·프리셋) 를 먼저, 2-A/2-B/2-C 는 키 복구 후.
+
 
 ## 5. 절대 지켜야 할 규칙 (발췌 — 정본은 `docs/개발노하우.md`)
 
@@ -633,7 +640,7 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
 | 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
-| 9 | **GEMINI 경유 GENERATE 가 수백 초 걸리거나 타임아웃 — 원인은 Gemini `HTTP 429`(할당량)** (2026-09-29 확정). `AI_QUERY_LOG` 에 `ORA-20429: Request failed with status HTTP 429 - bearer://generativelanguage.googleapis.com/…` 이 elapsed 503,815 ms · 509,314 ms 로 남았다 — DBMS_CLOUD_AI 가 `PL/SQL lock timer` 로 재시도하며 버틴 시간. ACL·크리덴셜은 정상. 오전 무응답도 같은 원인으로 본다. **수습은 GEMINI_CRED 의 Google AI Studio 키 할당량(무료 티어 RPM/RPD) — 결제 활성화 또는 다른 키, 또는 GROQ 키 복구(과제 7). 시크릿 영역이라 사용자 판단.** 그동안 LLM 을 부르는 통합 테스트(`TestSelectAiShorthand` · `TestNL2SQL::test_showsql` · `TestConversationAndLog` 2건)는 429 가 걸리면 ReadTimeout 으로 실패한다 | 4-23 · 4-24 |
+| 9 | **GEMINI 경유 GENERATE 가 수백 초 걸리거나 타임아웃 — 원인은 Gemini `HTTP 429`** (2026-09-29 확정). **09-30 확정: Mac 에서 같은 키로 429 본문을 받았다 — `Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash`. 즉 이 API 키의 Google 프로젝트는 무료 티어**(사용자는 종량제라고 알고 있었다 → 결제가 붙은 프로젝트와 키의 프로젝트가 다를 가능성). 하루 20건이라 GENERATE 몇 번이면 바닥난다. 수습: AI Studio 에서 키의 프로젝트에 결제 연결(또는 결제 프로젝트에서 새 키 발급) → `DBMS_CLOUD.UPDATE_CREDENTIAL(GEMINI_CRED, 'password', 새키)`. 사용자 영역. `AI_QUERY_LOG` 에 `ORA-20429: Request failed with status HTTP 429 - bearer://generativelanguage.googleapis.com/…` 이 elapsed 503,815 ms · 509,314 ms 로 남았다 — DBMS_CLOUD_AI 가 `PL/SQL lock timer` 로 재시도하며 버틴 시간. ACL·크리덴셜은 정상. 오전 무응답도 같은 원인으로 본다. **수습은 GEMINI_CRED 의 Google AI Studio 키 할당량(무료 티어 RPM/RPD) — 결제 활성화 또는 다른 키, 또는 GROQ 키 복구(과제 7). 시크릿 영역이라 사용자 판단.** 그동안 LLM 을 부르는 통합 테스트(`TestSelectAiShorthand` · `TestNL2SQL::test_showsql` · `TestConversationAndLog` 2건)는 429 가 걸리면 ReadTimeout 으로 실패한다 | 4-23 · 4-24 |
 
 ## 7. 새 세션 첫 단계 권장
 

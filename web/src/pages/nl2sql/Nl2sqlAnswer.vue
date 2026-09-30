@@ -11,6 +11,7 @@ import DonutChart from '@/components/ui/DonutChart.vue'
 import SqlBlock from '@/components/demo/SqlBlock.vue'
 import ResultTable from '@/components/demo/ResultTable.vue'
 import Segmented from '@/components/demo/Segmented.vue'
+import FeedbackBox from '@/components/demo/FeedbackBox.vue'
 import { renderMarkdown } from '@/lib/markdown'
 import { fmtMs, isNumeric } from '@/lib/format'
 import { RESET_NOTE, shortConv } from '@/lib/nl2sql'
@@ -98,6 +99,8 @@ const chart = computed(() => {
           <span v-if="msg.logId">·</span><span v-if="msg.logId" title="AI_QUERY_LOG.id">log #{{ msg.logId }}</span>
         </div>
         <div v-if="msg.resetNote" class="text-[11px] px-2.5 py-1.5 rounded-md" style="background: var(--accent-info-soft); color: var(--text-secondary);">{{ RESET_NOTE }}</div>
+        <!-- 인라인 피드백 (1-B) — 이력 id 가 있는 성공 답변에만. DBMS_CLOUD_AI.FEEDBACK 은 프로필 벡터 인덱스에 들어가 유사 질문의 프롬프트에 주입된다 -->
+        <FeedbackBox v-if="msg.logId && !msg.errorText && !isGreeting" :log-id="msg.logId" :existing="msg.feedback ?? null" source="INLINE" @saved="(f) => (msg.feedback = f)" @deleted="msg.feedback = null" />
       </template>
     </div>
   </div>

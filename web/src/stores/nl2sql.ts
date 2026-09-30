@@ -5,7 +5,7 @@ import { annotationSetFor } from '@/lib/annotations'
 import {
   ACTION_BUTTONS, LOADING_TEXT, ask, applyAnnotations, executeSql, exampleQuestionsFor, explainPlan, getProfiles, getSchemaInfo,
   removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, createConversation, GREETING,
-  getPresets, createPreset, updatePreset, deletePreset, presetPatternFor, type Preset, type PresetInput, type Action, type FollowAction, type Profile, type SchemaTable,
+  getPresets, createPreset, updatePreset, deletePreset, presetPatternFor, getFeedbackStatus, type FeedbackInfo, type FeedbackStatus, type Preset, type PresetInput, type Action, type FollowAction, type Profile, type SchemaTable,
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
 import type { ChatMessage } from '@/lib/types/chat'
@@ -44,6 +44,8 @@ export interface Nl2sqlMessage extends ChatMessage {
   logId?: number | null
   /** 「정상답변시 대화초기화」 가 이 답변 뒤에 대화를 리셋했다 — 안내 문구를 붙인다 */
   resetNote?: boolean
+  /** 이 답변에 등록한 피드백 (1-B) */
+  feedback?: FeedbackInfo | null
 }
 
 const now = () => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
@@ -138,6 +140,8 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   const envLoading = ref(false)
   const envLoadedFor = ref('')
   const envTest = ref<{ busy: boolean; response: string | null; elapsedMs: number | null; error: string | null }>({ busy: false, response: null, elapsedMs: null, error: null })
+  const feedbackStatus = ref<FeedbackStatus | null>(null)   // 1-B: embedding_model · _FEEDBACK_VECINDEX · 건수
+  async function loadFeedbackStatus() { if (!profile.value) return; try { feedbackStatus.value = await getFeedbackStatus(profile.value) } catch (e) { feedbackStatus.value = null; lastError.value = errorMessage(e) } }
 
   const profileAttrs = computed<Record<string, string>>(() => {
     const out: Record<string, string> = {}
@@ -179,6 +183,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
       const [p, c, a] = await Promise.all([getEnvInfo('profile', profile.value), getEnvInfo('credential', profile.value), getEnvInfo('acl', profile.value)])
       env.value = { profile: p.result ?? null, credential: c.result ?? null, acl: a.result ?? null }
       envLoadedFor.value = profile.value
+      void loadFeedbackStatus()
       const err = [p, c, a].map((r) => r.result?.error).find(Boolean)
       if (err) lastError.value = err
     } catch (e) { lastError.value = errorMessage(e) }
@@ -390,7 +395,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   return {
     profiles, profile, profilesLoaded, action, messages, input, sqlInput, sending, sqlRunning, schema, schemaLoading, expanded, annoBusy, lastError,
     examples, profileOptions, hasAnnotationSet, asked,
-    env, envLoading, envTest, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
+    env, envLoading, envTest, feedbackStatus, loadFeedbackStatus, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
     multiTurn, chain, resetOnSuccess, conversationId, convTurns, ensureConversation, newConversation,
     presets, presetBusy, loadPresets, savePreset, removePreset,
     init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,

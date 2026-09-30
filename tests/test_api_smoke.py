@@ -515,3 +515,39 @@ class TestPromptPresets:
         assert client.post("/api/nl2sql/presets", json={"title": "", "question": "q"}).status_code == 400
         assert client.post("/api/nl2sql/presets", json={"title": "t", "question": "q", "action": "dropdb"}).status_code == 400
 
+
+class TestFeedback:
+    """PoC 1-B (2026-09-30) — DBMS_CLOUD_AI.FEEDBACK + AI_FEEDBACK_LOG. 등록은 SELECT AI 문장을 만들기 위해 LLM 을 1회 부른다."""
+
+    def test_상태(self, client):
+        d = client.get("/api/nl2sql/feedback/status", params={"profile": "GEMINI_SH_PROFILE"}).json()
+        assert d["success"]
+        for k in ("embedding_model", "index_name", "index_rows", "app_rows", "ready"):
+            assert k in d, k
+        assert d["ready"] is True, "GEMINI_SH_PROFILE 에 embedding_model 이 있어야 한다(51번 §2)"
+
+    def test_잘못된_type_과_없는_이력(self, client):
+        assert client.post("/api/nl2sql/feedback", json={"log_id": 1, "feedback_type": "meh"}).status_code == 400
+        assert client.post("/api/nl2sql/feedback", json={"log_id": 999999999, "feedback_type": "positive"}).status_code == 404
+
+    def test_등록_교체_삭제_한_사이클(self, client):
+        # 성공한 showsql 이력 하나를 고른다(질문이 있어야 한다)
+        rows = client.get("/api/nl2sql/history", params={"status": "SUCCEEDED", "action": "showsql", "profile": "GEMINI_SH_PROFILE", "size": 1}).json()["rows"]
+        if not rows:
+            pytest.skip("피드백을 붙일 showsql 이력이 없다")
+        log_id = rows[0]["ID"]
+        r = client.post("/api/nl2sql/feedback", json={"log_id": log_id, "feedback_type": "positive", "feedback_content": "pytest 좋음"}).json()
+        assert r["success"], r
+        fid = r["feedback_id"]
+        try:
+            r2 = client.post("/api/nl2sql/feedback", json={"log_id": log_id, "feedback_type": "negative", "feedback_content": "pytest 나쁨", "corrected_sql": "SELECT 1 FROM dual"}).json()
+            assert r2["success"] and r2["replaced"] is True, r2
+            fid = r2["feedback_id"]
+            d = client.get(f"/api/nl2sql/history/{log_id}").json()
+            assert len(d["feedback"]) == 1 and d["feedback"][0]["FEEDBACK_TYPE"] == "negative"
+            st = client.get("/api/nl2sql/feedback/status", params={"profile": "GEMINI_SH_PROFILE"}).json()
+            assert st["index_rows"] is not None and st["index_rows"] >= 1
+        finally:
+            assert client.delete(f"/api/nl2sql/feedback/{fid}").json()["success"]
+        assert client.get(f"/api/nl2sql/history/{log_id}").json()["feedback"] == []
+
