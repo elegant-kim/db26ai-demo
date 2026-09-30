@@ -83,9 +83,53 @@ export const ANNOTATION_SETS: Record<string, AnnotationSet> = {
             UNIT_PRICE: '단위 판매가 (USD)',
         },
     },
+    // 고객사형 샘플(PoC 3-B, 2026-09-30) — sql/seed/crown_like/. 03_annotations.sql 은 여기서 생성한다.
+    // 테이블 이름은 POC_ 접두어 — ADMIN 에 SH 의 PRODUCTS·SALES 가 이미 있어 이름이 겹친다(첫 적재 때 SH 설명을 덮어쓴 사고, 09-30)
+    CROWN: {
+        POC_STORES: {
+            _table: '매장 마스터 - 제과 유통 매장(대형마트·편의점·슈퍼·온라인)',
+            STORE_ID: '매장 고유 식별자 (PK)',
+            STORE_NAME: '매장명',
+            REGION: '지역: 서울, 경기, 인천, 부산, 대구, 광주, 대전, 강원, 충청, 전라, 경상, 제주',
+            CHANNEL: '유통 채널: 대형마트, 편의점, 슈퍼마켓, 온라인',
+            OPEN_DATE: '개점일',
+            STORE_SIZE_SQM: '매장 면적 (제곱미터)',
+        },
+        POC_PRODUCTS: {
+            _table: '제품 마스터 - 제과 제품(비스킷·스낵·캔디·젤리·초콜릿)',
+            PRODUCT_ID: '제품 고유 식별자 (PK)',
+            PRODUCT_NAME: '제품명',
+            CATEGORY: '제품 카테고리: 비스킷, 스낵, 캔디, 젤리, 초콜릿',
+            UNIT_PRICE: '단위 판매가 (원, KRW)',
+            LAUNCH_DATE: '출시일',
+            IS_NEW: '신제품 여부: Y=출시 1년 이내, N=기존 제품',
+        },
+        POC_DISPLAYS: {
+            _table: '진열 현황 - 매장별 제품의 진열 위치·면수·전시 상태 조사 결과. DISPLAY_LOCATION 이 미입력인 행이 약 30% 있다 (데이터 품질 이슈)',
+            DISPLAY_ID: '진열 조사 고유 식별자 (PK)',
+            STORE_ID: '매장 ID (FK → POC_STORES)',
+            PRODUCT_ID: '제품 ID (FK → POC_PRODUCTS)',
+            DISPLAY_LOCATION: '진열 위치(매대): 매장입구, 중앙통로, 계산대앞, 음료코너, 시식코너, 미입력. 미입력은 조사 누락이며 집계에서 제외해야 할 수 있다',
+            FACE_COUNT: '진열 면수 - 매대에서 제품이 정면으로 보이는 칸 수 (1~6)',
+            DISPLAY_STATE: '전시 상태: 단독(단독 진열), 혼합(타사 제품과 혼합 진열), 미입력',
+            DISPLAY_POSITION: '전시 위치(매대 안 위치): 전면중앙, 전면좌측, 전면우측, 상단, 하단',
+            SURVEY_DATE: '진열 조사일',
+        },
+        POC_SALES: {
+            _table: '매출 - 일자별 매장별 제품별 판매 실적 (2025-10 ~ 2026-09, 약 6만 행)',
+            SALE_ID: '매출 고유 식별자 (PK)',
+            SALE_DATE: '판매 일자',
+            STORE_ID: '매장 ID (FK → POC_STORES)',
+            PRODUCT_ID: '제품 ID (FK → POC_PRODUCTS)',
+            QUANTITY: '판매 수량 (개)',
+            AMOUNT: '매출 금액 (원, KRW) = 수량 × 단가 × (1 - 할인율)',
+            PROMO_FLAG: '프로모션 적용 여부: Y=행사가 판매, N=정가 판매',
+        },
+    },
 };
 export function annotationSetFor(profile: string): { owner: string; tables: AnnotationSet } | null {
   const p = (profile || '').toUpperCase()
+  if (p.includes('CROWN')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.CROWN }
   if (p.includes('SH')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.SH }
   return null
 }

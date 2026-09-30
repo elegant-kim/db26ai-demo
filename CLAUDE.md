@@ -134,6 +134,7 @@ scripts/deploy.sh
 | `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
 | `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
+| `sql/seed/crown_like/01~05, 09` · `scripts/seed_crown_like.py` | **고객사형 샘플 데이터셋**(PoC 3-B): 테이블 4 + COMMENT → 합성 데이터(재현 가능) → Annotation(정본 `web/src/lib/annotations.ts` CROWN 세트에서 생성) → 프로필 `CROWN_LIKE_PROFILE` → 프리셋 10. 09 원복. 로더는 병렬을 끄고 순서대로 돈다 |
 | `sql/setup/70_poc_ai_tables.sql` · `71_…_rollback.sql` · `72_poc_prompt_preset_seed.sql` | 고객사 PoC 확장(2026-09-29): 이력·피드백·프리셋 표 3개 + 롤백 + 예시 질문 시드 27건(멱등). 이 DB 에 적용 완료 |
 | `sql/setup/51_selectai_adb_setup.sql`<br>`52_..._demo.sql` · `53_..._teardown.sql` | **앱 없이 SQLcl 만으로** Select AI 를 세팅·시연·원복하는 ADB 전용 3종 세트 (2026-09-07). Annotation 목록의 정본은 `web/src/lib/annotations.ts` 이고 51번 §5 는 거기서 생성한 것이다. 옛 `selectAI_설정.sql`·`selectAI_demo.sql` 은 **다른 환경용**이라 보존만 한다 |
 | `docs/` | 사람이 읽는 문서 — 아래 "문서 체계" 참조 |
@@ -324,7 +325,7 @@ GOOGLE_API_KEY= / GOOGLE_MODEL=gemini-3.8-flash
 - `DBMS_DATA_MINING.IMPORT_ONNX_MODEL()` / `DBMS_VECTOR.LOAD_ONNX_MODEL()` — ONNX 모델 로드
 - `CREATE PROPERTY GRAPH` / `GRAPH_TABLE(... MATCH ... COLUMNS ...)` — SQL/PGQ (SQL:2023)
 - `CREATE OR REPLACE JSON RELATIONAL DUALITY VIEW` — Duality View
-- Sample schema: **SH** (Sales History) — ADMIN 스키마에 적재됨
+- Sample schema: **SH** (Sales History) — ADMIN 스키마에 적재됨. **고객사형 샘플 `POC_STORES/POC_PRODUCTS/POC_DISPLAYS/POC_SALES`**(제과 유통, 합성 6만 행, `sql/seed/crown_like/`, 프로필 `CROWN_LIKE_PROFILE`, 2026-09-30 PoC 3-B). ⚠ ADMIN 에 SH 의 `PRODUCTS`·`SALES` 가 있어 새 테이블은 반드시 접두어를 쓴다
 
 ## Critical Implementation Notes
 
@@ -405,7 +406,7 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - `explainsql` action은 한국어 지시 자동 추가: `"(Please explain in Korean / 한국어로 설명해 주세요)"`
 - `execute_raw_sql()` — SELECT 문만 허용 (보안). `WITH` CTE도 거부되니 주의
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
-- 프로필 이름에 'SH' 포함 시 SH 스키마용 Annotation 세트 적용 (`web/src/lib/annotations.ts`). **예시 질문은 2026-09-29 부터 DB 의 `AI_PROMPT_PRESET`** 이 정본(프로필 이름 LIKE 패턴 `%SH%`·`%SSB%`·NULL) — 화면에서 추가·수정·삭제. `lib/nl2sql.ts` 의 `EXAMPLE_QUESTIONS` 는 API 실패 시 폴백 + 시드(72번) 원천
+- 프로필 이름에 'CROWN' 이 들어가면 고객사형 세트(`POC_*`), 'SH' 면 SH 세트의 Annotation 을 적용 (`web/src/lib/annotations.ts`, CROWN 검사가 먼저). **예시 질문은 2026-09-29 부터 DB 의 `AI_PROMPT_PRESET`** 이 정본(프로필 이름 LIKE 패턴 `%SH%`·`%SSB%`·NULL) — 화면에서 추가·수정·삭제. `lib/nl2sql.ts` 의 `EXAMPLE_QUESTIONS` 는 API 실패 시 폴백 + 시드(72번) 원천
 - **딥링크 규약 3층**: `?sub=` 서브탭 · `&run=1` mount 직후 기본 동작 · `&slide=VS-12` 장표 뷰어(꼬리표 또는 `deck:page`). 시연 대본의 링크 하나가 화면+결과+장표를 연다
 - 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
 - AWR 결과 탭과 벡터 검색 세션 탭은 같은 `SessionTabs` 컴포넌트를 쓴다
