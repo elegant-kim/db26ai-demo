@@ -17,6 +17,7 @@ import KvGrid from '@/components/demo/KvGrid.vue'
 import SqlBlock from '@/components/demo/SqlBlock.vue'
 import ResultTable from '@/components/demo/ResultTable.vue'
 import VersusBox from '@/components/demo/VersusBox.vue'
+import ProfileWizard from './ProfileWizard.vue'
 import { fmtMs } from '@/lib/format'
 import type { Rows } from '@/lib/normalize'
 import { ENV_TEST_PROMPT } from '@/lib/nl2sql'
@@ -28,6 +29,7 @@ const route = useRoute()
 onMounted(() => { void s.init(route.query.profile).then(async () => { await s.loadEnv(); if (route.query.run !== undefined) void s.testCall() }) })
 
 const showSql = ref<Record<string, boolean>>({})
+const wizardOpen = ref(false)
 const showAllAcl = ref(false)
 const toggleSql = (k: string) => { showSql.value[k] = !showSql.value[k] }
 
@@ -35,10 +37,11 @@ const toggleSql = (k: string) => { showSql.value[k] = !showSql.value[k] }
 const bool = (v: string | undefined) => (v === 'true' ? '✓ 켜짐' : v === 'false' ? '✗ 꺼짐' : v || '—')
 const profileKv = computed(() => {
   const a = s.profileAttrs
-  return {
-    provider: a.provider || '—',
+  const kv: Record<string, string> = {
+    provider: s.provider.label ? `${a.provider || '—'} — ${s.provider.label}` : a.provider || '—',
     model: a.model || '—',
-    provider_endpoint: a.provider_endpoint || '—',
+    provider_endpoint: a.provider_endpoint || (s.provider.provider === 'oci' ? `(region 으로 유도) ${s.endpointHost ?? '—'}` : '—'),
+    ...s.provider.extra,      // 3-A: OCI region · oci_compartment_id · oci_apiformat · oci_endpoint_id / Azure 리소스 …
     credential_name: a.credential_name || '—',
     annotations: bool(a.annotations),
     comments: bool(a.comments),
@@ -48,10 +51,11 @@ const profileKv = computed(() => {
     embedding_model: a.embedding_model || '— (없음 → 피드백 불가)',
     feedback_index: s.feedbackStatus?.index_name ? `${s.feedbackStatus.index_name} (${s.feedbackStatus.index_rows ?? 0}건)` : '아직 없음 — 첫 피드백 때 생성',
   }
+  return kv
 })
 const credKv = computed(() => {
   const r = s.credentialRow
-  return r ? { credential_name: String(r.CREDENTIAL_NAME ?? '—'), username: String(r.USERNAME ?? '—'), enabled: String(r.ENABLED ?? '—') } : null
+  return r ? { credential_name: String(r.CREDENTIAL_NAME ?? '—'), username: String(r.USERNAME ?? '—'), enabled: String(r.ENABLED ?? '—'), 유형: s.credKind?.label ?? '—' } : null
 })
 const PRIVS = ['CONNECT', 'RESOLVE', 'HTTP']
 const aclHostRows = computed<Rows>(() => ({
@@ -87,7 +91,7 @@ const aclHostRows = computed<Rows>(() => ({
           <Badge tone="info">참조 테이블 {{ s.objectList.length }}</Badge>
           <Badge tone="info">Annotation {{ s.annotationCount }}</Badge>
           <Badge :tone="s.feedbackStatus?.ready ? 'info' : 'warm'" :title="s.feedbackStatus?.ready ? `프로필 벡터 인덱스 ${s.feedbackStatus.index_name || '(첫 피드백 때 생성)'} · 인덱스 안 ${s.feedbackStatus.index_rows ?? 0}건` : '프로필에 embedding_model 이 없어 FEEDBACK 이 ORA-20048 로 실패합니다'">피드백 {{ s.feedbackStatus ? s.feedbackStatus.app_rows : '—' }}건{{ s.feedbackStatus && !s.feedbackStatus.ready ? ' · 준비 안 됨' : '' }}</Badge>
-          <span class="ml-auto"><Button size="sm" variant="ghost" :busy="s.envLoading" @click="s.loadEnv(true)"><RefreshCw :size="14" :stroke-width="1.75" /> 새로고침</Button></span>
+          <span class="ml-auto flex items-center gap-1"><Button size="sm" variant="secondary" title="DBMS_CLOUD_AI.CREATE_PROFILE 을 폼으로 — OpenAI 호환 · OCI Generative AI · Azure … (3-A)" @click="wizardOpen = true">새 프로필 만들기</Button><Button size="sm" variant="ghost" :busy="s.envLoading" @click="s.loadEnv(true)"><RefreshCw :size="14" :stroke-width="1.75" /> 새로고침</Button></span>
         </div>
       </Card>
 
@@ -129,9 +133,10 @@ const aclHostRows = computed<Rows>(() => ({
 
         <!-- ③ ACL -->
         <Card title="③ 네트워크 ACL" subtitle="← 프로필의 provider_endpoint 호스트" :icon="Network">
-          <div v-if="!s.endpointHost" class="text-sm" style="color: var(--text-muted);">프로필에 provider_endpoint 가 없어 확인할 호스트가 없습니다.</div>
+          <div v-if="!s.endpointHost" class="text-sm" style="color: var(--text-muted);">{{ s.provider.provider === 'oci' ? 'OCI 프로필에 region 이 없어 호스트를 모릅니다.' : '프로필에 provider_endpoint 가 없어 확인할 호스트가 없습니다.' }}</div>
           <template v-else>
-            <div class="font-mono text-sm break-all mb-2" style="color: var(--text-primary);">{{ s.endpointHost }}</div>
+            <div class="font-mono text-sm break-all mb-1" style="color: var(--text-primary);">{{ s.endpointHost }}</div>
+            <div v-if="s.provider.endpointNote" class="text-[11px] mb-2" style="color: var(--text-muted);">{{ s.provider.endpointNote }}</div>
             <div class="flex flex-wrap gap-1.5 mb-3">
               <Badge v-for="p in PRIVS" :key="p" :tone="s.aclPrivs.has(p) ? 'positive' : 'default'">{{ p }} {{ s.aclPrivs.has(p) ? '✓' : '—' }}</Badge>
             </div>
@@ -173,5 +178,6 @@ const aclHostRows = computed<Rows>(() => ({
         <div v-else class="text-sm" style="color: var(--text-muted);">세 카드가 전부 ✓ 여도 키가 만료됐으면 실패합니다. 시연 전에 한 번 눌러 둡니다.</div>
       </Card>
     </template>
+    <ProfileWizard :open="wizardOpen" @close="wizardOpen = false" @created="(name: string) => { wizardOpen = false; s.reloadProfiles(name) }" />
   </div>
 </template>

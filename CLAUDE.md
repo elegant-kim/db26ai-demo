@@ -84,6 +84,7 @@ scripts/deploy.sh
 | `app/routers/nl2sql.py` | ~650 | ① NL2SQL 27개 엔드포인트(ask · profiles · set-profile · annotations 2 · schema-info · explain-plan · execute-sql · env-info · conversations 2 · history 3 · presets 4 · feedback 5 · fewshot 4 · accuracy-scenario) + 요청 모델 + `VALID_ACTIONS` |
 | `app/ai_log.py` | ~130 | AI_QUERY_LOG **읽기** — 이력 표(바인드 필터·페이징)·요약·상세 (2026-09-29 PoC 1-C). 쓰기는 `select_ai.py` |
 | `app/presets.py` | ~90 | AI_PROMPT_PRESET CRUD — 예시 질문 프리셋 (PoC 1-D) |
+| `app/profiles.py` | ~130 | 프로필 생성 도우미 — 프로바이더/OCI 리전 메타, 폼 → CREATE_PROFILE attributes, 크리덴셜 유형 추정 (PoC 3-A) |
 | `app/compare_profiles.py` | ~40 | 프로필(모델) 비교 실행 — `accuracy._solve` 재사용 (PoC 3-C) |
 | `app/accuracy.py` | ~120 | 정확도 개선 시나리오 ①②③ — 프로필 속성 토글(SET_ATTRIBUTE)·피드백 등록·복원, SSE (PoC 2-B·2-C) |
 | `app/fewshot.py` | ~190 | Few-shot 일괄 등록 — 파일 파싱(헤더 느슨) · EXPLAIN PLAN 검증 · SSE 등록(행당 LLM 1회) · 프로필 피드백 전체 삭제 (PoC 2-A) |
@@ -165,6 +166,7 @@ scripts/deploy.sh
 - `GET /api/nl2sql/fewshot/template` · `POST /api/nl2sql/fewshot/parse`(multipart CSV/JSON/XLSX) · `POST /api/nl2sql/fewshot/validate`(EXPLAIN PLAN) · `POST /api/nl2sql/fewshot/register`(**SSE** event: row|done|error — 행마다 `SELECT AI showsql` 1회 + FEEDBACK positive) · `POST /api/nl2sql/feedback/purge` — Few-shot 일괄 등록(PoC 2-A, 2026-09-30). 정본 `app/fewshot.py`
 - `POST /api/nl2sql/accuracy-scenario` — **SSE**(start|step|done|error) 정확도 개선 시나리오(PoC 2-B·2-C): ① `SET_ATTRIBUTE(annotations/comments=false)` → showsql+실행 ② true → showsql+showprompt+실행 ③ ②의 SQL(또는 corrected_sql)을 positive 피드백으로 등록 후 showsql+showprompt+실행 → 속성 복원, 피드백은 `keep_feedback` 아니면 삭제. 화면은 ②/③ 프롬프트 diff. 정본 `app/accuracy.py`
 - `POST /api/nl2sql/compare-profiles` — **SSE**(start|step|done|error) 같은 질문을 프로필 2~3개로 순차(showsql + 실행), 이력 source=COMPARE (PoC 3-C). 정본 `app/compare_profiles.py`
+- `GET /api/nl2sql/profile-wizard/meta` · `POST /api/profiles/create`(`preview_only` 면 PL/SQL 만) · `DELETE /api/profiles/{name}` — 프로필 생성 도우미(PoC 3-A): 프로바이더 9종·OCI GenAI 리전·크리덴셜 유형 추정·테이블 목록. 정본 `app/profiles.py`
 - `GET /api/nl2sql/history` · `/history/summary` · `/history/{id}` — 호출 이력(AI_QUERY_LOG) 표(필터 q·date_from·date_to·profile·action·status·feedback, 페이징)·요약(성공률·평균/최대 elapsed·피드백 비율·프로필별)·상세(+피드백 목록). 읽기 전용, 정본 `app/ai_log.py`
 - `GET /api/profiles` — AI 프로필 목록
 - `POST /api/set-profile` — 프로필 설정 + 속성 조회

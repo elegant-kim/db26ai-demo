@@ -639,3 +639,30 @@ class TestCompareProfiles:
     def test_프로필_하나면_400(self, client):
         assert client.post("/api/nl2sql/compare-profiles", json={"question": "x", "profiles": ["GEMINI_SH_PROFILE"]}).status_code == 400
 
+
+class TestProfileWizardApi:
+    """PoC 3-A — 메타 · 미리보기 · 실제 생성/삭제(OpenAI 호환 + OCI 모의). LLM 은 부르지 않는다."""
+
+    def test_메타(self, client):
+        d = client.get("/api/nl2sql/profile-wizard/meta").json()
+        assert d["success"] and d["providers"] and d["oci_regions"] and any(c["credential_name"] == "GEMINI_CRED" for c in d["credentials"])
+        assert any(t["name"] == "POC_STORES" for t in d["tables"])
+
+    def test_미리보기와_검증(self, client):
+        r = client.post("/api/profiles/create", json={"profile_name": "WIZ_PREVIEW", "form": {"provider": "openai", "credential_name": "GEMINI_CRED", "model": "gemini-3.8-flash"}, "preview_only": True}).json()
+        assert r["success"] and r["preview"] and "CREATE_PROFILE" in r["plsql"]
+        r = client.post("/api/profiles/create", json={"profile_name": "bad name", "form": {"provider": "oci", "credential_name": "X"}, "preview_only": True})
+        assert r.status_code == 400 and "region" in r.json()["error"]
+
+    def test_생성_환경탭_삭제(self, client):
+        # OCI 모의 프로필 — 크리덴셜은 아무 것이나(생성은 호출 없이 된다), 환경 탭이 region 으로 호스트를 만드는지 본다
+        r = client.post("/api/profiles/create", json={"profile_name": "WIZ_OCI_TEST", "form": {"provider": "oci", "credential_name": "GEMINI_CRED", "model": "cohere.command-r-plus-08-2024", "region": "ap-osaka-1", "oci_apiformat": "COHERE", "object_list": [{"owner": "ADMIN", "name": "POC_STORES"}]}, "description": "pytest"}).json()
+        assert r["success"], r
+        try:
+            attrs = {x["ATTRIBUTE_NAME"]: str(x["ATTRIBUTE_VALUE"]) for x in client.post("/api/env-info", json={"kind": "profile", "profile_name": "WIZ_OCI_TEST"}).json()["result"]["data"]}
+            assert attrs["provider"] == "oci" and attrs["region"] == "ap-osaka-1" and attrs["oci_apiformat"] == "COHERE"
+            assert any(p["profile_name"] == "WIZ_OCI_TEST" for p in client.get("/api/profiles").json()["profiles"])
+        finally:
+            assert client.delete("/api/profiles/WIZ_OCI_TEST").json()["success"]
+        assert not any(p["profile_name"] == "WIZ_OCI_TEST" for p in client.get("/api/profiles").json()["profiles"])
+

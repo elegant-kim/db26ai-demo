@@ -145,3 +145,30 @@ class TestFewshotParse:
         rows, headers = parse_file("a.xlsx", buf.getvalue())
         assert headers == ["question", "sql", "note"] and len(rows) == 1 and rows[0]["sql"] == "SELECT 3 FROM dual"
 
+
+class TestProfileWizard:
+    """PoC 3-A — 폼 → CREATE_PROFILE attributes. OCI 는 region 필수, 빈 값은 안 넣는다."""
+
+    def test_openai_호환(self):
+        from app.profiles import build_attributes, plsql_for
+        attrs, errs = build_attributes({"provider": "openai", "credential_name": "GEMINI_CRED", "model": "gemini-3.8-flash",
+                                        "provider_endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+                                        "object_list": [{"owner": "admin", "name": "poc_stores"}], "annotations": True, "conversation": False, "embedding_model": ""})
+        assert not errs and attrs["object_list"] == [{"owner": "ADMIN", "name": "POC_STORES"}] and attrs["annotations"] is True and "embedding_model" not in attrs
+        assert "DBMS_CLOUD_AI.CREATE_PROFILE" in plsql_for("X", attrs)
+
+    def test_oci_는_region_필수(self):
+        from app.profiles import build_attributes, oci_host
+        _, errs = build_attributes({"provider": "oci", "credential_name": "OCI_CRED", "model": "cohere.command-r-plus-08-2024"})
+        assert any("region" in e for e in errs)
+        attrs, errs = build_attributes({"provider": "oci", "credential_name": "OCI_CRED", "model": "cohere.command-r-plus-08-2024", "region": "ap-osaka-1", "oci_apiformat": "COHERE"})
+        assert not errs and attrs["region"] == "ap-osaka-1" and attrs["oci_apiformat"] == "COHERE"
+        assert oci_host("ap-osaka-1") == "inference.generativeai.ap-osaka-1.oci.oraclecloud.com"
+
+    def test_크리덴셜_유형_추정(self):
+        from app.profiles import credential_kind, validate_name
+        assert credential_kind("OCI$RESOURCE_PRINCIPAL", None) == "resource_principal"
+        assert credential_kind("OCI_KEY", "ocid1.user.oc1..aaaa") == "oci_api_key"
+        assert credential_kind("GEMINI_CRED", "GEMINI") == "api_key"
+        assert validate_name("MY_PROFILE") is None and validate_name("1bad") and validate_name("has space")
+

@@ -629,7 +629,14 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 
 `app/accuracy.py` `run_scenario`: 원래 `annotations`·`comments` 값을 읽고 → ① false/false showsql+실행 → ② true/true showsql+showprompt+실행 → ③ ②의 `log_id` 로 `submit_feedback(source=SCENARIO, corrected_sql=②SQL)` 후 showsql+showprompt+실행 → `finally` 속성 복원 + (keep 아니면) 피드백 삭제. `same_2_3` 로 "③이 ②를 그대로 돌려줬다" 판정. `POST /api/nl2sql/accuracy-scenario` SSE. 화면: 「질문」 탭 버튼 → 스레드에 `action='scenario'` 메시지 → `AccuracyScenario.vue`(3열 카드 + 배너 + `DiffBlock`(`lib/diff.ts` 줄 LCS, 바뀐 곳 주변만)). **함정**: `push()` 가 돌려준 반응형 프록시가 아니라 원본 객체를 고치면 화면이 안 그려진다(스토어 주석).
 검증: 통합 1(3단계 done · ③ 프롬프트에 examples · 속성 복원) 38초 통과. 브라우저 버튼 실행.
-**남은 것**: ~~3-B~~ → 4-30 · ~~3-C~~ → 4-31. 3-A OCI → Phase 4 Agent.
+**남은 것**: ~~3-B~~ → 4-30 · ~~3-C~~ → 4-31 · ~~3-A~~ → 4-32. Phase 4 Agent.
+
+## 4-32. PoC 3-A OCI 프로바이더 해석 + 프로필 생성 도우미 (2026-09-30, Fable 5.1)
+
+`app/profiles.py`: PROVIDERS 9(패키지 PROVIDER_* 상수 실측) · OCI GenAI 리전 8(한국 없음 → 오사카 첫째) · `build_attributes`(OCI region 필수, Azure 리소스 필수, 빈 값 제외) · `plsql_for` · `credential_kind`(이름·username 으로만 추정 — 키 값은 어떤 뷰에도 없다) · `wizard_meta`(크리덴셜·현재 스키마 테이블(내부 테이블 제외)). 엔드포인트 3(meta · profiles/create(preview_only) · DELETE profiles/{name}).
+화면: `lib/nl2sql.ts` `providerInfo`(OCI 는 region 으로 호스트 유도, 추가 속성 노출) · `credentialKind` → 환경 탭 ① 카드에 provider 라벨·region·oci_* 행, ② 카드에 「유형」, ③ 카드에 유도 근거 문구. `ProfileWizard.vue`(폼 + PL/SQL 미리보기 + 실행 → `reloadProfiles(name)`).
+검증: 단위 3 + 통합 3(메타 · 미리보기/400 · **OCI 모의 프로필 생성 → env-info 에 provider=oci·region·oci_apiformat → 삭제**) 통과. 실제 OCI 호출은 테넌시에 GenAI 리전 구독이 없어 미실측.
+**남은 것**: Phase 4 Select AI Agent(정의 · 실행 · History).
 
 ## 4-31. 방향 정정(일반 시연용) + 3-C 프로필 비교 (2026-09-30, Fable 5.1)
 

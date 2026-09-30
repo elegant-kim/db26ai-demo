@@ -17,6 +17,7 @@ from app.feedback import FEEDBACK_TYPES, delete_feedback, feedback_status, list_
 from app.fewshot import TEMPLATE_CSV, parse_file, purge_profile_feedback, register_rows, validate_rows
 from app.presets import create_preset, delete_preset, list_presets, update_preset
 from app.presets import validate as validate_preset
+from app.profiles import build_attributes, create_profile, drop_profile, plsql_for, validate_name, wizard_meta
 from app.select_ai import (
     SELECT_AI_ACTIONS,
     apply_annotations,
@@ -74,6 +75,13 @@ class ScenarioRequest(BaseModel):
 class CompareRequest(BaseModel):
     question: str
     profiles: list[str]
+
+
+class ProfileCreateRequest(BaseModel):
+    profile_name: str
+    form: dict                      # provider · credential_name · model · provider_endpoint · region · oci_* · object_list · 플래그
+    description: str = ""
+    preview_only: bool = False      # true 면 PL/SQL 만 돌려준다
 
 
 class PurgeRequest(BaseModel):
@@ -670,4 +678,54 @@ async def compare_profiles_endpoint(req: CompareRequest):
                 task.cancel()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── 프로필 생성 도우미 (PoC 3-A) — 정본 app/profiles.py ──
+
+@router.get("/nl2sql/profile-wizard/meta")
+async def profile_wizard_meta():
+    """「새 프로필 만들기」 폼의 선택지 — 프로바이더·OCI GenAI 리전·엔드포인트 프리셋·크리덴셜(유형 추정)·현재 스키마 테이블."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        return {"success": True, **await wizard_meta(pool)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@router.post("/profiles/create")
+async def profile_create(req: ProfileCreateRequest):
+    """DBMS_CLOUD_AI.CREATE_PROFILE — 폼을 attributes JSON 으로 만들어 PL/SQL 미리보기(preview_only) 또는 실행."""
+    name = req.profile_name.strip().upper()
+    err = validate_name(name)
+    attrs, errs = build_attributes(req.form)
+    if err:
+        errs.insert(0, err)
+    plsql = plsql_for(name, attrs, req.description)
+    if errs:
+        return JSONResponse(status_code=400, content={"success": False, "error": " · ".join(errs), "errors": errs, "attributes": attrs, "plsql": plsql})
+    if req.preview_only:
+        return {"success": True, "preview": True, "attributes": attrs, "plsql": plsql}
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        await create_profile(pool, name, attrs, req.description)
+        return {"success": True, "profile_name": name, "attributes": attrs, "plsql": plsql}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e), "plsql": plsql})
+
+
+@router.delete("/profiles/{profile_name}")
+async def profile_drop(profile_name: str):
+    """DBMS_CLOUD_AI.DROP_PROFILE(force) — 화면은 확인 모달."""
+    pool = await get_pool()
+    if pool is None:
+        return _db_or_503()
+    try:
+        await drop_profile(pool, profile_name.strip().upper())
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

@@ -4,7 +4,7 @@ import { errorMessage } from '@/lib/api'
 import { annotationSetFor } from '@/lib/annotations'
 import {
   ACTION_BUTTONS, LOADING_TEXT, ask, applyAnnotations, executeSql, exampleQuestionsFor, explainPlan, getProfiles, getSchemaInfo,
-  removeAnnotations, getEnvInfo, hostFromEndpoint, aclHostMatches, ENV_TEST_PROMPT, createConversation, GREETING,
+  removeAnnotations, getEnvInfo, aclHostMatches, providerInfo, credentialKind, ENV_TEST_PROMPT, createConversation, GREETING,
   getPresets, createPreset, updatePreset, deletePreset, presetPatternFor, getFeedbackStatus, type FeedbackInfo, type FeedbackStatus, type Preset, type PresetInput, type Action, type FollowAction, type Profile, type SchemaTable,
 } from '@/lib/nl2sql'
 import { fromColumnsData, type Rows } from '@/lib/normalize'
@@ -112,6 +112,13 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     conversationId.value = ''; convTurns.value = 0
     if (!silent) system.toast('새 대화 — 다음 질문은 새 conversation 으로 시작합니다', 'success')
   }
+  /** 프로필을 만들거나 지운 뒤 목록을 다시 읽고 선택한다 (3-A) */
+  async function reloadProfiles(select?: string) {
+    try { profiles.value = await getProfiles(); profilesLoaded.value = true; presetsLoadedFor.value = ''; envLoadedFor.value = ''
+      const want = select && known(select) ? select : (known(profile.value) ? profile.value : profiles.value[0]?.profile_name)
+      if (want) { profile.value = ''; await selectProfile(want) } }
+    catch (e) { lastError.value = errorMessage(e) }
+  }
   function pushGreeting() { push({ role: 'assistant', content: '', action: 'greeting', textResult: GREETING }) }
   let seq = 0
 
@@ -162,10 +169,12 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   const objectList = computed<{ owner: string; name: string }[]>(() => {
     try { const v = JSON.parse(profileAttrs.value.object_list || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
   })
-  const endpointHost = computed(() => hostFromEndpoint(profileAttrs.value.provider_endpoint))
+  const provider = computed(() => providerInfo(profileAttrs.value))        // 3-A: OCI 는 region 으로 호스트 유도
+  const endpointHost = computed(() => provider.value.endpointHost)
   const credentialName = computed(() => profileAttrs.value.credential_name || '')
   const credentialRow = computed<Record<string, any> | null>(() => (env.value.credential?.data ?? []).find((r: any) => String(r.CREDENTIAL_NAME) === credentialName.value) ?? null)
   const credOk = computed(() => !!credentialRow.value && String(credentialRow.value.ENABLED).toUpperCase() === 'TRUE')
+  const credKind = computed(() => (credentialRow.value ? credentialKind(String(credentialRow.value.CREDENTIAL_NAME ?? ''), credentialRow.value.USERNAME as string | null) : null))
   const aclAll = computed<Rows | null>(() => (env.value.acl?.columns?.length ? fromColumnsData(env.value.acl) : null))
   const aclForHost = computed<Record<string, any>[]>(() => {
     const h = endpointHost.value
@@ -452,7 +461,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
   return {
     profiles, profile, profilesLoaded, action, messages, input, sqlInput, sending, sqlRunning, schema, schemaLoading, expanded, annoBusy, lastError,
     examples, profileOptions, hasAnnotationSet, asked,
-    env, envLoading, envTest, feedbackStatus, loadFeedbackStatus, profileAttrs, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
+    env, envLoading, envTest, feedbackStatus, loadFeedbackStatus, profileAttrs, provider, credKind, reloadProfiles, objectList, endpointHost, credentialName, credentialRow, credOk, aclAll, aclForHost, aclPrivs, aclOk, annotationCount,
     multiTurn, chain, resetOnSuccess, conversationId, convTurns, ensureConversation, newConversation,
     presets, presetBusy, loadPresets, savePreset, removePreset, scenarioRunning, runScenario, compareRunning, compareTargets, runCompare,
     init, selectProfile, loadEnv, testCall, loadSchema, toggleTable, send, runSql, runAction, buttonsFor, annotate, clear,

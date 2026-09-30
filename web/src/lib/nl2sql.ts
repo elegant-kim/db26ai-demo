@@ -34,6 +34,31 @@ export function hostFromEndpoint(url: string | null | undefined): string | null 
   try { return new URL(url).hostname || null } catch { return null }
 }
 
+/** 프로바이더별 해석 (PoC 3-A) — OCI 는 provider_endpoint 대신 region 으로 호스트가 정해진다. 환경 탭 ①③ 카드가 쓴다 */
+export interface ProviderInfo { provider: string; label: string; endpointHost: string | null; endpointNote: string; extra: Record<string, string> }
+export const PROVIDER_LABELS: Record<string, string> = { openai: 'OpenAI 호환', oci: 'OCI Generative AI', google: 'Google', anthropic: 'Anthropic', cohere: 'Cohere', azure: 'Azure OpenAI', aws: 'AWS Bedrock', huggingface: 'Hugging Face', vertexai: 'Vertex AI' }
+export function providerInfo(a: Record<string, string>): ProviderInfo {
+  const provider = (a.provider || '').toLowerCase()
+  const extra: Record<string, string> = {}
+  if (provider === 'oci') {
+    for (const k of ['region', 'oci_compartment_id', 'oci_apiformat', 'oci_endpoint_id', 'oci_runtimetype']) if (a[k]) extra[k] = a[k]
+    const host = a.provider_endpoint ? hostFromEndpoint(a.provider_endpoint) : a.region ? `inference.generativeai.${a.region}.oci.oraclecloud.com` : null
+    return { provider, label: PROVIDER_LABELS.oci, endpointHost: host, endpointNote: a.provider_endpoint ? 'provider_endpoint' : a.region ? `region ${a.region} 에서 유도 — 한국 리전엔 GenAI 가 없어 오사카 등 제공 리전을 쓴다` : 'region 이 없어 호스트를 모른다', extra }
+  }
+  if (provider === 'azure') { for (const k of ['azure_resource_name', 'azure_deployment_name']) if (a[k]) extra[k] = a[k] }
+  if (provider === 'aws') { for (const k of ['region', 'aws_apiformat']) if (a[k]) extra[k] = a[k] }
+  const host = hostFromEndpoint(a.provider_endpoint)
+  const defaults: Record<string, string> = { openai: 'api.openai.com', google: 'generativelanguage.googleapis.com', anthropic: 'api.anthropic.com', cohere: 'api.cohere.ai', huggingface: 'api-inference.huggingface.co' }
+  return { provider, label: PROVIDER_LABELS[provider] ?? provider, endpointHost: host ?? defaults[provider] ?? null, endpointNote: host ? 'provider_endpoint' : defaults[provider] ? '기본 엔드포인트(추정)' : '', extra }
+}
+/** 크리덴셜 유형 — 값(키)은 어떤 뷰에도 안 나오므로 이름·username 으로만 추정 (app/profiles.py credential_kind 와 같은 규칙) */
+export function credentialKind(name: string, username: string | null | undefined): { kind: 'resource_principal' | 'oci_api_key' | 'api_key'; label: string } {
+  const n = (name || '').toUpperCase(), u = username || ''
+  if (n === 'OCI$RESOURCE_PRINCIPAL' || n.includes('RESOURCE_PRINCIPAL')) return { kind: 'resource_principal', label: 'OCI Resource Principal (키 없음, ADB 자체 신원)' }
+  if (u.startsWith('ocid1.user.')) return { kind: 'oci_api_key', label: 'OCI API Key (user_ocid · tenancy_ocid · fingerprint · private_key)' }
+  return { kind: 'api_key', label: 'API 키 (bearer — password 자리에 키)' }
+}
+
 /** ACE 의 host 가 이 호스트를 덮는가 — 정확히 같거나, '*' 이거나, '*.example.com' 꼴의 접미 일치 */
 export function aclHostMatches(aceHost: string, target: string): boolean {
   const a = aceHost.toLowerCase(), t = target.toLowerCase()
@@ -150,4 +175,16 @@ export const getFeedbackStatus = (profile: string) => api.get<FeedbackStatus>('/
 export const submitFeedback = (b: { log_id: number; feedback_type: FeedbackType; feedback_content: string; corrected_sql: string; source: 'INLINE' | 'HISTORY' }) =>
   api.post<{ success: boolean; feedback_id?: number; replaced?: boolean; elapsed_ms?: number; statement?: string; error?: string }>('/api/nl2sql/feedback', b).then((r) => r.data)
 export const deleteFeedback = (id: number) => api.delete<{ success: boolean; error?: string }>(`/api/nl2sql/feedback/${id}`).then((r) => r.data)
+
+// ── 프로필 생성 도우미 (PoC 3-A) — 정본 app/profiles.py ──
+export interface WizardMeta {
+  success: boolean; providers: { id: string; label: string; endpoint: boolean; hint: string }[]; oci_regions: { id: string; label: string }[]; oci_models: string[]
+  endpoint_presets: { label: string; url: string }[]; credentials: { credential_name: string; username: string | null; enabled: string; kind: string }[]
+  tables: { owner: string; name: string; num_rows: number | null; comment: string | null }[]
+}
+export interface ProfileForm { provider: string; credential_name: string; model: string; provider_endpoint: string; region: string; oci_compartment_id: string; oci_apiformat: string; oci_endpoint_id: string; azure_resource_name: string; azure_deployment_name: string; object_list: { owner: string; name: string }[]; annotations: boolean; comments: boolean; constraints: boolean; conversation: boolean; embedding_model: string }
+export const getWizardMeta = () => api.get<WizardMeta>('/api/nl2sql/profile-wizard/meta').then((r) => r.data)
+export const createProfile = (profile_name: string, form: ProfileForm, description: string, preview_only: boolean) =>
+  api.post<{ success: boolean; preview?: boolean; plsql?: string; attributes?: Record<string, unknown>; error?: string; errors?: string[]; profile_name?: string }>('/api/profiles/create', { profile_name, form, description, preview_only }).then((r) => r.data)
+export const dropProfile = (name: string) => api.delete<{ success: boolean; error?: string }>(`/api/profiles/${encodeURIComponent(name)}`).then((r) => r.data)
 

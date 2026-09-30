@@ -3,7 +3,7 @@
 > **정본은 라우트 정의와 docstring 이다** (`app/routes.py` + `app/routers/*.py`). 이 문서는
 > `scripts/gen_api_doc.py` 가 생성한다 — **손으로 고치지 말고 코드를 고친 뒤 다시 생성할 것.**
 > 엔드포인트를 추가·변경하면 같은 커밋에서 이 문서와 `CLAUDE.md` API 목록을 함께 갱신한다.
-> 전체 **81개** 엔드포인트 · 공통 prefix `/api`
+> 전체 **84개** 엔드포인트 · 공통 prefix `/api`
 
 ## 공통 규약
 
@@ -35,34 +35,37 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:228` |
-| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:122` |
-| `POST` | `/api/conversations` | ConversationRequest | 멀티턴 대화 발급 — DBMS_CLOUD_AI.CREATE_CONVERSATION. 돌려준 conversation_id 를 /api/ask 에 실어 보내면 앞 질문을 이어받는다. | `app/routers/nl2sql.py:158` |
-| `DELETE` | `/api/conversations/{conversation_id}` | — | 대화 삭제 — DBMS_CLOUD_AI.DROP_CONVERSATION(force). 「새 대화」는 이걸 부르지 않는다(이력 뷰에 남기려고); 정리용. | `app/routers/nl2sql.py:171` |
-| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행. `SELECT AI …` 도 받는다 (profile_name 필요). | `app/routers/nl2sql.py:299` |
-| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:278` |
-| `POST` | `/api/nl2sql/accuracy-scenario` | ScenarioRequest | 같은 질문을 ① annotations/comments 끔 → ② 켬 → ③ ②의 SQL 을 피드백으로 등록 후 다시 — SSE(event: start | step | done | error). | `app/routers/nl2sql.py:596` |
-| `POST` | `/api/nl2sql/compare-profiles` | CompareRequest | 같은 질문을 2~3개 프로필로 순차 실행(showsql + 생성 SQL 실행) — SSE(event: start | step | done | error). 이력에 source=COMPARE. | `app/routers/nl2sql.py:637` |
-| `GET` | `/api/nl2sql/feedback` | — | 등록된 피드백 목록(앱 기록 기준). | `app/routers/nl2sql.py:451` |
-| `POST` | `/api/nl2sql/feedback` | FeedbackRequest | 👍/👎 저장 — DBMS_CLOUD_AI.FEEDBACK(sql_text 오버로드) + AI_FEEDBACK_LOG 를 한 트랜잭션으로. 같은 이력에 다시 저장하면 delete 후 add. | `app/routers/nl2sql.py:463` |
-| `POST` | `/api/nl2sql/feedback/purge` | PurgeRequest | 프로필의 피드백 전체 삭제 — 벡터 인덱스의 질문마다 FEEDBACK(delete) + AI_FEEDBACK_LOG. 되돌릴 수 없다(화면은 확인 모달). | `app/routers/nl2sql.py:582` |
-| `GET` | `/api/nl2sql/feedback/status` | — | 피드백 준비 상태 — 프로필 embedding_model 유무 · `<PROFILE>_FEEDBACK_VECINDEX` 존재 · 인덱스 안 행 수 · 앱 기록 수. 환경 탭 배지. | `app/routers/nl2sql.py:439` |
-| `DELETE` | `/api/nl2sql/feedback/{feedback_id}` | — | 피드백 삭제 — Oracle FEEDBACK(delete) + 앱 행. | `app/routers/nl2sql.py:488` |
-| `POST` | `/api/nl2sql/fewshot/parse` | multipart 파일 | CSV/JSON/XLSX 파싱 → 미리보기 행(question·sql·note, 비어 있으면 error). 등록은 하지 않는다. | `app/routers/nl2sql.py:515` |
-| `POST` | `/api/nl2sql/fewshot/register` | FewshotRows | 일괄 등록 — SSE(event: row | done | error). 행마다 SELECT AI showsql 1회(LLM) + FEEDBACK positive + AI_FEEDBACK_LOG(FEWSHOT). | `app/routers/nl2sql.py:543` |
-| `GET` | `/api/nl2sql/fewshot/template` | — | 템플릿 CSV 다운로드 — 헤더 question,sql,note (한글 헤더 질문/SQL/설명 도 받는다). | `app/routers/nl2sql.py:508` |
-| `POST` | `/api/nl2sql/fewshot/validate` | FewshotRows | 각 SQL 을 EXPLAIN PLAN 으로 문법·객체 검증(실행 안 함) → valid/error. | `app/routers/nl2sql.py:530` |
-| `GET` | `/api/nl2sql/history` | — | Select AI 호출 이력(AI_QUERY_LOG) 한 쪽 — 최신순, 필터: 질문 LIKE(대소문자 무시)·기간·프로필·액션·상태·피드백(any/none/positive/negative). 최근 피드백 한 건을 조인. | `app/routers/nl2sql.py:326` |
-| `GET` | `/api/nl2sql/history/summary` | — | 이력 요약 — 총 질의·성공률·평균/최대 elapsed·피드백 비율 + 프로필(모델)별·액션별 평균 elapsed. | `app/routers/nl2sql.py:343` |
-| `GET` | `/api/nl2sql/history/{log_id}` | — | 이력 한 건 상세 — 질문·생성 SQL·답변 앞부분·오류 전문 + 그 건의 피드백 목록. | `app/routers/nl2sql.py:355` |
-| `GET` | `/api/nl2sql/presets` | — | 예시 질문 프리셋 — profile 을 주면 NULL(전체) + LIKE 패턴이 맞는 것만. 화면의 「예시 질문 고르기」 소스. | `app/routers/nl2sql.py:376` |
-| `POST` | `/api/nl2sql/presets` | PresetRequest | 프리셋 추가 (제목·질문·action·profile_name 패턴). | `app/routers/nl2sql.py:388` |
-| `DELETE` | `/api/nl2sql/presets/{preset_id}` | — | 프리셋 삭제. | `app/routers/nl2sql.py:422` |
-| `PUT` | `/api/nl2sql/presets/{preset_id}` | PresetRequest | 프리셋 수정. | `app/routers/nl2sql.py:404` |
-| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:184` |
-| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:243` |
-| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:259` |
-| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:204` |
+| `POST` | `/api/apply-annotations` | raw JSON | annotation 세트를 DB에 일괄 적용한다. | `app/routers/nl2sql.py:236` |
+| `POST` | `/api/ask` | AskRequest | Select AI 로 자연어 질문을 처리한다 (action 7종: runsql/showsql/narrate/explainsql/showprompt/summarize/chat). | `app/routers/nl2sql.py:130` |
+| `POST` | `/api/conversations` | ConversationRequest | 멀티턴 대화 발급 — DBMS_CLOUD_AI.CREATE_CONVERSATION. 돌려준 conversation_id 를 /api/ask 에 실어 보내면 앞 질문을 이어받는다. | `app/routers/nl2sql.py:166` |
+| `DELETE` | `/api/conversations/{conversation_id}` | — | 대화 삭제 — DBMS_CLOUD_AI.DROP_CONVERSATION(force). 「새 대화」는 이걸 부르지 않는다(이력 뷰에 남기려고); 정리용. | `app/routers/nl2sql.py:179` |
+| `POST` | `/api/execute-sql` | ExecuteSqlRequest | 사용자가 입력한 SQL을 직접 실행. `SELECT AI …` 도 받는다 (profile_name 필요). | `app/routers/nl2sql.py:307` |
+| `POST` | `/api/explain-plan` | ExecuteSqlRequest | SQL에 대한 실행계획을 조회한다. | `app/routers/nl2sql.py:286` |
+| `POST` | `/api/nl2sql/accuracy-scenario` | ScenarioRequest | 같은 질문을 ① annotations/comments 끔 → ② 켬 → ③ ②의 SQL 을 피드백으로 등록 후 다시 — SSE(event: start | step | done | error). | `app/routers/nl2sql.py:604` |
+| `POST` | `/api/nl2sql/compare-profiles` | CompareRequest | 같은 질문을 2~3개 프로필로 순차 실행(showsql + 생성 SQL 실행) — SSE(event: start | step | done | error). 이력에 source=COMPARE. | `app/routers/nl2sql.py:645` |
+| `GET` | `/api/nl2sql/feedback` | — | 등록된 피드백 목록(앱 기록 기준). | `app/routers/nl2sql.py:459` |
+| `POST` | `/api/nl2sql/feedback` | FeedbackRequest | 👍/👎 저장 — DBMS_CLOUD_AI.FEEDBACK(sql_text 오버로드) + AI_FEEDBACK_LOG 를 한 트랜잭션으로. 같은 이력에 다시 저장하면 delete 후 add. | `app/routers/nl2sql.py:471` |
+| `POST` | `/api/nl2sql/feedback/purge` | PurgeRequest | 프로필의 피드백 전체 삭제 — 벡터 인덱스의 질문마다 FEEDBACK(delete) + AI_FEEDBACK_LOG. 되돌릴 수 없다(화면은 확인 모달). | `app/routers/nl2sql.py:590` |
+| `GET` | `/api/nl2sql/feedback/status` | — | 피드백 준비 상태 — 프로필 embedding_model 유무 · `<PROFILE>_FEEDBACK_VECINDEX` 존재 · 인덱스 안 행 수 · 앱 기록 수. 환경 탭 배지. | `app/routers/nl2sql.py:447` |
+| `DELETE` | `/api/nl2sql/feedback/{feedback_id}` | — | 피드백 삭제 — Oracle FEEDBACK(delete) + 앱 행. | `app/routers/nl2sql.py:496` |
+| `POST` | `/api/nl2sql/fewshot/parse` | multipart 파일 | CSV/JSON/XLSX 파싱 → 미리보기 행(question·sql·note, 비어 있으면 error). 등록은 하지 않는다. | `app/routers/nl2sql.py:523` |
+| `POST` | `/api/nl2sql/fewshot/register` | FewshotRows | 일괄 등록 — SSE(event: row | done | error). 행마다 SELECT AI showsql 1회(LLM) + FEEDBACK positive + AI_FEEDBACK_LOG(FEWSHOT). | `app/routers/nl2sql.py:551` |
+| `GET` | `/api/nl2sql/fewshot/template` | — | 템플릿 CSV 다운로드 — 헤더 question,sql,note (한글 헤더 질문/SQL/설명 도 받는다). | `app/routers/nl2sql.py:516` |
+| `POST` | `/api/nl2sql/fewshot/validate` | FewshotRows | 각 SQL 을 EXPLAIN PLAN 으로 문법·객체 검증(실행 안 함) → valid/error. | `app/routers/nl2sql.py:538` |
+| `GET` | `/api/nl2sql/history` | — | Select AI 호출 이력(AI_QUERY_LOG) 한 쪽 — 최신순, 필터: 질문 LIKE(대소문자 무시)·기간·프로필·액션·상태·피드백(any/none/positive/negative). 최근 피드백 한 건을 조인. | `app/routers/nl2sql.py:334` |
+| `GET` | `/api/nl2sql/history/summary` | — | 이력 요약 — 총 질의·성공률·평균/최대 elapsed·피드백 비율 + 프로필(모델)별·액션별 평균 elapsed. | `app/routers/nl2sql.py:351` |
+| `GET` | `/api/nl2sql/history/{log_id}` | — | 이력 한 건 상세 — 질문·생성 SQL·답변 앞부분·오류 전문 + 그 건의 피드백 목록. | `app/routers/nl2sql.py:363` |
+| `GET` | `/api/nl2sql/presets` | — | 예시 질문 프리셋 — profile 을 주면 NULL(전체) + LIKE 패턴이 맞는 것만. 화면의 「예시 질문 고르기」 소스. | `app/routers/nl2sql.py:384` |
+| `POST` | `/api/nl2sql/presets` | PresetRequest | 프리셋 추가 (제목·질문·action·profile_name 패턴). | `app/routers/nl2sql.py:396` |
+| `DELETE` | `/api/nl2sql/presets/{preset_id}` | — | 프리셋 삭제. | `app/routers/nl2sql.py:430` |
+| `PUT` | `/api/nl2sql/presets/{preset_id}` | PresetRequest | 프리셋 수정. | `app/routers/nl2sql.py:412` |
+| `GET` | `/api/nl2sql/profile-wizard/meta` | — | 「새 프로필 만들기」 폼의 선택지 — 프로바이더·OCI GenAI 리전·엔드포인트 프리셋·크리덴셜(유형 추정)·현재 스키마 테이블. | `app/routers/nl2sql.py:686` |
+| `GET` | `/api/profiles` | — | 등록된 AI 프로필 목록을 조회한다. | `app/routers/nl2sql.py:192` |
+| `POST` | `/api/profiles/create` | ProfileCreateRequest | DBMS_CLOUD_AI.CREATE_PROFILE — 폼을 attributes JSON 으로 만들어 PL/SQL 미리보기(preview_only) 또는 실행. | `app/routers/nl2sql.py:698` |
+| `DELETE` | `/api/profiles/{profile_name}` | — | DBMS_CLOUD_AI.DROP_PROFILE(force) — 화면은 확인 모달. | `app/routers/nl2sql.py:721` |
+| `POST` | `/api/remove-annotations` | raw JSON | annotation을 일괄 제거한다. | `app/routers/nl2sql.py:251` |
+| `POST` | `/api/schema-info` | SetProfileRequest | 프로필에 등록된 테이블의 컬럼 정보를 조회한다. | `app/routers/nl2sql.py:267` |
+| `POST` | `/api/set-profile` | SetProfileRequest | DBMS_CLOUD_AI.SET_PROFILE 실행 | `app/routers/nl2sql.py:212` |
 
 ## ② AI Vector Search — 검색·문서
 
@@ -155,7 +158,7 @@
 
 | Method | 경로 | 요청 | 설명 | 구현 |
 |---|---|---|---|---|
-| `POST` | `/api/env-info` | EnvInfoRequest | Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜). | `app/routers/nl2sql.py:105` |
+| `POST` | `/api/env-info` | EnvInfoRequest | Select AI 환경 3종을 조회한다 — profile(프로필 속성) · acl(네트워크 ACL) · credential(크리덴셜). | `app/routers/nl2sql.py:113` |
 | `GET` | `/api/vector/hybrid-index` | — | Hybrid Vector Index(26ai) 상태 — 있는가, 내부에 몇 청크가 임베딩돼 있는가, 옛 CONTEXT 인덱스가 남았는가. | `app/routers/vector.py:204` |
 | `GET` | `/api/vector/hybrid-index/internals` | — | Hybrid Vector Index 안 들여다보기 — 내부 테이블 목록·행 수, 상위 토큰 15($I), 조각 표본 5($VR). 없으면 exists=false. | `app/routers/vector.py:220` |
 | `POST` | `/api/vector/hybrid-index/create` | HybridIndexRequest | Hybrid Vector Index 생성(옛 Oracle Text 인덱스 대체). 청크 수 × ~200ms — 180청크 약 50초. | `app/routers/vector.py:233` |
@@ -273,6 +276,15 @@
     question: str (필수)
     action: str = 'runsql'
     profile_name: str | None = None
+```
+
+### `ProfileCreateRequest`
+
+```python
+    profile_name: str (필수)
+    form: dict (필수)
+    description: str = ''
+    preview_only: bool = False
 ```
 
 ### `PurgeRequest`
