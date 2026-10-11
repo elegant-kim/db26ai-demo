@@ -153,8 +153,10 @@ class TestProfileWizard:
         from app.profiles import build_attributes, plsql_for
         attrs, errs = build_attributes({"provider": "openai", "credential_name": "GEMINI_CRED", "model": "gemini-3.8-flash",
                                         "provider_endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
-                                        "object_list": [{"owner": "admin", "name": "poc_stores"}], "annotations": True, "conversation": False, "embedding_model": ""})
-        assert not errs and attrs["object_list"] == [{"owner": "ADMIN", "name": "POC_STORES"}] and attrs["annotations"] is True and "embedding_model" not in attrs
+                                        "object_list": [{"owner": "demo26ai", "name": "poc_stores"}, {"name": "poc_sales"}], "annotations": True, "conversation": False, "embedding_model": ""},
+                                       default_owner="APPUSER")
+        # 명시한 owner 는 대문자로, 비운 owner 는 접속 스키마(default_owner)로 — 'ADMIN' 같은 상수는 없다 (2026-10-11)
+        assert not errs and attrs["object_list"] == [{"owner": "DEMO26AI", "name": "POC_STORES"}, {"owner": "APPUSER", "name": "POC_SALES"}] and attrs["annotations"] is True and "embedding_model" not in attrs
         assert "DBMS_CLOUD_AI.CREATE_PROFILE" in plsql_for("X", attrs)
 
     def test_oci_는_region_필수(self):

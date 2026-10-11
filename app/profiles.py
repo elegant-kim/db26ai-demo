@@ -51,7 +51,7 @@ def oci_host(region: str) -> str:
     return f"inference.generativeai.{region}.oci.oraclecloud.com"
 
 
-def build_attributes(form: dict) -> tuple[dict, list[str]]:
+def build_attributes(form: dict, default_owner: str | None = None) -> tuple[dict, list[str]]:
     """화면 폼 → CREATE_PROFILE attributes JSON. 반환 (attributes, 오류 목록). 빈 값은 넣지 않는다."""
     errs: list[str] = []
     provider = (form.get("provider") or "").strip().lower()
@@ -90,7 +90,8 @@ def build_attributes(form: dict) -> tuple[dict, list[str]]:
                 errs.append(f"Azure 는 {k} 가 필요합니다")
     objs = form.get("object_list") or []
     if isinstance(objs, list) and objs:
-        attrs["object_list"] = [{"owner": (o.get("owner") or "ADMIN").upper(), "name": (o.get("name") or "").upper()} for o in objs if o.get("name")]
+        # owner 가 비면 접속 계정의 스키마(default_owner = CURRENT_SCHEMA). 스키마명을 코드에 적지 않는다 (2026-10-11 ADMIN → DEMO26AI 이관).
+        attrs["object_list"] = [{"owner": (o.get("owner") or default_owner or "").upper(), "name": (o.get("name") or "").upper()} for o in objs if o.get("name")]
     for k in ("annotations", "comments", "constraints", "conversation"):
         if k in form and form[k] is not None:
             attrs[k] = bool(form[k])
@@ -130,6 +131,14 @@ async def drop_profile(pool, profile_name: str) -> None:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => :n, force => TRUE); END;", {"n": profile_name})
+
+
+async def current_schema(pool) -> str:
+    """접속 계정의 CURRENT_SCHEMA — object_list owner 의 기본값. 스키마명은 코드가 아니라 DB 가 말해 준다."""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual")
+            return (await cur.fetchone())[0]
 
 
 async def wizard_meta(pool) -> dict:

@@ -3,6 +3,7 @@
 """
 import asyncio
 import json
+import logging
 import time
 
 from fastapi import APIRouter, File, Request, UploadFile
@@ -17,7 +18,15 @@ from app.feedback import FEEDBACK_TYPES, delete_feedback, feedback_status, list_
 from app.fewshot import TEMPLATE_CSV, parse_file, purge_profile_feedback, register_rows, validate_rows
 from app.presets import create_preset, delete_preset, list_presets, update_preset
 from app.presets import validate as validate_preset
-from app.profiles import build_attributes, create_profile, drop_profile, plsql_for, validate_name, wizard_meta
+from app.profiles import (
+    build_attributes,
+    create_profile,
+    current_schema,
+    drop_profile,
+    plsql_for,
+    validate_name,
+    wizard_meta,
+)
 from app.select_ai import (
     SELECT_AI_ACTIONS,
     apply_annotations,
@@ -34,6 +43,7 @@ from app.select_ai import (
     set_profile,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["nl2sql"])
 
 VALID_ACTIONS = set(SELECT_AI_ACTIONS)  # 정본은 app/select_ai.py — 직접 실행창의 SELECT AI 파서와 같은 목록
@@ -699,7 +709,14 @@ async def profile_create(req: ProfileCreateRequest):
     """DBMS_CLOUD_AI.CREATE_PROFILE — 폼을 attributes JSON 으로 만들어 PL/SQL 미리보기(preview_only) 또는 실행."""
     name = req.profile_name.strip().upper()
     err = validate_name(name)
-    attrs, errs = build_attributes(req.form)
+    pool = await get_pool()
+    owner = None
+    if pool is not None:
+        try:
+            owner = await current_schema(pool)   # object_list owner 기본값 = 접속 스키마 (ADMIN 하드코딩 제거, 2026-10-11)
+        except Exception as e:
+            logger.warning("CURRENT_SCHEMA 조회 실패 — owner 기본값 없이 진행: %s", e)
+    attrs, errs = build_attributes(req.form, default_owner=owner)
     if err:
         errs.insert(0, err)
     plsql = plsql_for(name, attrs, req.description)
@@ -707,7 +724,6 @@ async def profile_create(req: ProfileCreateRequest):
         return JSONResponse(status_code=400, content={"success": False, "error": " · ".join(errs), "errors": errs, "attributes": attrs, "plsql": plsql})
     if req.preview_only:
         return {"success": True, "preview": True, "attributes": attrs, "plsql": plsql}
-    pool = await get_pool()
     if pool is None:
         return _db_or_503()
     try:

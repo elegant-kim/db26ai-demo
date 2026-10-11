@@ -1,5 +1,6 @@
 -- 04_profile.sql — Select AI 프로필 RETAIL_DEMO_PROFILE (PoC 3-B, 2026-09-30)
 -- 크리덴셜은 기존 GEMINI_CRED 를 재사용한다(51번 §3 에서 만든 것). 모델·임베딩 모델은 GEMINI_SH_PROFILE 과 같다.
+-- object_list 의 owner 는 실행 계정(USER)으로 채운다 — 스키마명을 적지 않는다 (2026-10-11 ADMIN → DEMO26AI 이관).
 -- 프로필 이름에 RETAIL 이 들어가면 앱이 RETAIL Annotation 세트·'%RETAIL%' 프리셋을 고른다(web/src/lib/annotations.ts · nl2sql.ts).
 BEGIN
   BEGIN DBMS_CLOUD_AI.DROP_PROFILE(profile_name => 'RETAIL_DEMO_PROFILE'); EXCEPTION WHEN OTHERS THEN NULL; END;
@@ -12,10 +13,10 @@ BEGIN
       "model": "gemini-3.8-flash",
       "embedding_model": "gemini-embedding-001",
       "object_list": [
-        {"owner": "ADMIN", "name": "POC_STORES"},
-        {"owner": "ADMIN", "name": "POC_PRODUCTS"},
-        {"owner": "ADMIN", "name": "POC_DISPLAYS"},
-        {"owner": "ADMIN", "name": "POC_SALES"}
+        {"owner": "' || USER || '", "name": "POC_STORES"},
+        {"owner": "' || USER || '", "name": "POC_PRODUCTS"},
+        {"owner": "' || USER || '", "name": "POC_DISPLAYS"},
+        {"owner": "' || USER || '", "name": "POC_SALES"}
       ],
       "annotations": true,
       "comments": true,

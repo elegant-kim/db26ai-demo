@@ -11,16 +11,17 @@ import time
 from app.select_ai import _lob_to_str
 
 # === Property Graph DDL ===
+# 테이블은 스키마 접두어 없이 — 접속 계정(CURRENT_SCHEMA)의 SH 표를 본다 (2026-10-11, ADMIN 하드코딩 제거).
 
 GRAPH_DDL = """CREATE PROPERTY GRAPH sales_graph
 VERTEX TABLES (
-    admin.customers KEY (cust_id)
+    customers KEY (cust_id)
         PROPERTIES (cust_id, cust_first_name, cust_last_name, cust_city, cust_income_level, cust_credit_limit),
-    admin.products KEY (prod_id)
+    products KEY (prod_id)
         PROPERTIES (prod_id, prod_name, prod_category, prod_list_price)
 )
 EDGE TABLES (
-    admin.sales KEY (prod_id, cust_id, time_id, channel_id, promo_id)
+    sales KEY (prod_id, cust_id, time_id, channel_id, promo_id)
         SOURCE KEY (cust_id) REFERENCES customers (cust_id)
         DESTINATION KEY (prod_id) REFERENCES products (prod_id)
         PROPERTIES (amount_sold, quantity_sold, time_id)
@@ -62,8 +63,8 @@ COMPARE_QUERIES = [
     {
         "label": "고객 524가 구매한 제품 목록",
         "sql": """SELECT p.prod_name, p.prod_category, s.amount_sold
-FROM admin.sales s
-JOIN admin.products p ON s.prod_id = p.prod_id
+FROM sales s
+JOIN products p ON s.prod_id = p.prod_id
 WHERE s.cust_id = 524
 ORDER BY s.amount_sold DESC
 FETCH FIRST 10 ROWS ONLY""",
@@ -83,8 +84,8 @@ FETCH FIRST 10 ROWS ONLY""",
         "sql": """SELECT p.prod_name, p.prod_category,
        COUNT(DISTINCT s.cust_id) AS customer_count,
        SUM(s.amount_sold) AS total_amount
-FROM admin.sales s
-JOIN admin.products p ON s.prod_id = p.prod_id
+FROM sales s
+JOIN products p ON s.prod_id = p.prod_id
 GROUP BY p.prod_name, p.prod_category
 ORDER BY total_amount DESC
 FETCH FIRST 10 ROWS ONLY""",
@@ -118,11 +119,11 @@ FETCH FIRST 10 ROWS ONLY""",
         "sql": """SELECT DISTINCT c2.cust_id AS cust_id2,
        c2.cust_first_name AS customer2,
        p.prod_name AS shared_product
-FROM admin.sales s1
-JOIN admin.sales s2 ON s1.prod_id = s2.prod_id
+FROM sales s1
+JOIN sales s2 ON s1.prod_id = s2.prod_id
      AND s2.cust_id <> s1.cust_id
-JOIN admin.customers c2 ON s2.cust_id = c2.cust_id
-JOIN admin.products p ON s1.prod_id = p.prod_id
+JOIN customers c2 ON s2.cust_id = c2.cust_id
+JOIN products p ON s1.prod_id = p.prod_id
 WHERE s1.cust_id = 524
 ORDER BY cust_id2, shared_product
 FETCH FIRST 10 ROWS ONLY""",

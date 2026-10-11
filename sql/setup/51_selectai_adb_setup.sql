@@ -122,7 +122,7 @@ BEGIN
         host => 'api.groq.com',
         ace  => xs$ace_type(
             privilege_list => xs$name_list('connect','resolve'),
-            principal_name => 'ADMIN',              -- 대소문자 구분한다. 소문자면 안 붙는다
+            principal_name => USER,                 -- 실행 계정. 문자열로 적을 땐 대문자(대소문자 구분)
             principal_type => xs_acl.ptype_db));
 END;
 /
@@ -132,7 +132,7 @@ BEGIN
         host => 'generativelanguage.googleapis.com',
         ace  => xs$ace_type(
             privilege_list => xs$name_list('connect','resolve'),
-            principal_name => 'ADMIN',
+            principal_name => USER,
             principal_type => xs_acl.ptype_db));
 END;
 /
@@ -210,14 +210,14 @@ BEGIN
             "model": "llama-3.3-70b-versatile",
             "provider_endpoint": "https://api.groq.com/openai/v1",
             "object_list": [
-              {"owner": "ADMIN","name":"CHANNELS"},
-              {"owner": "ADMIN","name":"COSTS"},
-              {"owner": "ADMIN","name":"COUNTRIES"},
-              {"owner": "ADMIN","name":"CUSTOMERS"},
-              {"owner": "ADMIN","name":"PRODUCTS"},
-              {"owner": "ADMIN","name":"PROMOTIONS"},
-              {"owner": "ADMIN","name":"SALES"},
-              {"owner": "ADMIN","name":"TIMES"}
+              {"owner": "' || USER || '","name":"CHANNELS"},
+              {"owner": "' || USER || '","name":"COSTS"},
+              {"owner": "' || USER || '","name":"COUNTRIES"},
+              {"owner": "' || USER || '","name":"CUSTOMERS"},
+              {"owner": "' || USER || '","name":"PRODUCTS"},
+              {"owner": "' || USER || '","name":"PROMOTIONS"},
+              {"owner": "' || USER || '","name":"SALES"},
+              {"owner": "' || USER || '","name":"TIMES"}
             ],
             "annotations": true,
             "comments": true,
@@ -237,14 +237,14 @@ BEGIN
             "model": "gemini-3.8-flash",
             "provider_endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/v1",
             "object_list": [
-              {"owner": "ADMIN","name":"CHANNELS"},
-              {"owner": "ADMIN","name":"COSTS"},
-              {"owner": "ADMIN","name":"COUNTRIES"},
-              {"owner": "ADMIN","name":"CUSTOMERS"},
-              {"owner": "ADMIN","name":"PRODUCTS"},
-              {"owner": "ADMIN","name":"PROMOTIONS"},
-              {"owner": "ADMIN","name":"SALES"},
-              {"owner": "ADMIN","name":"TIMES"}
+              {"owner": "' || USER || '","name":"CHANNELS"},
+              {"owner": "' || USER || '","name":"COSTS"},
+              {"owner": "' || USER || '","name":"COUNTRIES"},
+              {"owner": "' || USER || '","name":"CUSTOMERS"},
+              {"owner": "' || USER || '","name":"PRODUCTS"},
+              {"owner": "' || USER || '","name":"PROMOTIONS"},
+              {"owner": "' || USER || '","name":"SALES"},
+              {"owner": "' || USER || '","name":"TIMES"}
             ],
             "annotations": true,
             "comments": true,

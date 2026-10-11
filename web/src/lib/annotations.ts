@@ -127,9 +127,10 @@ export const ANNOTATION_SETS: Record<string, AnnotationSet> = {
         },
     },
 };
-export function annotationSetFor(profile: string): { owner: string; tables: AnnotationSet } | null {
+// owner 는 보내지 않는다 — 서버가 접속 계정의 CURRENT_SCHEMA 로 푼다 (2026-10-11, ADMIN → DEMO26AI 이관 뒤 'ADMIN' 하드코딩 제거).
+export function annotationSetFor(profile: string): { tables: AnnotationSet } | null {
   const p = (profile || '').toUpperCase()
-  if (p.includes('RETAIL')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.RETAIL }
-  if (p.includes('SH')) return { owner: 'ADMIN', tables: ANNOTATION_SETS.SH }
+  if (p.includes('RETAIL')) return { tables: ANNOTATION_SETS.RETAIL }
+  if (p.includes('SH')) return { tables: ANNOTATION_SETS.SH }
   return null
 }

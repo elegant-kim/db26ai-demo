@@ -32,16 +32,25 @@ source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # DB 접속정보 및 API 키 설정
 
-# Run (개발 중 — 파일 변경 시 자동 리로드)
+# Run (로컬 개발 — 파일 변경 시 자동 리로드)
 python main.py
 # → http://localhost:8247
 
-# 운영 반영 — launchd 가 `python main.py` 를 돌리므로 uvicorn reload=True 가 켜져 있다:
-#   .py 를 저장하면 서버가 스스로 재기동된다 (진행 중인 SSE 업로드·LLM 요청은 끊긴다 — 2026-09-05 실측).
-#   .env·web/dist 변경은 리로드 대상이 아니므로 그때만 수동 재기동:
+# 로컬(Mac) 상시 구동은 launchd — 개발용. uvicorn reload=True 라 .py 를 저장하면 스스로 재기동된다
+#   (진행 중인 SSE 업로드·LLM 요청은 끊긴다 — 2026-09-05 실측). .env·web/dist 변경은 리로드 대상이 아니라 수동 재기동:
 launchctl kickstart -k gui/$(id -u)/com.db26ai.server
-# 재기동 후 헬스체크
 curl -s http://localhost:8247/api/health
+```
+
+```bash
+# 운영(2026-10-11 부터) = OCI VM ksh-vm-demo-01 (Oracle Linux 9 · Python 3.12 · Node 22). Mac 은 개발 전용.
+#   서비스: systemd `db26ai` (uvicorn 127.0.0.1:8247) ← Caddy 리버스 프록시(HTTPS 자동, basic_auth) — https://193-122-126-219.sslip.io
+#   배포: Mac 에서 git push → VM 에서
+ssh -i ~/.ssh/ksh_oci_rsa opc@193.122.126.219
+/opt/db26ai/deploy.sh           # git pull → venv pip → web build → systemctl restart db26ai → health → Caddy 호스트 갱신
+journalctl -u db26ai -f         # 로그
+#   .env 는 /opt/db26ai/app/.env (gitignore, scp 로 반입), Wallet 은 /opt/db26ai/wallet. docs/slides 는 VM 에 없다(필요하면 scp).
+#   VM 구성(terraform·cloud-init)은 별도 저장소 ~/Dev/oci-ksh-infra (docs/02_작업계획서_데모AP서버.md).
 ```
 
 ```bash
@@ -136,8 +145,7 @@ scripts/deploy.sh
 | `scripts/deploy.sh` | **배포 한 방**: pytest → ruff → `npm run build` → kickstart → 스모크 |
 | `scripts/slides_import.py` · `slides_sample_deck.py` | **장표 변환**: `docs/slides/src/<deck>.pdf` → `out/<deck>/001.webp… + manifest.json`(제목·쪽·꼬리표→쪽). 표본 덱(2쪽, `SM-01/02`)은 헤드리스 Chrome 으로 만든다 |
 | `docs/slides/` | 장표 원본(`src/`)과 생성물(`out/`). **기본 gitignore**(공개 저장소 — 고객명·수치 보호), README 와 `src/sample.pdf` 만 추적. 준비 규칙·꼬리표 규칙은 `docs/slides/README.md` |
-| `deploy/com.db26ai.server.plist` | macOS launchd 상시 구동 정의 |
-| `deploy/install-launchd.sh` / `uninstall-launchd.sh` | launchd 등록/해제 |
+| `deploy/com.db26ai.server.plist` · `install-launchd.sh` / `uninstall-launchd.sh` · `run.sh`(caffeinate) | **Mac 로컬 개발용** launchd 상시 구동 정의·등록/해제. 운영은 2026-10-11 부터 OCI VM(systemd `db26ai` + Caddy, 정의는 `~/Dev/oci-ksh-infra/templates/cloud-init-demo.yaml.tftpl`) |
 | `sql/setup/*.sql` | 일회성 셋업·마이그레이션 SQL (**시크릿은 자리표시자**, 원본은 `_private/`에 gitignore) |
 | `sql/seed/retail_demo/01~05, 09` · `scripts/seed_retail_demo.py` | **유통 시연용 샘플 데이터셋**(PoC 3-B): 테이블 4 + COMMENT → 합성 데이터(재현 가능) → Annotation(정본 `web/src/lib/annotations.ts` RETAIL 세트에서 생성) → 프로필 `RETAIL_DEMO_PROFILE` → 프리셋 10. 09 원복. 로더는 병렬을 끄고 순서대로 돈다 |
 | `sql/setup/70_poc_ai_tables.sql` · `71_…_rollback.sql` · `72_poc_prompt_preset_seed.sql` | 고객사 PoC 확장(2026-09-29): 이력·피드백·프리셋 표 3개 + 롤백 + 예시 질문 시드 27건(멱등). 이 DB 에 적용 완료 |
@@ -299,11 +307,11 @@ PARAMETERS ('MODEL MULTILINGUAL_E5_BASE LEXER HVI_WORLD_LEXER');
 
 ```bash
 # Database
-ORACLE_DSN=db26aidemo_medium          # 신규 테넌시 ADB (2026-04-14 이관 완료)
-ORACLE_USER=admin
-ORACLE_PASSWORD=<password>
-ORACLE_WALLET_DIR=/path/to/Wallet_DB26AIDEMO
-ORACLE_WALLET_PASSWORD=<password>
+ORACLE_DSN=kshatp01_low                # 회사 ADB kshatp01 (26ai, 서울) — 2026-10-11 Free Trial(db26aidemo) 에서 Data Pump 이관
+ORACLE_USER=DEMO26AI                   # 앱 전용 스키마. ADMIN 이 아니다 — 코드에 스키마명을 쓰지 말고 CURRENT_SCHEMA 를 믿는다
+ORACLE_PASSWORD=<DEMO26AI 암호>         # Terraform 이 만든 난수 → OCI Vault `ksh-sec-adb-atp-01-demo26ai` (ADMIN 암호와 다르다)
+ORACLE_WALLET_DIR=/path/to/Wallet_kshatp01   # mTLS 필수
+ORACLE_WALLET_PASSWORD=<지갑 암호>      # 지갑 다운로드 때 정한 값(ewallet.pem 복호화용). DB 암호와 별개 — 이 지갑은 ADMIN 암호로 받았다
 
 SELECT_AI_PROFILE=                     # 빈 값이면 DB에서 동적 결정
 
@@ -338,7 +346,8 @@ GOOGLE_API_KEY= / GOOGLE_MODEL=gemini-3.8-flash
 - `DBMS_DATA_MINING.IMPORT_ONNX_MODEL()` / `DBMS_VECTOR.LOAD_ONNX_MODEL()` — ONNX 모델 로드
 - `CREATE PROPERTY GRAPH` / `GRAPH_TABLE(... MATCH ... COLUMNS ...)` — SQL/PGQ (SQL:2023)
 - `CREATE OR REPLACE JSON RELATIONAL DUALITY VIEW` — Duality View
-- Sample schema: **SH** (Sales History) — ADMIN 스키마에 적재됨. **유통 시연용 샘플 `POC_STORES/POC_PRODUCTS/POC_DISPLAYS/POC_SALES`**(제과 유통, 합성 6만 행, `sql/seed/retail_demo/`, 프로필 `RETAIL_DEMO_PROFILE`, 2026-09-30 PoC 3-B). ⚠ ADMIN 에 SH 의 `PRODUCTS`·`SALES` 가 있어 새 테이블은 반드시 접두어를 쓴다
+- Sample schema: **SH** (Sales History) 8 테이블 — **앱 스키마 DEMO26AI 소유**(2026-10-11 이관 때 내장 SH 에서 복사). **유통 시연용 샘플 `POC_STORES/POC_PRODUCTS/POC_DISPLAYS/POC_SALES`**(제과 유통, 합성 6만 행, `sql/seed/retail_demo/`, 프로필 `RETAIL_DEMO_PROFILE`, 2026-09-30 PoC 3-B). ⚠ 같은 스키마에 SH 의 `PRODUCTS`·`SALES` 가 있어 새 테이블은 반드시 접두어를 쓴다.
+  **스키마명은 코드·SQL 에 적지 않는다** — DDL·질의는 접두어 없이, 서버는 `SYS_CONTEXT('USERENV','CURRENT_SCHEMA')`, 셋업 SQL 은 `USER`. 2026-10-11 ADMIN → DEMO26AI 이관 때 `admin.` 하드코딩(duality·graph·annotations.ts·profiles.py·시드 SQL)이 전부 깨져 제거했다
 
 ## Critical Implementation Notes
 
@@ -402,7 +411,7 @@ Oracle LOB 값은 `await _lob_to_str(val)` 변환 필수. `hasattr(row[0], 'read
 예외를 삼켜야 하는 자리라도 **`logger.warning`은 반드시 남긴다.**
 
 ### 프론트 배포 = 빌드 + 재기동
-SPA(`web/`)는 Vite 해시 파일명이라 캐시버스팅 버전이 없다. `npm run build` 뒤 `scripts/deploy.sh` 또는 kickstart.
+SPA(`web/`)는 Vite 해시 파일명이라 캐시버스팅 버전이 없다. 로컬은 `npm run build` 뒤 `scripts/deploy.sh` 또는 kickstart, 운영(VM)은 push 후 `/opt/db26ai/deploy.sh` 가 빌드까지 한다.
 배포 직후 옛 chunk 404 는 `main.ts` 의 stale-chunk 자동 새로고침이 흡수한다.
 
 ### SSE 스트리밍

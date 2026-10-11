@@ -191,7 +191,7 @@ class TestDuality:
         assert steps[3]["success"] is False and "ORA-42699" in steps[3]["description"], "4단계는 DB 의 ETag 검사로 거부돼야 한다"
         assert steps[4]["success"] is True and "원복" in steps[4]["description"]
         # 원복 확인 — SH 표준 신용한도 밖의 값이 남으면 시뮬이 데이터를 오염시킨 것
-        q = "SELECT COUNT(*) N FROM admin.customers WHERE cust_credit_limit NOT IN (1500,3000,5000,7000,9000,10000,11000,15000)"
+        q = "SELECT COUNT(*) N FROM customers WHERE cust_credit_limit NOT IN (1500,3000,5000,7000,9000,10000,11000,15000)"
         r = client.post("/api/execute-sql", json={"sql": q}).json()
         assert r.get("success") and r["data"][0]["N"] == 0, r
 
@@ -656,7 +656,7 @@ class TestProfileWizardApi:
 
     def test_생성_환경탭_삭제(self, client):
         # OCI 모의 프로필 — 크리덴셜은 아무 것이나(생성은 호출 없이 된다), 환경 탭이 region 으로 호스트를 만드는지 본다
-        r = client.post("/api/profiles/create", json={"profile_name": "WIZ_OCI_TEST", "form": {"provider": "oci", "credential_name": "GEMINI_CRED", "model": "cohere.command-r-plus-08-2024", "region": "ap-osaka-1", "oci_apiformat": "COHERE", "object_list": [{"owner": "ADMIN", "name": "POC_STORES"}]}, "description": "pytest"}).json()
+        r = client.post("/api/profiles/create", json={"profile_name": "WIZ_OCI_TEST", "form": {"provider": "oci", "credential_name": "GEMINI_CRED", "model": "cohere.command-r-plus-08-2024", "region": "ap-osaka-1", "oci_apiformat": "COHERE", "object_list": [{"name": "POC_STORES"}]}, "description": "pytest"}).json()
         assert r["success"], r
         try:
             attrs = {x["ATTRIBUTE_NAME"]: str(x["ATTRIBUTE_VALUE"]) for x in client.post("/api/env-info", json={"kind": "profile", "profile_name": "WIZ_OCI_TEST"}).json()["result"]["data"]}

@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-09-30 (**PoC 확장 요청서 Phase 0~4 전부 완료** — 4-23~4-33. 일반 시연용으로 방향 정정(4-31). 다음: 보류했던 Vector P6·P7·④ Select AI RAG 논의) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo`
+> **최종 갱신:** 2026-10-11 (**DB 를 회사 ADB kshatp01 / 스키마 DEMO26AI 로, 운영을 OCI VM 으로 — 4-35.** ADMIN 하드코딩 제거 완료. 다음: Groq 제거(계획 승인 대기) → 보류했던 Vector P6·P7·④ Select AI RAG 논의) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo` · **운영:** https://193-122-126-219.sslip.io
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -15,15 +15,18 @@
 ## 1. 한 줄 요약
 
 Oracle AI Database 26ai 기능 데모 앱. **FastAPI(:8247) + Oracle ADB 26ai + Vue 3/TS/Vite SPA(`web/`, 빌드 산출물 `web/dist` 서빙)**.
-6개 탭(NL2SQL / Vector Search / JSON Duality / Property Graph / 개발생산성 / AWR 분석) + 매뉴얼.
-macOS launchd 로 상시 구동. **.py 저장 시 uvicorn 이 스스로 재기동**(reload=True) — `.env`·`web/dist` 변경만 수동 `kickstart`. (2026-09-29 정정: 이 줄이 5-4 이후의 코드와 달랐다)
+7개 탭(NL2SQL / Vector Search / JSON Duality / Property Graph / 개발생산성 / AWR 분석 / Select AI Agent) + 매뉴얼.
+**운영은 OCI VM `ksh-vm-demo-01`**(systemd `db26ai` + Caddy HTTPS, 2026-10-11 부터), **DB 는 회사 ADB `kshatp01` 의 앱 스키마 `DEMO26AI`**. Mac 은 개발 전용(launchd 선택). **.py 저장 시 uvicorn 이 스스로 재기동**(reload=True) — `.env`·`web/dist` 변경만 수동 `kickstart`.
 
 ## 2. 운영 빠른 참조
 
 ```bash
-# 배포 한 방 (pytest → ruff → npm build → 재기동 → 스모크)
+# 운영(VM) 반영 = push 후 VM 에서 deploy.sh (pull → pip → web build → restart → health)
+git push && ssh -i ~/.ssh/ksh_oci_rsa opc@193.122.126.219 /opt/db26ai/deploy.sh
+ssh -i ~/.ssh/ksh_oci_rsa opc@193.122.126.219 journalctl -u db26ai -n 50
+# 로컬(Mac) 배포 한 방 (pytest → ruff → npm build → 재기동 → 스모크)
 scripts/deploy.sh
-# 재기동만
+# 로컬 재기동만
 launchctl kickstart -k gui/$(id -u)/com.db26ai.server
 # 헬스 (DB·프로필·문서·ONNX·벡터인덱스 상태 한 번에)
 curl -s http://localhost:8247/api/health | python3 -m json.tool
@@ -39,15 +42,16 @@ tail -f db26ai.log
   서버는 즉시 응답하지만 첫 벡터 질의는 워밍 완료 후가 정확하다. 로그에 `✓ 커넥션 풀 워밍 완료`.
 - `/api/execute-sql` 은 **SELECT 로 시작하는 문장만** 받는다(`WITH` CTE 도 거부).
 
-## 3. 현재 환경 실측 스냅샷 (2026-09-05 갱신)
+## 3. 현재 환경 실측 스냅샷 (2026-10-11 갱신 — DB·운영 행. 나머지는 2026-09-05 값이며 이관 후 건수 동일 확인)
 
 | 항목 | 값 |
 |---|---|
-| **DB** | `db26aidemo_medium` · schema **ADMIN** · Oracle 26ai **23.26.3.3.0** |
-| **테넌시** | 신규(춘천). 2026-04-14 08:50 Data Pump 이관 **완료** — 구 aidb 는 더 이상 안 씀 |
-| **Wallet** | `~/Dev/Wallet_DB26AIDEMO` |
+| **DB** | `kshatp01_low` (회사 ADB, mTLS) · schema **DEMO26AI** · Oracle AI Database 26ai **23.26.4.1.0** (2026-10-11 이관, 4-35) |
+| **테넌시** | **회사 테넌시 ADB kshatp01**(서울) — 2026-10-11 Data Pump 이관 완료. 그 전 Free Trial `db26aidemo`(2026-04-14 이관) 는 더 이상 안 씀 |
+| **운영 서버** | OCI VM `ksh-vm-demo-01` — https://193-122-126-219.sslip.io (systemd `db26ai` + Caddy). Mac 은 개발 전용 |
+| **Wallet** | Mac `~/Dev/Wallets/Wallet_kshatp01` · VM `/opt/db26ai/wallet` |
 | **SH 샘플** | SALES 918,843 · CUSTOMERS 55,500 · COSTS 82,112 · TIMES 1,826 · PROMOTIONS 503 · PRODUCTS 72 · COUNTRIES 23 · CHANNELS 5 |
-| **Select AI 프로필** | 2개 (GROQ_SH / GEMINI_SH) — **GROQ 는 2026-09-05 현재 ORA-20404 로 실패**(열린 과제 7), 화면 기본은 GEMINI |
+| **Select AI 프로필** | 3개 (GEMINI_SH / RETAIL_DEMO / GROQ_SH, owner=DEMO26AI) — GROQ 는 ORA-20404 로 실패했고 **제거 예정**(과제 10), 화면 기본은 GEMINI. GEMINI_SH_NATIVE 는 이관 때 재생성 안 함 |
 | **Vector Store** | 문서 2개(`SQL작성가이드.pdf` 79청크 · `현대Card개인회원약관.pdf` 101청크) · 청크 180 · **임베딩 180/180 (768차원)** |
 | **ONNX 모델** | `MULTILINGUAL_E5_BASE`(768, 사용 중) · `MULTILINGUAL_E5_SMALL`(384) |
 | **임베딩 설정** | `database` / `MULTILINGUAL_E5_BASE` |
@@ -432,7 +436,7 @@ NL2SQL(Select AI)                          [AI 프로필 ▾]   ← 페이지 �
 
 **설계 판단**
 - **사슬로 보여준다**: 11건 ACL 을 덤프하지 않고 프로필의 endpoint 호스트에 해당하는 것만(`aclHostMatches` — 정확·`*`·`*.suffix`), 크리덴셜도 프로필이 가리키는 한 건만. "왜 동작하는가"가 한 줄로 읽힌다.
-- **✓ 판정은 앱 계정(ADMIN) 기준**: 다른 principal 의 ACE 는 이 앱에 도움이 안 되므로 `system.health.schema` 와 대조한다. USER_ 뷰 폴백엔 PRINCIPAL 열이 없어 그때는 거르지 않는다.
+- **✓ 판정은 앱 계정(`system.health.schema`, 지금은 DEMO26AI) 기준**: 다른 principal 의 ACE 는 이 앱에 도움이 안 되므로 `system.health.schema` 와 대조한다. USER_ 뷰 폴백엔 PRINCIPAL 열이 없어 그때는 거르지 않는다.
 - **`DBMS_CLOUD_AI.SET_PROFILE` 호출 제거**: 세션 단위라 풀 커넥션에선 무의미(ORA-20046 교훈)하고 `/api/ask` 가 매번 프로필명을 명시한다. 옛 화면이 이걸 부른 이유는 속성 표를 얻기 위해서였는데 그건 `/api/env-info` 가 대신한다. `/api/set-profile` 엔드포인트는 남아 있으나 SPA 는 안 부른다.
 - **`?profile=` 딥링크는 스토어 `init(preferred)` 가 받는다**: 페이지·서브탭이 같은 인자로 부르므로 첫 호출이 이기고, 로드 뒤에 다른 값이 오면 그때 바꾼다. `?sub=env&run=1` 은 실제 호출 테스트를 바로 돌린다(캡처용).
 - `KvGrid` 에 `cols` prop 추가(기본 2) — 1/3 폭 카드에서 2열이면 라벨이 잘린다.
@@ -603,6 +607,25 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 화면 `Nl2sqlHistory.vue` + `stores/aiLog.ts` + `lib/aiLog.ts`: Stat 4 → 프로필(모델)별 소요(3-C 절반) → 필터 폼(「조회」 버튼, 자동 재조회 없음) → 표(행 클릭 모달: 질문·KvGrid·생성 SQL·오류 전문·답변 앞부분·피드백 목록 — 편집은 1-B 자리) → Pagination. `?sub=history&run=1`.
 테스트 +5(LLM 무관). 1-A 에서 남은 실패 이력이 그대로 첫 데이터가 됐다.
 
+## 4-35. 회사 ADB(kshatp01 / DEMO26AI) 이관 + OCI VM 운영 전환 + ADMIN 하드코딩 제거 (2026-10-11, Fable 5.1)
+
+**바뀐 환경** (이관·VM 구축 자체는 `~/Dev/oci-ksh-infra` 에서 했다 — `docs/03_작업계획서_데이터이관.md`, `02_작업계획서_데모AP서버.md`)
+- DB: Free Trial `db26aidemo`(ADMIN) → 회사 ADB **kshatp01**(26ai 23.26.4.1.0, 서울), 앱 전용 스키마 **DEMO26AI**, Data Pump. `.env` 는 `kshatp01_low` · `DEMO26AI` · `Wallet_kshatp01`.
+  실측(앱 풀로 접속): SH 8 표(SALES 918,843 · CUSTOMERS 55,500), POC 4(POC_SALES 60,000), DOCUMENTS 2 / DOC_CHUNKS 180, ONNX E5_BASE·SMALL, 프로필 GEMINI_SH·RETAIL_DEMO·GROQ_SH(object_list owner 전부 DEMO26AI), CUSTOMERS_DV·PRODUCTS_DV, DOC_CHUNKS_HNSW_IDX·DOC_CHUNKS_HVI, SALES_GRAPH. ADMIN 스키마의 SH 표는 DEMO26AI 에서 **보이지 않는다**(`all_tables` 0).
+  **GEMINI_SH_NATIVE 는 재생성 안 됨** — Agent 탭 「샘플 팀 만들기」가 없으면 만든다(`ensure_native_profile`).
+- 운영: Mac launchd → **OCI VM ksh-vm-demo-01**(systemd `db26ai`, Caddy HTTPS+basic_auth, https://193-122-126-219.sslip.io). 배포 = push → `/opt/db26ai/deploy.sh`. `.env` 는 `/opt/db26ai/app/.env`, Wallet `/opt/db26ai/wallet`. `deploy/`·`run.sh` 는 Mac 전용으로 남김.
+- 암호 2종은 다른 것: 지갑 암호(다운로드 때 정한 값, 이번엔 ADMIN 암호로 받음) vs DEMO26AI 암호(Terraform 난수 → Vault `ksh-sec-adb-atp-01-demo26ai`, `oci-ksh-infra/sql/_secrets.sql` `app_pw`). 처음에 ADMIN 암호를 넣어 ORA-01017 — 지갑 복호화는 통과했으므로 오류 위치로 구분했다. 암호는 `awk` 파이프로 옮겨 채팅에 안 남겼다.
+
+**ADMIN 하드코딩 제거** (전부 회사 ADB 에서 ORA-00942 로 깨지던 것)
+- `app/duality.py`(DDL 2 + 비교 질의 2) · `app/graph.py`(DDL 3 + 비교 질의 10) — `admin.` 접두어 제거. 세 비교 질의 SQL=PGQ 결과 동일 확인, Duality View 2·SALES_GRAPH 를 새 DDL 로 재생성 확인.
+- `web/src/lib/annotations.ts` `annotationSetFor` 가 `owner` 를 안 돌려준다 → `stores/nl2sql.ts` 가 `_owner` 를 안 보내고 서버 `apply/remove_annotations` 의 `CURRENT_SCHEMA` 폴백이 쓰인다(원래 있던 폴백).
+- `app/profiles.py` `build_attributes(form, default_owner)` + `current_schema(pool)` — 라우터 `/api/profiles/create` 가 접속 스키마를 넘긴다. 'ADMIN' 상수 없음.
+- `sql/seed/retail_demo/03_annotations.sql`(`ADMIN.POC_*` 62곳 → 접두어 없음) · `04_profile.sql` · `sql/setup/51`(object_list owner 16곳 + ACL principal 2곳) → `' || USER || '` / `USER`.
+- 테스트: `test_units` 가 명시 owner 대문자화 + 비운 owner 는 `default_owner` 를 검사, `test_api_smoke` ETag 검증 질의·위자드 object_list 에서 `admin.` 제거. ruff 통과, 단위 28 + 통합 비-LLM 17 통과(로컬 launchd 를 새 `.env` 로 재기동해 schema=DEMO26AI 확인).
+- 남은 'ADMIN' 문자열은 주석·51번 §6 기대 출력 설명뿐. 점검: `grep -rn "admin\.\|'ADMIN'" app web/src sql tests`.
+
+**열린 것**: Groq 제거(아래 과제 10, 계획 승인 뒤) · VM 시크릿을 저장소 밖/Vault 로(과제 11) · 보류 3건(Vector P6·P7·Select AI RAG).
+
 ## 4-26. PoC 1-D 저장 질문 프리셋 (2026-09-29, Fable 5.1)
 
 `app/presets.py` + `GET/POST/PUT/DELETE /api/nl2sql/presets` · `sql/setup/72_poc_prompt_preset_seed.sql`(옛 하드코딩 27건 → `%SH%` 14 · `%SSB%` 10 · NULL 3, 표가 비어 있을 때만).
@@ -684,13 +707,16 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 | ~~4~~ | ~~프론트 SPA 이식~~ **해소** — Phase 4·5·6 완료(2026-09-05). 레거시 삭제, 7페이지 새 화면 | `docs/design/05_SPA_이식_설계서.md` |
 | ~~5~~ | ~~인앱 매뉴얼 미구현~~ **해소** — Phase 3 완료 (위 4-2) | — |
 | 6 | *(선택)* OCI API 키 로테이션 — 유출 근거는 없으나 개인키가 5개월간 평문으로 있었다 | `019d2a1` |
-| 7 | **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
+| ~~7~~ | ~~GROQ_SH_PROFILE 이 ORA-20404 로 실패~~ → **Groq 를 아예 제거하기로 방향 결정(2026-10-11, 과제 10)**. 원문: **GROQ_SH_PROFILE 이 ORA-20404 로 실패** (`Object not found - bearer://api.groq.com/openai/v1/chat/completions`). **2026-09-07 범위 축소: 네트워크 ACL 은 정상**(`dba_host_aces` 에 CONNECT·RESOLVE·HTTP 가 GEMINI 와 동일하게 부여돼 있음) → 남은 원인은 `GROQ_CRED` 의 API 키다. 수습은 키 재발급 후 `DROP_CREDENTIAL` → `CREATE_CREDENTIAL`(51번 §3). 시크릿 영역이라 **사용자 판단**. 그동안 화면 기본 프로필은 GEMINI | 4-9 · 4-14 |
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
 | 9 | **GEMINI 경유 GENERATE 가 수백 초 걸리거나 타임아웃 — 원인은 Gemini `HTTP 429`** (2026-09-29 확정). **09-30 확정: Mac 에서 같은 키로 429 본문을 받았다 — `Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash`. 즉 이 API 키의 Google 프로젝트는 무료 티어**(사용자는 종량제라고 알고 있었다 → 결제가 붙은 프로젝트와 키의 프로젝트가 다를 가능성). 하루 20건이라 GENERATE 몇 번이면 바닥난다. 수습: AI Studio 에서 키의 프로젝트에 결제 연결(또는 결제 프로젝트에서 새 키 발급) → `DBMS_CLOUD.UPDATE_CREDENTIAL(GEMINI_CRED, 'password', 새키)`. 사용자 영역. `AI_QUERY_LOG` 에 `ORA-20429: Request failed with status HTTP 429 - bearer://generativelanguage.googleapis.com/…` 이 elapsed 503,815 ms · 509,314 ms 로 남았다 — DBMS_CLOUD_AI 가 `PL/SQL lock timer` 로 재시도하며 버틴 시간. ACL·크리덴셜은 정상. 오전 무응답도 같은 원인으로 본다. **수습은 GEMINI_CRED 의 Google AI Studio 키 할당량(무료 티어 RPM/RPD) — 결제 활성화 또는 다른 키, 또는 GROQ 키 복구(과제 7). 시크릿 영역이라 사용자 판단.** 그동안 LLM 을 부르는 통합 테스트(`TestSelectAiShorthand` · `TestNL2SQL::test_showsql` · `TestConversationAndLog` 2건)는 429 가 걸리면 ReadTimeout 으로 실패한다 | 4-23 · 4-24 |
+
+| 10 | **Groq 프로바이더 제거** (2026-10-11 사용자 결정, **계획만 세우고 승인 뒤 실행**). 소스: `app/llm_client.py` groq 항목 · `app/config.py` GROQ_* · `app/profiles.py` 프로바이더 힌트/엔드포인트 표 · `app/feature_registry.py` 문구 · `stores/nl2sql.ts` PREFER · `.env.example` · `sql/setup/51·53` · `tests` TestCompareProfiles · 가이드 01·04. DB: `DROP_PROFILE GROQ_SH_PROFILE` · `DROP_CREDENTIAL GROQ_CRED` · `api.groq.com` ACL | 4-35 |
+| 11 | **VM 시크릿 위치** — `.env`·Wallet 이 `/opt/db26ai/app`(git clone 폴더) 안에 평문. 1단계 저장소 밖 + systemd `EnvironmentFile`, 2단계 OCI Vault + Instance Principal(이미 Vault 에 DEMO26AI 암호가 있다), 3단계 IAM 토큰 인증으로 DB 암호 자체를 없애기 | 4-35 |
 
 ## 7. 새 세션 첫 단계 권장
 
 1. `CLAUDE.md` + `docs/개발노하우.md`(둘 다 자동 로드) + **이 파일** 훑기
-2. `curl -s localhost:8247/api/health` 로 3절 스냅샷과 대조 — 다르면 그 차이가 첫 단서
+2. `curl -s localhost:8247/api/health` 로 3절 스냅샷과 대조 — `schema` 가 **DEMO26AI** 여야 한다(ADMIN 이면 옛 `.env`). 운영은 https://193-122-126-219.sslip.io/api/health
 3. `docs/ROADMAP.md` 의 Phase 진행 상황 확인 후 다음 작업 착수
 4. `git log --oneline -10` 으로 직전 아크 확인

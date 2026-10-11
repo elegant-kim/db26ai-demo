@@ -72,4 +72,4 @@ docs/
 | `scripts/check-secrets.sh` | 커밋 전 시크릿 게이트 |
 | `scripts/deploy.sh` | 배포 한 방 (pytest → ruff → npm build → 재기동 → 스모크) |
 | `web/` | 새 화면 SPA (Vue 3 + TS + Vite). 구조 `design/05`, 시각 `design/06` |
-| `deploy/` | macOS launchd 상시 구동 정의 |
+| `deploy/` | macOS launchd 상시 구동 정의 — **로컬 개발용**. 운영(OCI VM, systemd+Caddy)은 `~/Dev/oci-ksh-infra` 가 정본 (`guides/02` §1) |

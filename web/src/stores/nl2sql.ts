@@ -180,7 +180,7 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     const h = endpointHost.value
     return h ? (env.value.acl?.data ?? []).filter((r: any) => aclHostMatches(String(r.HOST ?? ''), h)) : []
   })
-  // 앱이 붙은 계정(ADMIN)에 준 권한만 센다 — 다른 principal 의 ACE 는 이 앱에 도움이 안 된다.
+  // 앱이 붙은 계정(접속 사용자)에 준 권한만 센다 — 다른 principal 의 ACE 는 이 앱에 도움이 안 된다.
   // USER_ 뷰 폴백에는 PRINCIPAL 열이 없으므로 그때는 거르지 않는다.
   const currentUser = computed(() => (system.health?.schema || '').toUpperCase())
   const aclPrivs = computed(() => new Set(
@@ -397,12 +397,12 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
     try {
       if (kind === 'apply') {
         const set: Record<string, Record<string, string>> = {}
-        for (const [tbl, cols] of Object.entries(info.tables)) set[tbl] = { ...cols, _owner: info.owner }
+        for (const [tbl, cols] of Object.entries(info.tables)) set[tbl] = { ...cols }
         const r = await applyAnnotations(set)
         if (r.success && r.applied_count > 0) system.toast(`Annotation 적용 완료 (${r.applied_count}건${r.error_count ? `, 실패 ${r.error_count}건` : ''})`, 'success')
         else system.toast('Annotation 적용 실패: ' + (r.error || r.errors?.[0] || '적용된 항목 없음'), 'error')
       } else {
-        const r = await removeAnnotations(Object.keys(info.tables), info.owner)
+        const r = await removeAnnotations(Object.keys(info.tables))
         if (r.success) system.toast(`Annotation 제거 완료 (${r.removed_count}건)`, 'success')
         else system.toast('Annotation 제거 실패: ' + (r.error || ''), 'error')
       }

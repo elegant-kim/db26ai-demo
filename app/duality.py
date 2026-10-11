@@ -33,9 +33,10 @@ def _sanitize_duality_doc(doc):
 # === Duality View DDL ===
 
 # SH 스키마 기반 Duality View 정의 (GraphQL 구문)
+# 테이블은 스키마 접두어 없이 쓴다 — 접속 계정(CURRENT_SCHEMA)의 표를 본다. 2026-10-11 ADMIN → DEMO26AI 이관 때 `admin.` 하드코딩이 전부 깨졌다.
 DUALITY_VIEW_DDLS = {
     "CUSTOMERS_DV": """CREATE OR REPLACE JSON RELATIONAL DUALITY VIEW customers_dv AS
-admin.customers @insert @update @delete
+customers @insert @update @delete
 {
     _id        : cust_id
     firstName  : cust_first_name
@@ -48,7 +49,7 @@ admin.customers @insert @update @delete
     email      : cust_email
 }""",
     "PRODUCTS_DV": """CREATE OR REPLACE JSON RELATIONAL DUALITY VIEW products_dv AS
-admin.products @insert @update @delete
+products @insert @update @delete
 {
     _id           : prod_id
     prodName      : prod_name
@@ -157,13 +158,13 @@ async def compare_relational_vs_json(pool, view_name: str, limit: int = 5) -> di
     if "CUSTOMER" in view_name.upper():
         relational_sql = f"""SELECT c.cust_id, c.cust_first_name, c.cust_last_name,
        c.cust_city, c.cust_income_level, c.cust_credit_limit
-FROM admin.customers c
+FROM customers c
 ORDER BY c.cust_id
 FETCH FIRST {limit} ROWS ONLY"""
     elif "PRODUCT" in view_name.upper():
         relational_sql = f"""SELECT p.prod_id, p.prod_name, p.prod_category,
        p.prod_list_price, p.prod_min_price
-FROM admin.products p
+FROM products p
 ORDER BY p.prod_id
 FETCH FIRST {limit} ROWS ONLY"""
     else:
