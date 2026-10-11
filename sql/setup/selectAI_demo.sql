@@ -25,7 +25,7 @@ select profile_name, owner, status
 -- ;
 
 -- 세션에 AI Profile 설정
-exec dbms_cloud_ai.set_profile('GROQ_PROFILE');
+exec dbms_cloud_ai.set_profile('GEMINI_SH_PROFILE');
 
 -- 3. 데모 시연 : 자연어 프롬프트 실행
 -- 3-0 Warm up
@@ -36,7 +36,7 @@ DECLARE
 BEGIN
     v_result := DBMS_CLOUD_AI.GENERATE(
         prompt       => '안녕하세요',
-        profile_name => 'GROQ_PROFILE',
+        profile_name => 'GEMINI_SH_PROFILE',
         action       => 'chat'
     );
     DBMS_OUTPUT.PUT_LINE(v_result);
@@ -48,7 +48,7 @@ DECLARE
 BEGIN
     v_result := DBMS_CLOUD_AI.GENERATE(
         prompt       => 'show me top 5 countries by total sales amount',
-        profile_name => 'GROQ_PROFILE',
+        profile_name => 'GEMINI_SH_PROFILE',
         action       => 'runsql'
     );
     DBMS_OUTPUT.PUT_LINE(v_result);
