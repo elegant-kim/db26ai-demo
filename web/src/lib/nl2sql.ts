@@ -155,7 +155,7 @@ export const getSchemaInfo = (profile_name: string) => api.post<{ success: boole
 export const applyAnnotations = (annotation_set: Record<string, Record<string, string>>) =>
   api.post<{ success: boolean; applied_count: number; error_count: number; errors: string[]; error?: string }>('/api/apply-annotations', { annotation_set }).then((r) => r.data)
 export const removeAnnotations = (table_names: string[], owner?: string) =>  // owner 생략 = 서버가 CURRENT_SCHEMA
-  api.post<{ success: boolean; removed_count: number; errors?: string[]; error?: string }>('/api/remove-annotations', { table_names, owner }).then((r) => r.data)
+  api.post<{ success: boolean; removed_count: number; error_count?: number; errors?: string[]; error?: string }>('/api/remove-annotations', { table_names, owner }).then((r) => r.data)
 
 // ── 저장 질문 프리셋 (PoC 1-D) — 정본 app/presets.py ──
 export interface Preset { ID: number; PROFILE_NAME: string | null; TITLE: string; QUESTION: string; ACTION: Action | null; SORT_ORDER: number; CREATED_AT: string }

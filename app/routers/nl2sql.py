@@ -268,7 +268,7 @@ async def remove_annotations_endpoint(req: Request):
         table_names = body.get("table_names", [])
         owner = body.get("owner")
         result = await remove_annotations(pool, table_names, owner)
-        return {"success": True, **result}
+        return {"success": True, **result}   # result 의 success 가 True 를 덮어쓴다 — 전부 실패면 False
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

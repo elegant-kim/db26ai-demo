@@ -402,8 +402,9 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
         else system.toast('Annotation 적용 실패: ' + (r.error || r.errors?.[0] || '적용된 항목 없음'), 'error')
       } else {
         const r = await removeAnnotations(Object.keys(info.tables))
-        if (r.success) system.toast(`Annotation 제거 완료 (${r.removed_count}건)`, 'success')
-        else system.toast('Annotation 제거 실패: ' + (r.error || ''), 'error')
+        if (r.success && r.removed_count > 0) system.toast(`Annotation 제거 완료 (${r.removed_count}건${r.error_count ? `, 실패 ${r.error_count}건` : ''})`, r.error_count ? 'warn' : 'success')
+        else if (r.success) system.toast('제거할 Annotation 이 없습니다.', 'warn')
+        else system.toast('Annotation 제거 실패: ' + (r.error || r.errors?.[0] || ''), 'error')
       }
       await loadSchema()
     } catch (e) { system.toast(errorMessage(e), 'error') } finally { annoBusy.value = '' }

@@ -700,13 +700,19 @@ async def remove_annotations(pool, table_names: list, owner: str = None) -> dict
 
             for table_name in table_names:
                 fqn = f"{owner}.{table_name}"
-                # 테이블 레벨
+                # 테이블 레벨. 실패를 삼키지 않는다 — 2026-10-11: 옛 번들이 owner='ADMIN' 을 보내 ORA-00942 가 났는데
+                # 여기서 pass 하고 응답은 success=true, removed_count=0 이라 화면이 "제거 완료 (0건)" 이라고 했다.
                 try:
                     await cursor.execute(
                         f'ALTER TABLE {fqn} ANNOTATIONS (DROP Display)')
                     removed += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    msg = str(e).splitlines()[0]
+                    if "ORA-11553" in msg:   # 테이블에 DISPLAY 가 없다 — 지울 게 없는 것이지 실패가 아니다
+                        pass
+                    else:
+                        logger.warning("annotation 제거 실패 %s (table): %s", fqn, msg)
+                        errors.append(f"{fqn} (table): {msg}")
 
                 # 컬럼 레벨: 먼저 Display annotation이 있는 컬럼 조회
                 try:
@@ -728,4 +734,5 @@ async def remove_annotations(pool, table_names: list, owner: str = None) -> dict
 
             await conn.commit()
 
-    return {"removed_count": removed, "error_count": len(errors), "errors": errors[:5]}
+    # 하나도 못 지웠는데 오류가 있으면 실패다 — 성공 카운트는 실제 성공분만 센다(개발노하우 3.1)
+    return {"success": removed > 0 or not errors, "removed_count": removed, "error_count": len(errors), "errors": errors[:5]}
