@@ -28,14 +28,14 @@ SELECT profile_name, status FROM user_cloud_ai_profiles ORDER BY profile_name;
 
 SELECT credential_name, username, enabled
 FROM   user_credentials
-WHERE  credential_name IN ('GROQ_CRED','GEMINI_CRED');
+WHERE  credential_name IN ('GEMINI_CRED');
 
 SELECT COUNT(*) AS display_annotations
 FROM   user_annotations_usage WHERE annotation_name = 'DISPLAY';
 
 SELECT host, principal, privilege
 FROM   dba_host_aces
-WHERE  host IN ('api.groq.com','generativelanguage.googleapis.com')
+WHERE  host IN ('generativelanguage.googleapis.com')
 ORDER  BY host, privilege;
 
 
@@ -51,11 +51,6 @@ END;
 
 -- 하나씩 지운다. 한 블록에 묶으면 첫 실패가 나머지를 막는다.
 BEGIN
-    DBMS_CLOUD_AI.DROP_PROFILE(profile_name => 'GROQ_SH_PROFILE');
-EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GROQ_SH_PROFILE: ' || SQLERRM);
-END;
-/
-BEGIN
     DBMS_CLOUD_AI.DROP_PROFILE(profile_name => 'GEMINI_SH_PROFILE');
 EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GEMINI_SH_PROFILE: ' || SQLERRM);
 END;
@@ -69,11 +64,6 @@ SELECT profile_name FROM user_cloud_ai_profiles ORDER BY profile_name;
 -- §2. 크리덴셜 삭제
 --     ※ 되돌리려면 API 키를 다시 구해야 한다. 키를 잃어버렸다면 여기서 멈춘다.
 -- =============================================================================
-BEGIN
-    DBMS_CLOUD.DROP_CREDENTIAL(credential_name => 'GROQ_CRED');
-EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GROQ_CRED: ' || SQLERRM);
-END;
-/
 BEGIN
     DBMS_CLOUD.DROP_CREDENTIAL(credential_name => 'GEMINI_CRED');
 EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GEMINI_CRED: ' || SQLERRM);
@@ -120,26 +110,14 @@ FROM   user_annotations_usage WHERE annotation_name = 'DISPLAY';
 -- =============================================================================
 -- §4. 네트워크 ACL 회수
 --     ⚠ 같은 호스트를 쓰는 다른 프로필·DBMS_CLOUD 호출도 함께 막힌다.
---       이 ADB 에서 Groq/Gemini 를 다른 용도로도 쓰고 있다면 건너뛴다.
+--       이 ADB 에서 Gemini 를 다른 용도로도 쓰고 있다면 건너뛴다.
 -- =============================================================================
-BEGIN
-    DBMS_NETWORK_ACL_ADMIN.REMOVE_HOST_ACE(
-        host       => 'api.groq.com',
-        ace        => xs$ace_type(
-                          privilege_list => xs$name_list('connect','resolve'),
-                          principal_name => 'ADMIN',
-                          principal_type => xs_acl.ptype_db),
-        remove_empty_acl => TRUE);
-EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('groq ace: ' || SQLERRM);
-END;
-/
-
 BEGIN
     DBMS_NETWORK_ACL_ADMIN.REMOVE_HOST_ACE(
         host       => 'generativelanguage.googleapis.com',
         ace        => xs$ace_type(
                           privilege_list => xs$name_list('connect','resolve'),
-                          principal_name => 'ADMIN',
+                          principal_name => USER,
                           principal_type => xs_acl.ptype_db),
         remove_empty_acl => TRUE);
 EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('gemini ace: ' || SQLERRM);
@@ -148,7 +126,7 @@ END;
 
 SELECT host, principal, privilege
 FROM   dba_host_aces
-WHERE  host IN ('api.groq.com','generativelanguage.googleapis.com')
+WHERE  host IN ('generativelanguage.googleapis.com')
 ORDER  BY host, privilege;
 -- 기대: 0행. 남아 있다면 위 privilege 목록이 실제 부여분과 달랐던 것이다
 --       (예: 과거에 'http' 로 부여된 ACE 는 여기서 안 지워진다 → §0 결과를 보고 맞춰 지운다)

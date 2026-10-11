@@ -616,12 +616,12 @@ class TestAccuracyScenario:
 
 
 class TestCompareProfiles:
-    """PoC 3-C (2026-09-30) — 같은 질문을 프로필 2개로 (SSE). GROQ 는 키 문제로 실패할 수 있어 '실패도 한 열' 로 받는다."""
+    """PoC 3-C (2026-09-30) — 같은 질문을 프로필 2개로 (SSE). 2026-10-11 Groq 제거 후 GEMINI_SH + RETAIL_DEMO 로 — 데이터셋이 달라 SQL 은 다르지만 '실패도 한 열' 로 받는다."""
 
     def test_두_프로필_SSE(self, client):
         import json as _j
         events = []
-        with client.stream("POST", "/api/nl2sql/compare-profiles", json={"question": "판매 채널은 몇 개인가?", "profiles": ["GEMINI_SH_PROFILE", "GROQ_SH_PROFILE"]}) as r:
+        with client.stream("POST", "/api/nl2sql/compare-profiles", json={"question": "판매 채널은 몇 개인가?", "profiles": ["GEMINI_SH_PROFILE", "RETAIL_DEMO_PROFILE"]}) as r:
             assert r.headers["content-type"].startswith("text/event-stream")
             cur = ""
             for line in r.iter_lines():
@@ -630,9 +630,9 @@ class TestCompareProfiles:
                 elif line.startswith("data: "):
                     events.append((cur, _j.loads(line[6:])))
         start = [d for t, d in events if t == "start"][0]
-        assert [m["profile"] for m in start["profiles"]] == ["GEMINI_SH_PROFILE", "GROQ_SH_PROFILE"] and start["profiles"][0]["model"]
+        assert [m["profile"] for m in start["profiles"]] == ["GEMINI_SH_PROFILE", "RETAIL_DEMO_PROFILE"] and start["profiles"][0]["model"]
         done_steps = {d["profile"]: d for t, d in events if t == "step" and d.get("status") == "done"}
-        assert set(done_steps) == {"GEMINI_SH_PROFILE", "GROQ_SH_PROFILE"}
+        assert set(done_steps) == {"GEMINI_SH_PROFILE", "RETAIL_DEMO_PROFILE"}
         assert done_steps["GEMINI_SH_PROFILE"].get("sql")
         assert events[-1][0] == "done" and "fastest" in events[-1][1]
 

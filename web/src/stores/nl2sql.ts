@@ -243,9 +243,8 @@ export const useNl2sqlStore = defineStore('nl2sql', () => {
           profiles.value = await getProfiles()
           profilesLoaded.value = true
           if (!profiles.value.length) { lastError.value = 'DB 에 등록된 AI 프로필이 없습니다.'; return }
-          // 기본 프로필 우선순위. 2026-09-05: GROQ 프로필이 DB 자격증명 문제(ORA-20404 bearer://api.groq.com)로 실패해
-          // GEMINI 를 앞에 둔다 — Groq credential 을 고치면 순서를 되돌려도 된다.
-          const PREFER = [want, 'GEMINI_SH_PROFILE', 'GROQ_SH_PROFILE']
+          // 기본 프로필 우선순위 (Groq 프로필은 2026-10-11 제거).
+          const PREFER = [want, 'GEMINI_SH_PROFILE']
           const def = PREFER.map((n) => profiles.value.find((p) => p.profile_name === n)).find(Boolean) ?? profiles.value[0]
           await selectProfile(def.profile_name)
           if (!messages.value.length) pushGreeting()

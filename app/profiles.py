@@ -14,7 +14,7 @@ from app.select_ai import _lob_to_str
 
 # 패키지 PROVIDER_* 상수 (2026-09-30 실측). 벡터 DB 프로바이더(qdrant 등)는 여기 아님
 PROVIDERS = [
-    {"id": "openai", "label": "OpenAI 호환 (OpenAI · Gemini · Groq …)", "endpoint": True, "hint": "provider_endpoint 에 호환 엔드포인트, 크리덴셜은 API 키(bearer)"},
+    {"id": "openai", "label": "OpenAI 호환 (OpenAI · Gemini …)", "endpoint": True, "hint": "provider_endpoint 에 호환 엔드포인트, 크리덴셜은 API 키(bearer)"},
     {"id": "oci", "label": "OCI Generative AI", "endpoint": False, "hint": "region 필수. 크리덴셜은 OCI API Key(user_ocid·tenancy_ocid·fingerprint·private_key) 또는 Resource Principal"},
     {"id": "google", "label": "Google (Gemini 네이티브)", "endpoint": False, "hint": "크리덴셜은 Google API 키"},
     {"id": "anthropic", "label": "Anthropic", "endpoint": False, "hint": "크리덴셜은 Anthropic API 키"},
@@ -41,7 +41,6 @@ DEFAULT_ENDPOINTS = {"openai": "https://api.openai.com/v1"}
 ENDPOINT_PRESETS = [
     {"label": "OpenAI", "url": "https://api.openai.com/v1"},
     {"label": "Google Gemini (OpenAI 호환)", "url": "https://generativelanguage.googleapis.com/v1beta/openai"},
-    {"label": "Groq", "url": "https://api.groq.com/openai/v1"},
 ]
 
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]{0,127}$")

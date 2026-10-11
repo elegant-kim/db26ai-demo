@@ -26,8 +26,6 @@ class Settings:
 
     # LLM 채팅 설정 (AWR 분석, RAG 답변 생성용)
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "google")
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
     GOOGLE_MODEL: str = os.getenv("GOOGLE_MODEL", "gemini-3.8-flash")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

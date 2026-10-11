@@ -32,8 +32,8 @@ TAB_LABELS = {
 _F = [
  # ── ① NL2SQL ──────────────────────────────────────────────
  ("nl2sql", "AI 프로필 선택", "Select AI 프로필(LLM 제공자·모델·참조 테이블 묶음) 전환",
-  "페이지 우상단 셀렉트 — 세 서브탭이 같은 프로필을 본다. GROQ_SH / GEMINI_SH 두 개가 같은 SH 테이블을 다른 LLM 으로 본다.",
-  "/nl2sql?sub=env", "profile 프로필 groq gemini select ai"),
+  "페이지 우상단 셀렉트 — 모든 서브탭이 같은 프로필을 본다. GEMINI_SH(SH 8 표) / RETAIL_DEMO(POC_ 4 표) 가 서로 다른 데이터셋을 본다.",
+  "/nl2sql?sub=env", "profile 프로필 gemini retail select ai"),
  ("nl2sql", "실행 모드 7종", "runsql·showsql·narrate·explainsql·showprompt·summarize·chat",
   "SQL 만 보려면 showsql, 바로 실행하려면 runsql, 생성된 SQL 해설은 explainsql(한국어).",
   "/nl2sql?sub=ask", "action runsql showsql narrate explainsql showprompt summarize chat 모드"),

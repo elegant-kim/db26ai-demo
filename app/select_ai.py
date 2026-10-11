@@ -300,7 +300,7 @@ ORDER  BY host, privilege""",
         "label": "LLM 크리덴셜",
         # API 키(password)는 어떤 뷰에도 노출되지 않는다 — 이름·사용자·활성 여부만 보인다.
         # ENABLED='TRUE' 는 "키가 유효하다"는 뜻이 아니다. 만료된 키도 TRUE 로 보인다
-        # (2026-09-07 실측: GROQ_CRED 가 TRUE 인데 호출은 ORA-20404 로 실패).
+        # (2026-09-07 실측: 당시 GROQ_CRED 가 TRUE 인데 호출은 ORA-20404 로 실패 — Groq 는 2026-10-11 제거).
         "sql": """SELECT credential_name, username, enabled, comments
 FROM   user_credentials
 ORDER  BY credential_name""",

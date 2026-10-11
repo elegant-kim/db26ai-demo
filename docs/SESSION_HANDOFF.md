@@ -1,7 +1,7 @@
 # db26ai-demo — 세션 핸드오프
 
 > **목적:** 새 대화창에서, 또는 몇 달 뒤에 다시 열었을 때 **끊김 없이 이어가기 위한 인수인계.**
-> **최종 갱신:** 2026-10-11 (**DB 를 회사 ADB kshatp01 / 스키마 DEMO26AI 로, 운영을 OCI VM 으로 — 4-35.** ADMIN 하드코딩 제거 완료. 다음: Groq 제거(계획 승인 대기) → 보류했던 Vector P6·P7·④ Select AI RAG 논의) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo` · **운영:** https://193-122-126-219.sslip.io
+> **최종 갱신:** 2026-10-11 (**DB 를 회사 ADB kshatp01 / 스키마 DEMO26AI 로, 운영을 OCI VM 으로 — 4-35.** ADMIN 하드코딩 제거 + **Groq 제거(4-36)** 완료. 다음: 보류했던 Vector P6·P7·④ Select AI RAG 논의, VM 시크릿 위치(과제 11)) · **정본 소스:** `~/Dev/db26ai-demo/db26ai-demo` · **운영:** https://193-122-126-219.sslip.io
 > **함께 읽기:** `CLAUDE.md`(자동 로드) · `docs/개발노하우.md`(자동 로드) · `docs/ROADMAP.md`(작업 계획)
 >
 > **이 파일이 존재하는 이유:** 2026-04에 멈춘 이 프로젝트를 2026-09에 다시 열었을 때,
@@ -51,7 +51,7 @@ tail -f db26ai.log
 | **운영 서버** | OCI VM `ksh-vm-demo-01` — https://193-122-126-219.sslip.io (systemd `db26ai` + Caddy). Mac 은 개발 전용 |
 | **Wallet** | Mac `~/Dev/Wallets/Wallet_kshatp01` · VM `/opt/db26ai/wallet` |
 | **SH 샘플** | SALES 918,843 · CUSTOMERS 55,500 · COSTS 82,112 · TIMES 1,826 · PROMOTIONS 503 · PRODUCTS 72 · COUNTRIES 23 · CHANNELS 5 |
-| **Select AI 프로필** | 3개 (GEMINI_SH / RETAIL_DEMO / GROQ_SH, owner=DEMO26AI) — GROQ 는 ORA-20404 로 실패했고 **제거 예정**(과제 10), 화면 기본은 GEMINI. GEMINI_SH_NATIVE 는 이관 때 재생성 안 함 |
+| **Select AI 프로필** | 2개 (GEMINI_SH / RETAIL_DEMO, owner=DEMO26AI) — GROQ_SH 는 2026-10-11 제거(4-36). 화면 기본은 GEMINI. GEMINI_SH_NATIVE 는 이관 때 재생성 안 함(Agent 탭이 필요 시 만든다) |
 | **Vector Store** | 문서 2개(`SQL작성가이드.pdf` 79청크 · `현대Card개인회원약관.pdf` 101청크) · 청크 180 · **임베딩 180/180 (768차원)** |
 | **ONNX 모델** | `MULTILINGUAL_E5_BASE`(768, 사용 중) · `MULTILINGUAL_E5_SMALL`(384) |
 | **임베딩 설정** | `database` / `MULTILINGUAL_E5_BASE` |
@@ -624,7 +624,15 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 - 테스트: `test_units` 가 명시 owner 대문자화 + 비운 owner 는 `default_owner` 를 검사, `test_api_smoke` ETag 검증 질의·위자드 object_list 에서 `admin.` 제거. ruff 통과, 단위 28 + 통합 비-LLM 17 통과(로컬 launchd 를 새 `.env` 로 재기동해 schema=DEMO26AI 확인).
 - 남은 'ADMIN' 문자열은 주석·51번 §6 기대 출력 설명뿐. 점검: `grep -rn "admin\.\|'ADMIN'" app web/src sql tests`.
 
-**열린 것**: Groq 제거(아래 과제 10, 계획 승인 뒤) · VM 시크릿을 저장소 밖/Vault 로(과제 11) · 보류 3건(Vector P6·P7·Select AI RAG).
+**열린 것**: VM 시크릿을 저장소 밖/Vault 로(과제 11) · 보류 3건(Vector P6·P7·Select AI RAG).
+
+## 4-36. Groq 프로바이더 제거 (2026-10-11, Fable 5.1) — 사용자 승인
+
+GROQ_SH_PROFILE 은 2026-09-05 부터 ORA-20404 로 한 번도 동작하지 않았고 Groq 는 임베딩 API 가 없어 FEEDBACK 도 못 쓴다. 사용자 결정으로 제거.
+- 소스: `app/llm_client.py` groq 항목(표 구조는 유지 — google·openai·anthropic·xai), `app/config.py` GROQ_*, `app/profiles.py` 힌트·엔드포인트 프리셋, `app/feature_registry.py` 문구, `stores/nl2sql.ts` PREFER, `.env.example`, `sql/setup/51·53`(ACL·크리덴셜·프로필 블록 삭제, teardown principal → USER), 테스트 TestCompareProfiles 는 GEMINI_SH + RETAIL_DEMO 비교로, CLAUDE.md·가이드 01·04.
+- DB(kshatp01/DEMO26AI): `DROP_PROFILE GROQ_SH_PROFILE` · `DROP_CREDENTIAL GROQ_CRED` 는 DEMO26AI 로. `api.groq.com` ACE 는 **ADMIN 이 부여한 것이라 DEMO26AI 로는 ORA-01927** → ADMIN 세션으로 `REMOVE_HOST_ACE(privilege 'http', principal DEMO26AI)`. 회사 ADB 의 ACE 는 `connect/resolve` 가 아니라 **`HTTP` 하나**로 부여돼 있다(03g) — Gemini 호출은 그걸로 되고 있다.
+- `.env`(Mac·VM) 의 GROQ_API_KEY·GROQ_MODEL 삭제. `/api/llm/providers` 는 google 만. health profile_count 2.
+- 눈에 띈 것: `user_credentials` 에 이관용 `MIGRATION_CRED`·`MIG_CRED` 가 남아 있다 — 이관 완료 후 지우는 게 infra 문서(03) 의 교훈. 사용자 판단.
 
 ## 4-26. PoC 1-D 저장 질문 프리셋 (2026-09-29, Fable 5.1)
 
@@ -711,7 +719,7 @@ IVF 중심점/배정; 나머지는 "보조") · 상위 토큰 15(`$I`, TOKEN_COU
 | 8 | AWR 후속 질문이 Gemini 에서 가끔 120초 타임아웃(httpx) 또는 비정상 장문(918k자) — 상한 40k 로 방어했고 타임아웃은 그대로 오류로 보인다 | `routers/awr.py` |
 | 9 | **GEMINI 경유 GENERATE 가 수백 초 걸리거나 타임아웃 — 원인은 Gemini `HTTP 429`** (2026-09-29 확정). **09-30 확정: Mac 에서 같은 키로 429 본문을 받았다 — `Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash`. 즉 이 API 키의 Google 프로젝트는 무료 티어**(사용자는 종량제라고 알고 있었다 → 결제가 붙은 프로젝트와 키의 프로젝트가 다를 가능성). 하루 20건이라 GENERATE 몇 번이면 바닥난다. 수습: AI Studio 에서 키의 프로젝트에 결제 연결(또는 결제 프로젝트에서 새 키 발급) → `DBMS_CLOUD.UPDATE_CREDENTIAL(GEMINI_CRED, 'password', 새키)`. 사용자 영역. `AI_QUERY_LOG` 에 `ORA-20429: Request failed with status HTTP 429 - bearer://generativelanguage.googleapis.com/…` 이 elapsed 503,815 ms · 509,314 ms 로 남았다 — DBMS_CLOUD_AI 가 `PL/SQL lock timer` 로 재시도하며 버틴 시간. ACL·크리덴셜은 정상. 오전 무응답도 같은 원인으로 본다. **수습은 GEMINI_CRED 의 Google AI Studio 키 할당량(무료 티어 RPM/RPD) — 결제 활성화 또는 다른 키, 또는 GROQ 키 복구(과제 7). 시크릿 영역이라 사용자 판단.** 그동안 LLM 을 부르는 통합 테스트(`TestSelectAiShorthand` · `TestNL2SQL::test_showsql` · `TestConversationAndLog` 2건)는 429 가 걸리면 ReadTimeout 으로 실패한다 | 4-23 · 4-24 |
 
-| 10 | **Groq 프로바이더 제거** (2026-10-11 사용자 결정, **계획만 세우고 승인 뒤 실행**). 소스: `app/llm_client.py` groq 항목 · `app/config.py` GROQ_* · `app/profiles.py` 프로바이더 힌트/엔드포인트 표 · `app/feature_registry.py` 문구 · `stores/nl2sql.ts` PREFER · `.env.example` · `sql/setup/51·53` · `tests` TestCompareProfiles · 가이드 01·04. DB: `DROP_PROFILE GROQ_SH_PROFILE` · `DROP_CREDENTIAL GROQ_CRED` · `api.groq.com` ACL | 4-35 |
+| ~~10~~ | ~~Groq 프로바이더 제거~~ **해소** — 2026-10-11 승인 후 실행(4-36). 원문: 소스: `app/llm_client.py` groq 항목 · `app/config.py` GROQ_* · `app/profiles.py` 프로바이더 힌트/엔드포인트 표 · `app/feature_registry.py` 문구 · `stores/nl2sql.ts` PREFER · `.env.example` · `sql/setup/51·53` · `tests` TestCompareProfiles · 가이드 01·04. DB: `DROP_PROFILE GROQ_SH_PROFILE` · `DROP_CREDENTIAL GROQ_CRED` · `api.groq.com` ACL | 4-35 |
 | 11 | **VM 시크릿 위치** — `.env`·Wallet 이 `/opt/db26ai/app`(git clone 폴더) 안에 평문. 1단계 저장소 밖 + systemd `EnvironmentFile`, 2단계 OCI Vault + Instance Principal(이미 Vault 에 DEMO26AI 암호가 있다), 3단계 IAM 토큰 인증으로 DB 암호 자체를 없애기 | 4-35 |
 
 ## 7. 새 세션 첫 단계 권장

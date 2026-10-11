@@ -106,7 +106,7 @@ scripts/deploy.sh
 | `app/graph.py` | 315 | SQL/PGQ Property Graph 생성/삭제, SQL vs PGQ 비교 쿼리 3종, 패턴 질의 3종 |
 | `app/productivity.py` | 270 | 26ai 개발생산성 기능 시뮬레이션 — Lock-Free Reservations, Priority Transactions |
 | `app/awr_analyzer_v2.py` | 634 | AWR HTML 파싱(23개 섹션), 8개 섹션 분석 보고서, categoryScores/actionItems, 후속 질문 |
-| `app/llm_client.py` | 212 | 공통 LLM 클라이언트 — Groq (Llama 3.3 70B), Google Gemini (2.5 Flash). OpenAI 호환 API |
+| `app/llm_client.py` | ~200 | 공통 LLM 클라이언트 — Google Gemini(기본) · OpenAI · Anthropic · xAI 표. OpenAI 호환 API. **Groq 는 2026-10-11 제거** |
 | `app/scheduler.py` | 83 | APScheduler — ADB Keepalive 주간 핑 (OCI Always Free 회수 방지) |
 
 > `app/awr_analyzer.py`(구버전)는 2026-09-04 삭제됨. V2가 유일한 정본.
@@ -326,8 +326,7 @@ EMBEDDING_API_URL=                     # 외부 API 사용 시
 EMBEDDING_API_KEY=
 
 # LLM (AWR 분석, RAG 답변 생성용)
-LLM_PROVIDER=google                    # "groq" 또는 "google"
-GROQ_API_KEY= / GROQ_MODEL=llama-3.3-70b-versatile
+LLM_PROVIDER=google                    # "google" (openai·anthropic·xai 도 키만 있으면 됨. groq 는 2026-10-11 제거)
 GOOGLE_API_KEY= / GOOGLE_MODEL=gemini-3.8-flash
 ```
 
@@ -430,7 +429,7 @@ AWR 분석은 SSE 가 아니라 분석 후 JSON 1회 — 화면의 진행 표시
 - 프론트엔드 fetch 120초 타임아웃 = DB call 타임아웃과 일치
 - 프로필 이름에 'RETAIL' 이 들어가면 유통 시연용 세트(`POC_*`), 'SH' 면 SH 세트의 Annotation 을 적용 (`web/src/lib/annotations.ts`, RETAIL 검사가 먼저). **예시 질문은 2026-09-29 부터 DB 의 `AI_PROMPT_PRESET`** 이 정본(프로필 이름 LIKE 패턴 `%SH%`·`%SSB%`·NULL) — 화면에서 추가·수정·삭제. `lib/nl2sql.ts` 의 `EXAMPLE_QUESTIONS` 는 API 실패 시 폴백 + 시드(72번) 원천
 - **딥링크 규약 3층**: `?sub=` 서브탭 · `&run=1` mount 직후 기본 동작 · `&slide=VS-12` 장표 뷰어(꼬리표 또는 `deck:page`). 시연 대본의 링크 하나가 화면+결과+장표를 연다
-- 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (2026-09-05 현재 GEMINI → GROQ; GROQ 프로필이 ORA-20404 로 실패 중)
+- 새 화면의 기본 프로필 우선순위는 `stores/nl2sql.ts` 의 `PREFER` (GEMINI_SH 우선. GROQ 프로필·크리덴셜·ACL 은 2026-10-11 DB 에서 제거)
 - AWR 결과 탭과 벡터 검색 세션 탭은 같은 `SessionTabs` 컴포넌트를 쓴다
 - 저장소는 **GitHub 공개(PUBLIC)** — 커밋 전 시크릿 검사 필수 (`docs/개발노하우.md` 참조)
 

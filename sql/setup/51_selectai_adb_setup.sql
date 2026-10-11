@@ -7,9 +7,10 @@
 --
 -- ▣ 이 스크립트가 끝나면 만들어져 있는 것
 --   1. ADMIN 스키마에 SH 샘플 8개 테이블 복제본 + PK/FK + 통계
---   2. 네트워크 ACL 2건 — api.groq.com · generativelanguage.googleapis.com
---   3. 크리덴셜 2개    — GROQ_CRED · GEMINI_CRED
---   4. AI 프로필 2개   — GROQ_SH_PROFILE · GEMINI_SH_PROFILE (둘 다 ADMIN 8개 테이블을 본다)
+--   2. 네트워크 ACL 1건 — generativelanguage.googleapis.com
+--   3. 크리덴셜 1개    — GEMINI_CRED
+--   4. AI 프로필 1개   — GEMINI_SH_PROFILE (실행 계정의 SH 8개 테이블을 본다)
+--      (Groq 는 2026-10-11 제거 — 5개월간 ORA-20404 로 불통이었고 임베딩 API 가 없어 FEEDBACK 도 못 쓴다)
 --   5. Display Annotation 59건 (한국어 설명 → LLM 프롬프트에 그대로 실린다)
 --   6. §6 검증 쿼리가 위 다섯 가지를 한 번에 확인해 준다
 --
@@ -19,7 +20,6 @@
 --   그래서 프로필의 object_list 도 ADMIN 을 가리킨다. §1 을 §4 보다 먼저 실행하는 이유다.
 --
 -- ⚠ 시크릿 : <...> 는 자리표시자다. 이 저장소는 GitHub 공개다.
---            <GROQ_API_KEY>   → https://console.groq.com/keys
 --            <GOOGLE_API_KEY> → https://aistudio.google.com/apikey
 --            값을 채운 사본은 sql/setup/_private/ (gitignore) 에 두고 거기서 실행한다.
 --
@@ -114,18 +114,7 @@ END;
 --     없으면 GENERATE 호출이 ORA-24247 (network access denied) 로 죽는다.
 -- =============================================================================
 -- 아웃바운드에 필요한 권한은 connect(접속) 과 resolve(DNS) 두 개다.
--- (참고: 'http' 는 XDB 인바운드용이라 여기서는 불필요하다. 옛 스크립트가 groq 에
---        'http' 만 줬던 것은 잘못이고, 그래서 두 호스트 설정이 비대칭이었다.)
-
-BEGIN
-    DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
-        host => 'api.groq.com',
-        ace  => xs$ace_type(
-            privilege_list => xs$name_list('connect','resolve'),
-            principal_name => USER,                 -- 실행 계정. 문자열로 적을 땐 대문자(대소문자 구분)
-            principal_type => xs_acl.ptype_db));
-END;
-/
+-- (참고: 'http' 는 XDB 인바운드용이라 여기서는 불필요하다.)
 
 BEGIN
     DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(
@@ -146,24 +135,12 @@ END;
 -- 3-1. 기존 크리덴셜 제거 (없으면 사유를 찍고 넘어간다 — 조용히 삼키지 않는다)
 
 BEGIN
-    DBMS_CLOUD.DROP_CREDENTIAL(credential_name => 'GROQ_CRED');
-EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GROQ_CRED drop skip: ' || SQLERRM);
-END;
-/
-BEGIN
     DBMS_CLOUD.DROP_CREDENTIAL(credential_name => 'GEMINI_CRED');
 EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GEMINI_CRED drop skip: ' || SQLERRM);
 END;
 /
 
 -- 3-2. 생성
-BEGIN
-    DBMS_CLOUD.CREATE_CREDENTIAL(
-        credential_name => 'GROQ_CRED',
-        username        => 'GROQ',
-        password        => '<GROQ_API_KEY>');
-END;
-/
 BEGIN
     DBMS_CLOUD.CREATE_CREDENTIAL(
         credential_name => 'GEMINI_CRED',
@@ -177,7 +154,7 @@ END;
 -- §4. AI 프로필 — "어느 LLM 이 어느 테이블을 보는가"의 정의
 -- =============================================================================
 -- provider "openai" + provider_endpoint 조합이 이 데모의 핵심이다.
--- Groq·Gemini 모두 OpenAI 호환 API 를 내주므로, OCI GenAI 를 쓰지 않고도 붙는다.
+-- Gemini 는 OpenAI 호환 API 를 내주므로, OCI GenAI 를 쓰지 않고도 붙는다.
 --
 -- 속성 4개가 프롬프트 품질을 좌우한다 (52번 §4 에서 효과를 눈으로 확인한다):
 --   annotations  : ALTER TABLE ... ANNOTATIONS 로 붙인 한국어 설명을 프롬프트에 포함
@@ -185,45 +162,12 @@ END;
 --   constraints  : PK/FK 를 포함 → 조인 키를 추측하지 않게 된다
 --   conversation : 직전 문답을 프롬프트에 누적 → 멀티턴("그 중 상위 3개는?")이 된다
 --   embedding_model : DBMS_CLOUD_AI.FEEDBACK(답변 피드백 → <프로필>_FEEDBACK_VECINDEX) 이 쓰는 임베딩 모델.
---                  OpenAI 호환 프로바이더는 이게 없으면 ORA-20048 (2026-09-30 실측). Gemini 는 gemini-embedding-001,
---                  Groq 는 임베딩 API 가 없어 피드백을 못 쓴다 — 아래 GROQ 프로필엔 넣지 않는다
+--                  OpenAI 호환 프로바이더는 이게 없으면 ORA-20048 (2026-09-30 실측). Gemini 는 gemini-embedding-001
 
 -- 4-1. 기존 프로필 제거 — 반드시 하나씩. 한 블록에 묶으면 첫 실패가 나머지를 막는다.
 BEGIN
-    DBMS_CLOUD_AI.DROP_PROFILE(profile_name => 'GROQ_SH_PROFILE');
-EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GROQ_SH_PROFILE drop skip: ' || SQLERRM);
-END;
-/
-BEGIN
     DBMS_CLOUD_AI.DROP_PROFILE(profile_name => 'GEMINI_SH_PROFILE');
 EXCEPTION WHEN OTHERS THEN DBMS_OUTPUT.PUT_LINE('GEMINI_SH_PROFILE drop skip: ' || SQLERRM);
-END;
-/
-
--- 4-2. Groq (Llama 3.3 70B)
-BEGIN
-    DBMS_CLOUD_AI.CREATE_PROFILE(
-        profile_name => 'GROQ_SH_PROFILE',
-        attributes   => '{
-            "provider": "openai",
-            "credential_name": "GROQ_CRED",
-            "model": "llama-3.3-70b-versatile",
-            "provider_endpoint": "https://api.groq.com/openai/v1",
-            "object_list": [
-              {"owner": "' || USER || '","name":"CHANNELS"},
-              {"owner": "' || USER || '","name":"COSTS"},
-              {"owner": "' || USER || '","name":"COUNTRIES"},
-              {"owner": "' || USER || '","name":"CUSTOMERS"},
-              {"owner": "' || USER || '","name":"PRODUCTS"},
-              {"owner": "' || USER || '","name":"PROMOTIONS"},
-              {"owner": "' || USER || '","name":"SALES"},
-              {"owner": "' || USER || '","name":"TIMES"}
-            ],
-            "annotations": true,
-            "comments": true,
-            "constraints": true,
-            "conversation": true
-        }');
 END;
 /
 
@@ -386,27 +330,27 @@ ORDER  BY table_name;
 --   CHANNELS 5 · COUNTRIES 23 · PRODUCTS 72 · PROMOTIONS 503 · TIMES 1,826
 --   COSTS 82,112 · CUSTOMERS 55,500 · SALES 918,843
 
--- 6-2. 네트워크 ACL — 두 호스트가 대칭이어야 한다
+-- 6-2. 네트워크 ACL
 SELECT host, principal, privilege
 FROM   dba_host_aces
-WHERE  host IN ('api.groq.com','generativelanguage.googleapis.com')
+WHERE  host IN ('generativelanguage.googleapis.com')
 ORDER  BY host, privilege;
--- 기대: 호스트별로 CONNECT · RESOLVE (principal = ADMIN), 총 4행.
+-- 기대: CONNECT · RESOLVE (principal = 실행 계정), 2행.
 --   ※ 이 데모 ADB 에는 과거 작업 때문에 HTTP 도 함께 부여돼 있어 6행이 나온다.
 --     HTTP 는 XDB 인바운드용이라 아웃바운드 호출과 무관하다 — 있어도 문제 없다.
 
 -- 6-3. 크리덴셜
 SELECT credential_name, username, enabled
 FROM   user_credentials
-WHERE  credential_name IN ('GROQ_CRED','GEMINI_CRED')
+WHERE  credential_name IN ('GEMINI_CRED')
 ORDER  BY credential_name;
--- 기대: 2행, enabled=TRUE
+-- 기대: 1행, enabled=TRUE
 -- ⚠ enabled=TRUE 는 "키가 유효하다"는 뜻이 아니다. 키가 만료돼도 TRUE 로 보인다.
 --   실제 유효성은 6-6 의 호출로만 확인된다.
 
 -- 6-4. AI 프로필
 SELECT profile_name, status FROM user_cloud_ai_profiles ORDER BY profile_name;
--- 기대: GEMINI_SH_PROFILE · GROQ_SH_PROFILE 2행
+-- 기대: GEMINI_SH_PROFILE 1행 (앱으로 더 만들었다면 RETAIL_DEMO_PROFILE 등 추가)
 
 SELECT profile_name, attribute_name, attribute_value
 FROM   user_cloud_ai_profile_attributes

@@ -1,6 +1,6 @@
 """
 공통 LLM 클라이언트 (AWR 분석, RAG 답변 생성 등)
-- Groq, Google Gemini, OpenAI, Anthropic, xAI(Grok) 지원 (OpenAI 호환 API)
+- Google Gemini, OpenAI, Anthropic, xAI(Grok) 지원 (OpenAI 호환 API). Groq 는 2026-10-11 제거(ORA-20404 로 5개월 불통, 사용자 결정)
 - DBMS_CLOUD_AI.GENERATE와 무관 (Select AI 전용은 별도)
 """
 
@@ -13,14 +13,6 @@ from app.config import settings
 
 # 제공자별 API 설정 (모두 OpenAI 호환 chat/completions 엔드포인트)
 LLM_CONFIGS = {
-    "groq": {
-        "url": "https://api.groq.com/openai/v1/chat/completions",
-        "api_key_attr": "GROQ_API_KEY",
-        "model_attr": "GROQ_MODEL",
-        "display_name": "Groq",
-        "max_tokens": 16000,
-        "max_input_chars": 12000,
-    },
     "google": {
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/v1/chat/completions",
         "api_key_attr": "GOOGLE_API_KEY",
@@ -83,7 +75,7 @@ async def call_llm(prompt: str, provider: str = None, system_prompt: str = None)
     LLM 채팅 API 호출
     Args:
         prompt: 사용자 프롬프트
-        provider: "groq", "google", "openai", "anthropic", "xai" (None이면 기본값)
+        provider: "google", "openai", "anthropic", "xai" (None이면 기본값)
         system_prompt: 시스템 프롬프트 (선택)
     Returns:
         LLM 응답 텍스트
@@ -120,7 +112,7 @@ async def call_llm(prompt: str, provider: str = None, system_prompt: str = None)
             data = response.json()
         return data["content"][0]["text"]
 
-    # OpenAI 호환 포맷 (groq, google, openai, xai)
+    # OpenAI 호환 포맷 (google, openai, xai)
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})

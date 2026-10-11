@@ -1,6 +1,6 @@
 """프로필(모델) 비교 실행 — 같은 질문을 2~3개 프로필로 순차 실행해 SQL·결과·elapsed 를 나란히 (PoC 3-C, 2026-09-30).
 
-같은 테이블을 보는 프로필끼리 비교해야 뜻이 있다(GEMINI_SH vs GROQ_SH). 다른 데이터셋 프로필(RETAIL_DEMO)은 SQL 이 당연히 다르다 — 화면이 object_list 가 다르면 경고한다.
+같은 테이블을 보는 프로필끼리 비교해야 뜻이 있다(예: 같은 SH 를 보는 프로필 둘 — 새 프로필 만들기 도우미로 모델만 다른 프로필을 만들면 된다). 다른 데이터셋 프로필(RETAIL_DEMO)은 SQL 이 당연히 다르다 — 화면이 object_list 가 다르면 경고한다.
 행마다 showsql + 생성 SQL 실행. run_select_ai 를 거치므로 이력에 source=COMPARE 로 남는다. SSE 로 프로필 하나 끝날 때마다 흘려보낸다.
 """
 from __future__ import annotations
